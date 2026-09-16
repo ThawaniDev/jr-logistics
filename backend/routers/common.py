@@ -4,7 +4,7 @@ from typing import Optional, List
 
 from db import db
 from deps import get_current_user
-from catalog import SERVICES
+from catalog import SERVICES, ENABLED_SERVICES
 from utils import new_id, now_iso, notify, get_wallet, pub, pub_list
 
 router = APIRouter(prefix="/api", tags=["common"])
@@ -17,7 +17,8 @@ async def health():
 
 @router.get("/catalog/services")
 async def catalog_services():
-    return {"services": SERVICES}
+    enabled = [s for s in SERVICES if s["key"] in ENABLED_SERVICES]
+    return {"services": enabled}
 
 
 class ProfileIn(BaseModel):
@@ -28,6 +29,7 @@ class ProfileIn(BaseModel):
     cr_number: Optional[str] = None
     industry: Optional[str] = None
     services: Optional[List[str]] = None
+    vehicle_type: Optional[str] = None
     bank_name: Optional[str] = None
     iban: Optional[str] = None
     national_id: Optional[str] = None
@@ -46,7 +48,7 @@ async def update_profile(body: ProfileIn, user: dict = Depends(get_current_user)
             if v is not None:
                 updates[f"business_profile.{f}"] = v
     if user["role"] == "worker":
-        for f in ("services", "bank_name", "iban", "national_id"):
+        for f in ("services", "bank_name", "iban", "national_id", "vehicle_type"):
             v = getattr(body, f)
             if v is not None:
                 updates[f"worker_profile.{f}"] = v

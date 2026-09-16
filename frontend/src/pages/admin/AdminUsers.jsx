@@ -34,12 +34,12 @@ export default function AdminUsers() {
     <div className="space-y-6" data-testid="admin-users-page">
       <div>
         <h1 className="heading text-2xl font-extrabold">إدارة المستخدمين</h1>
-        <p className="text-sm text-slate-400 mt-1">المنشآت ومزودو الخدمة المسجلون في المنصة</p>
+        <p className="text-sm text-slate-400 mt-1">المنشآت والمندوبون المسجلون في المنصة</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-2" data-testid="users-role-tabs">
-          {[["business", "المنشآت"], ["worker", "مزودو الخدمة"]].map(([k, l]) => (
+          {[["business", "المنشآت"], ["worker", "السائقون والمندوبون"]].map(([k, l]) => (
             <button key={k} onClick={() => setRole(k)} data-testid={`users-tab-${k}`}
               className={`chip ${role === k ? "bg-brand/15 text-brand border-brand/40" : "bg-navy-800 text-slate-400 border-navy-600"}`}>
               {l}

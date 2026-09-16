@@ -12,7 +12,7 @@ SERVICES = [
         "unit_label": "لكل شحنة",
         "desc": "مندوبو توصيل بمركباتهم لتوصيل الشحنات داخل المدينة",
         "has_shipments": True,
-        "needs_vehicle": False,
+        "needs_vehicle": True,
         "ref_rate": 7,
     },
     {
@@ -114,3 +114,9 @@ SERVICES = [
 ]
 
 SERVICE_MAP = {s["key"]: s for s in SERVICES}
+
+# MVP scope: only delivery drivers are visible/active. Other categories stay in
+# the catalog and can be enabled by adding their keys here — no schema changes.
+ENABLED_SERVICES = ["delivery_driver"]
+
+ACTIVE_SERVICES = [s for s in SERVICES if s["key"] in ENABLED_SERVICES]

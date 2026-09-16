@@ -46,7 +46,7 @@ export default function AdminDashboard() {
         <StatCard testid="stat-gmv" icon={Wallet} label="إجمالي قيمة الطلبات المكتملة" value={sar(data.gmv)} tone="brand" />
         <StatCard testid="stat-commission" icon={Banknote} label="عمولات المنصة" value={sar(data.commission)} tone="gold" />
         <StatCard testid="stat-businesses" icon={Building2} label="المنشآت" value={data.businesses} tone="cyan" />
-        <StatCard testid="stat-workers" icon={Users} label="مزودو الخدمة" value={data.workers} tone="blue" />
+        <StatCard testid="stat-workers" icon={Users} label="السائقون والمندوبون" value={data.workers} tone="blue" />
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -110,7 +110,7 @@ export default function AdminDashboard() {
                 className="flex-1 bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
                 <option value="all">جميع المستخدمين</option>
                 <option value="business">المنشآت فقط</option>
-                <option value="worker">العمال فقط</option>
+                <option value="worker">المندوبون فقط</option>
               </select>
               <button data-testid="broadcast-send-btn" disabled={busy}
                 className="bg-brand text-navy-900 font-bold rounded-xl px-6 text-sm hover:bg-brand-hover disabled:opacity-50 transition-colors">

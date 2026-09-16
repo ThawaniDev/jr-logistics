@@ -5,7 +5,7 @@ import {
   ShieldCheck, Wallet, Users, Zap, ChevronLeft, Building2, UserCheck,
   MapPin, Clock, BadgeCheck, ArrowLeft, Star, ClipboardList,
 } from "lucide-react";
-import { SERVICES, DURATIONS, sar } from "@/lib/constants";
+import { ACTIVE_SERVICES, COMING_SOON_SERVICES, sar } from "@/lib/constants";
 
 const HERO_IMG = "https://images.pexels.com/photos/4487383/pexels-photo-4487383.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
 
@@ -15,10 +15,10 @@ const fadeUp = {
 };
 
 function Estimator() {
-  const [serviceKey, setServiceKey] = useState("warehouse_worker");
+  const [serviceKey, setServiceKey] = useState("delivery_driver");
   const [count, setCount] = useState(4);
   const [days, setDays] = useState(3);
-  const svc = SERVICES.find((s) => s.key === serviceKey);
+  const svc = ACTIVE_SERVICES.find((s) => s.key === serviceKey);
   const total =
     svc.unit === "shipment"
       ? svc.ref_rate * (count * 50)
@@ -37,7 +37,7 @@ function Estimator() {
             onChange={(e) => setServiceKey(e.target.value)}
             className="w-full bg-navy-800 border border-navy-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand"
           >
-            {SERVICES.map((s) => (
+            {ACTIVE_SERVICES.map((s) => (
               <option key={s.key} value={s.key}>{s.name}</option>
             ))}
           </select>
@@ -135,7 +135,7 @@ export default function Landing() {
             </motion.h1>
             <motion.p variants={fadeUp} initial="hidden" animate="show" custom={2}
               className="mt-6 text-slate-400 text-base sm:text-lg leading-relaxed max-w-xl">
-              من سائقي التوصيل إلى طواقم المستودعات والفعاليات — أنشئ طلبك، استقبل المطابقات،
+              اطلب مندوبي توصيل جاهزين خلال دقائق — أنشئ طلبك، استقبل المطابقات،
               أكّد الحضور، وادفع بأمان عبر محفظة ضمان. كل ذلك من منصة واحدة.
             </motion.p>
             <motion.div variants={fadeUp} initial="hidden" animate="show" custom={3} className="mt-8 flex flex-wrap gap-4">
@@ -148,12 +148,12 @@ export default function Landing() {
               <Link to="/login" data-testid="hero-worker-cta"
                 className="flex items-center gap-2 border border-navy-600 bg-navy-800/60 text-slate-100 font-bold rounded-2xl px-7 py-3.5 hover:border-brand/50 hover:text-brand transition-all">
                 <UserCheck className="w-5 h-5" />
-                أنا عامل / مزود خدمة
+                أنا سائق / مندوب توصيل
               </Link>
             </motion.div>
             <motion.div variants={fadeUp} initial="hidden" animate="show" custom={4}
               className="mt-10 grid grid-cols-3 gap-4 max-w-md">
-              {[["+9", "فئات خدمات"], ["10%", "عمولة شفافة"], ["24/7", "متابعة ودعم"]].map(([v, l]) => (
+              {[["< 1 د", "لنشر طلبك"], ["10%", "عمولة شفافة"], ["24/7", "متابعة ودعم"]].map(([v, l]) => (
                 <div key={l} className="card-surface p-3 text-center">
                   <p className="heading text-2xl font-black text-brand num">{v}</p>
                   <p className="text-[11px] text-slate-500 mt-1">{l}</p>
@@ -191,24 +191,54 @@ export default function Landing() {
 
       <section id="services" className="py-20 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
-          <p className="text-brand text-sm font-semibold text-center">منظومة خدمات متكاملة</p>
-          <h2 className="heading text-3xl sm:text-4xl font-black text-center mt-2">كل ما تحتاجه عملياتك، في مكان واحد</h2>
+          <p className="text-brand text-sm font-semibold text-center">خدمتنا في النسخة الأولى</p>
+          <h2 className="heading text-3xl sm:text-4xl font-black text-center mt-2">مندوبو توصيل موثوقون — عند الطلب</h2>
           <p className="text-slate-400 text-center mt-3 max-w-2xl mx-auto text-sm sm:text-base">
-            منصة واحدة تغطي كامل الطيف التشغيلي — النقل، المستودعات، والفعاليات
+            اطلب العدد الذي تحتاجه، حدد منطقة الخدمة ونوع المركبة والشحنات المتوقعة، وتابع الحضور والتسوية من لوحة واحدة
           </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-12">
-            {SERVICES.map((s, i) => (
-              <motion.div key={s.key} variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={i % 3}
+          <div className="mt-12 max-w-3xl mx-auto">
+            {ACTIVE_SERVICES.map((s) => (
+              <motion.div key={s.key} variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }}
                 data-testid={`service-card-${s.key}`}
-                className="card-surface card-surface-hover p-6 group">
-                <div className="w-12 h-12 rounded-2xl bg-brand/10 border border-brand/25 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <s.icon className="w-6 h-6 text-brand" />
+                className="card-surface card-surface-hover p-8 group bg-gradient-to-bl from-brand/10 to-transparent">
+                <div className="flex flex-col sm:flex-row items-start gap-5">
+                  <div className="w-16 h-16 rounded-2xl bg-brand/15 border border-brand/30 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-[0_0_25px_rgba(0,229,163,0.15)]">
+                    <s.icon className="w-8 h-8 text-brand" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h3 className="heading font-extrabold text-xl">{s.name}</h3>
+                      <span className="chip bg-brand/15 text-brand border-brand/30">متاح الآن</span>
+                    </div>
+                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                      مندوبون بمركباتهم (دراجة نارية أو سيارة) لتوصيل شحناتك داخل المدينة — حدد عدد المندوبين،
+                      منطقة الخدمة، نوع المركبة، والشحنات المتوقعة لكل مندوب، وادفع لكل شحنة.
+                    </p>
+                    <div className="flex flex-wrap gap-4 mt-4 text-xs text-slate-500">
+                      <span>التسعير: لكل شحنة</span>
+                      <span>تأكيد حضور لحظي</span>
+                      <span>بديل تلقائي عند التغيب</span>
+                    </div>
+                  </div>
+                  <Link to="/login" data-testid="service-cta-delivery"
+                    className="shrink-0 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover transition-colors">
+                    اطلب مندوبين
+                  </Link>
                 </div>
-                <h3 className="heading font-bold text-lg">{s.name}</h3>
-                <p className="text-sm text-slate-400 mt-2 leading-relaxed">{s.desc}</p>
-                <p className="text-[11px] text-slate-500 mt-3">التسعير: {s.unit_label}</p>
               </motion.div>
             ))}
+          </div>
+          <div className="mt-10 text-center" data-testid="coming-soon-services">
+            <p className="text-xs text-slate-500 mb-4">خدمات قادمة على نفس المنصة — البنية جاهزة للتوسع</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {COMING_SOON_SERVICES.map((s) => (
+                <span key={s.key} data-testid={`coming-${s.key}`}
+                  className="chip bg-navy-800/50 text-slate-500 border-navy-700 opacity-70">
+                  <s.icon className="w-3.5 h-3.5" /> {s.short}
+                  <span className="text-[9px] text-amber-500/70">قريباً</span>
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -219,10 +249,10 @@ export default function Landing() {
           <h2 className="heading text-3xl sm:text-4xl font-black text-center mt-2">من الطلب إلى الدفع في أربع خطوات</h2>
           <div className="grid md:grid-cols-4 gap-5 mt-12">
             {[
-              { icon: ClipboardList, t: "أنشئ طلبك", d: "حدّد الخدمة، العدد، الموقع، المدة والميزانية — وانشر الطلب فوراً" },
-              { icon: Zap, t: "مطابقة فورية", d: "يصل العرض للعمال المتاحين المطابقين مع كامل التفاصيل قبل القبول" },
-              { icon: BadgeCheck, t: "تأكيد وحضور", d: "أكّد العمال، احجز المبلغ في محفظة الضمان، وتتبّع الحضور لحظياً" },
-              { icon: Wallet, t: "تسوية آمنة", d: "عند إتمام العمل تُصرف الأرباح للعامل تلقائياً بعد خصم العمولة" },
+              { icon: ClipboardList, t: "أنشئ طلبك", d: "حدّد عدد المندوبين، منطقة الخدمة، نوع المركبة والميزانية — وانشر الطلب فوراً" },
+              { icon: Zap, t: "مطابقة فورية", d: "يصل العرض للمندوبين المتاحين المطابقين مع كامل التفاصيل قبل القبول" },
+              { icon: BadgeCheck, t: "تأكيد وحضور", d: "أكّد المندوبين، احجز المبلغ في محفظة الضمان، وتتبّع الحضور لحظياً" },
+              { icon: Wallet, t: "تسوية آمنة", d: "عند إتمام العمل تُصرف الأرباح للمندوب تلقائياً بعد خصم العمولة" },
             ].map((s, i) => (
               <motion.div key={s.t} variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={i}
                 className="card-surface p-6 relative">
@@ -272,8 +302,8 @@ export default function Landing() {
             <Building2 className="w-10 h-10 text-brand mb-4" />
             <h3 className="heading text-2xl font-extrabold">للمنشآت والشركات</h3>
             <p className="text-slate-400 mt-3 text-sm leading-relaxed">
-              مستودعك يحتاج طاقماً إضافياً؟ فعالية تحتاج منظمين؟ شحنات تحتاج مندوبين؟
-              أنشئ طلبك بدقة، استقبل المرشحين، وتحكم كاملاً بالتأكيد والحضور والدفع.
+              متجرك يغرق بالطلبات؟ حملة توصيل تحتاج مندوبين إضافيين؟
+              أنشئ طلبك بدقة — عدد المندوبين، المنطقة، نوع المركبة — وتحكم كاملاً بالتأكيد والحضور والدفع.
             </p>
             <Link to="/login" data-testid="join-business-btn"
               className="inline-flex items-center gap-2 mt-6 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors">
@@ -283,14 +313,14 @@ export default function Landing() {
           <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={1}
             className="card-surface card-surface-hover p-8 bg-gradient-to-bl from-amber-500/10 to-transparent">
             <UserCheck className="w-10 h-10 text-amber-400 mb-4" />
-            <h3 className="heading text-2xl font-extrabold">للعمال ومزودي الخدمة</h3>
+            <h3 className="heading text-2xl font-extrabold">للسائقين والمندوبين</h3>
             <p className="text-slate-400 mt-3 text-sm leading-relaxed">
-              اختر خدماتك، فعّل حالة التوفر، واستقبل فرص عمل بتفاصيل كاملة قبل القبول.
-              أرباحك تصل محفظتك فور تأكيد الإنجاز، واسحبها إلى حسابك البنكي.
+              فعّل حالة التوفر واستقبل فرص توصيل بتفاصيل كاملة قبل القبول — المنطقة، نوع المركبة،
+              الشحنات المتوقعة، والأرباح. أرباحك تصل محفظتك فور تأكيد الإنجاز، واسحبها إلى حسابك البنكي.
             </p>
             <Link to="/login" data-testid="join-worker-btn"
               className="inline-flex items-center gap-2 mt-6 bg-amber-400 text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-amber-300 transition-colors">
-              انضم كمزود خدمة <ArrowLeft className="w-4 h-4" />
+              انضم كمندوب توصيل <ArrowLeft className="w-4 h-4" />
             </Link>
           </motion.div>
         </div>

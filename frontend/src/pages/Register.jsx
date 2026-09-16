@@ -6,14 +6,14 @@ import { Building2, UserCheck, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { SERVICES, CITIES, roleHome } from "@/lib/constants";
+import { ACTIVE_SERVICES, CITIES, roleHome } from "@/lib/constants";
 
 export default function Register() {
   const [token, setToken] = useState(null);
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState(null);
-  const [form, setForm] = useState({ name: "", email: "", city: "الرياض", company_name: "", cr_number: "", industry: "", national_id: "" });
-  const [services, setServices] = useState([]);
+  const [form, setForm] = useState({ name: "", email: "", city: "الرياض", company_name: "", cr_number: "", industry: "", national_id: "", vehicle_type: "" });
+  const [services, setServices] = useState(["delivery_driver"]);
   const [busy, setBusy] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -50,6 +50,7 @@ export default function Register() {
         cr_number: form.cr_number || null,
         industry: form.industry || null,
         national_id: form.national_id || null,
+        vehicle_type: form.vehicle_type || null,
         services,
       });
       sessionStorage.removeItem("isnad_reg_token");
@@ -81,7 +82,7 @@ export default function Register() {
           <div className="grid grid-cols-2 gap-4 mt-8">
             {[
               { key: "business", icon: Building2, t: "منشأة / شركة", d: "أطلب عمالة وموارد تشغيلية" },
-              { key: "worker", icon: UserCheck, t: "عامل / مزود خدمة", d: "استقبل فرص عمل واكسب" },
+              { key: "worker", icon: UserCheck, t: "سائق / مندوب توصيل", d: "استقبل فرص توصيل واكسب" },
             ].map((r) => (
               <button
                 key={r.key}
@@ -133,17 +134,27 @@ export default function Register() {
                 </>
               )}
               {role === "worker" && (
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1.5">رقم الهوية (اختياري)</label>
-                  <Input data-testid="register-national-id" dir="ltr" value={form.national_id} onChange={set("national_id")} className="bg-navy-800 border-navy-600 h-11 text-left" />
-                </div>
+                <>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1.5">رقم الهوية (اختياري)</label>
+                    <Input data-testid="register-national-id" dir="ltr" value={form.national_id} onChange={set("national_id")} className="bg-navy-800 border-navy-600 h-11 text-left" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1.5">نوع مركبتك</label>
+                    <select data-testid="register-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
+                      className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                      <option value="">اختر…</option>
+                      {["دراجة نارية", "سيارة", "فان صغير"].map((v) => <option key={v}>{v}</option>)}
+                    </select>
+                  </div>
+                </>
               )}
             </div>
             {role === "worker" && (
               <div>
-                <label className="text-xs text-slate-400 block mb-2">الخدمات التي تقدمها *</label>
+                <label className="text-xs text-slate-400 block mb-2">خدمتك على المنصة *</label>
                 <div className="flex flex-wrap gap-2" data-testid="register-services">
-                  {SERVICES.map((s) => (
+                  {ACTIVE_SERVICES.map((s) => (
                     <button
                       key={s.key}
                       type="button"

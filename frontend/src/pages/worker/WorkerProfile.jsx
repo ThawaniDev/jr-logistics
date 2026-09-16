@@ -4,7 +4,7 @@ import { User, Save, Star } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { SERVICES, CITIES } from "@/lib/constants";
+import { ACTIVE_SERVICES, CITIES } from "@/lib/constants";
 
 export default function WorkerProfile() {
   const { user, setUser } = useAuth();
@@ -12,6 +12,7 @@ export default function WorkerProfile() {
   const [form, setForm] = useState({
     name: user?.name || "", email: user?.email || "", city: user?.city || "الرياض",
     bank_name: wp.bank_name || "", iban: wp.iban || "", national_id: wp.national_id || "",
+    vehicle_type: wp.vehicle_type || "",
   });
   const [services, setServices] = useState(wp.services || []);
   const [busy, setBusy] = useState(false);
@@ -76,6 +77,14 @@ export default function WorkerProfile() {
             <Input data-testid="profile-national-id" dir="ltr" value={form.national_id} onChange={set("national_id")} className="bg-navy-800 border-navy-600 h-11 text-left" />
           </div>
           <div>
+            <label className="text-xs text-slate-400 block mb-1.5">نوع مركبتك</label>
+            <select data-testid="profile-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
+              className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+              <option value="">اختر…</option>
+              {["دراجة نارية", "سيارة", "فان صغير"].map((v) => <option key={v}>{v}</option>)}
+            </select>
+          </div>
+          <div>
             <label className="text-xs text-slate-400 block mb-1.5">البنك</label>
             <Input data-testid="profile-bank" value={form.bank_name} onChange={set("bank_name")} className="bg-navy-800 border-navy-600 h-11" />
           </div>
@@ -85,9 +94,9 @@ export default function WorkerProfile() {
           </div>
         </div>
         <div>
-          <label className="text-xs text-slate-400 block mb-2">الخدمات التي أقدمها — تحدد الفرص التي تصلك</label>
+          <label className="text-xs text-slate-400 block mb-2">خدمتك — توصيل ومندوبون</label>
           <div className="flex flex-wrap gap-2" data-testid="profile-services">
-            {SERVICES.map((s) => (
+            {ACTIVE_SERVICES.map((s) => (
               <button key={s.key} type="button" data-testid={`profile-service-${s.key}`} onClick={() => toggleService(s.key)}
                 className={`chip transition-all ${
                   services.includes(s.key)

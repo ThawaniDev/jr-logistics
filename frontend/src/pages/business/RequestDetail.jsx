@@ -113,8 +113,8 @@ export default function RequestDetail() {
         </div>
         {(r.shipment_count || r.vehicle_type || r.requirements) && (
           <div className="mt-3 bg-navy-800/60 rounded-xl p-4 border border-navy-600/40 text-sm space-y-1.5">
-            {r.shipment_count && <p><span className="text-slate-500">عدد الشحنات المتوقع:</span> <span className="num font-semibold">{r.shipment_count}</span></p>}
-            {r.vehicle_type && <p><span className="text-slate-500">نوع السيارة:</span> <span className="font-semibold">{r.vehicle_type}</span></p>}
+            {r.shipment_count && <p><span className="text-slate-500">الشحنات المتوقعة:</span> <span className="num font-semibold">{r.shipments_per_driver ? `${r.shipments_per_driver} لكل مندوب (الإجمالي ${r.shipment_count})` : r.shipment_count}</span></p>}
+            {r.vehicle_type && <p><span className="text-slate-500">المركبة المطلوبة:</span> <span className="font-semibold">{r.vehicle_type}</span></p>}
             {r.requirements && <p><span className="text-slate-500">متطلبات:</span> {r.requirements}</p>}
           </div>
         )}
@@ -133,7 +133,7 @@ export default function RequestDetail() {
           )}
           {["published", "filling"].includes(r.status) && !canConfirm && (
             <p className="text-xs text-amber-400 self-center" data-testid="confirm-hint">
-              بانتظار قبول <span className="num font-bold">{r.required_count - acceptedCount}</span> عامل إضافي للتمكن من التأكيد — رصيدك المتاح: <span className="num">{sar(wallet.available)}</span>
+              بانتظار قبول <span className="num font-bold">{r.required_count - acceptedCount}</span> مندوب إضافي للتمكن من التأكيد — رصيدك المتاح: <span className="num">{sar(wallet.available)}</span>
             </p>
           )}
           {canComplete && (
@@ -166,11 +166,11 @@ export default function RequestDetail() {
 
       <div>
         <h2 className="heading text-lg font-bold mb-4">
-          المرشحون والعمال <span className="text-sm text-slate-500 font-normal num">({activeOffers.length})</span>
+          المرشحون والمندوبون <span className="text-sm text-slate-500 font-normal num">({activeOffers.length})</span>
         </h2>
         {activeOffers.length === 0 ? (
           <div className="card-surface p-8 text-center text-sm text-slate-500" data-testid="no-offers">
-            لا توجد ترشيحات بعد — ستصل العروض للعمال المتاحين المطابقين تلقائياً
+            لا توجد ترشيحات بعد — ستصل العروض للمندوبين المتاحين المطابقين تلقائياً
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 gap-4">
@@ -237,7 +237,7 @@ export default function RequestDetail() {
                   ) : (
                     <button onClick={() => { setRatingFor(o._id); setScore(5); }} data-testid={`rate-btn-${o._id}`}
                       className="w-full flex items-center justify-center gap-2 border border-amber-500/30 text-amber-400 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-amber-500/10 transition-colors">
-                      <Star className="w-3.5 h-3.5" /> تقييم العامل — صافي الأرباح: <span className="num">{sar(o.earning)}</span>
+                      <Star className="w-3.5 h-3.5" /> تقييم المندوب — صافي الأرباح: <span className="num">{sar(o.earning)}</span>
                     </button>
                   )
                 )}

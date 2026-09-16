@@ -3,6 +3,12 @@
 ## Original Problem Statement
 Build a modern Arabic RTL web platform for a Saudi logistics and workforce marketplace connecting businesses (companies, warehouses, logistics firms, event organizers) with temporary operational resources (workers & service providers). 9 service categories: delivery drivers, warehouse workers, loading/unloading, sorting/packing, inventory counting, cars with drivers, cars without drivers, events staff, other logistics services. Three roles: Business, Worker/Service Provider, Admin. Full workflow: request → matching → accept → confirm (escrow) → attendance → completion → payout. Premium Saudi tech brand, Arabic-first RTL, scalable modular architecture.
 
+## MVP Scope (Updated 2026-06-16 — Delivery Drivers Only)
+- MVP is scoped to ONE service: delivery drivers (مندوبو التوصيل). All other service categories (warehouse, loading, sorting, inventory, vehicles, events, other) are HIDDEN from the UI via `ENABLED_SERVICES = ["delivery_driver"]` in `/app/backend/catalog.py` and `ENABLED_SERVICE_KEYS` in `/app/frontend/src/lib/constants.js` — architecture and catalog remain intact; enabling a future category is a one-line change.
+- Business request fields: number of drivers, date, start time, duration, service area (city + area/neighborhoods), vehicle type (required), estimated shipments per driver, per-shipment rate, live cost estimate + escrow confirmation.
+- Driver sees full job details before accepting: date, time, duration, area, vehicle requirement, shipments per driver, expected net earnings.
+- Seed migrated (seed_v2): all demo workers are delivery drivers with vehicle types; requests req_1 (published), req_d1 (completed+paid+rated), req_d2 (in_progress, escrow reserved), req_d3 (published); pending withdrawal wd_1 (محمد العتيبي, 200 SAR).
+
 ## User Choices (June 2026)
 - Auth: Phone number + SMS OTP (SMS MOCKED for demo — OTP shown in API response/UI banner). JWT sessions. Scalable for future identity/document verification.
 - Wallet: Full simulated escrow money flow — business tops up (demo), funds reserved on request confirmation, 10% platform commission, worker earnings released after business confirms completion, worker withdrawals with admin approval. All money labeled demo. No real payment gateway.

@@ -12,10 +12,12 @@ biz = Depends(require_roles("business"))
 
 
 def compute_estimate(service_key: str, required_count: int, duration_days: int,
-                     rate: float, shipment_count: Optional[int]):
+                     rate: float, shipment_count: Optional[int],
+                     shipments_per_driver: Optional[int] = None):
     svc = SERVICE_MAP[service_key]
     if svc["unit"] == "shipment":
-        total = round(rate * (shipment_count or 0), 2)
+        total_shipments = (shipments_per_driver or 0) * required_count or (shipment_count or 0)
+        total = round(rate * total_shipments, 2)
     else:
         total = round(rate * required_count * duration_days, 2)
     commission = round(total * COMMISSION_RATE, 2)
@@ -64,6 +66,7 @@ class EstimateIn(BaseModel):
     days_count: int = 1
     rate: float = 0
     shipment_count: Optional[int] = None
+    shipments_per_driver: Optional[int] = None
 
 
 class RequestIn(BaseModel):
@@ -78,6 +81,7 @@ class RequestIn(BaseModel):
     days_count: int = 1
     rate: float = 0
     shipment_count: Optional[int] = None
+    shipments_per_driver: Optional[int] = None
     vehicle_type: Optional[str] = None
     requirements: Optional[str] = None
 
@@ -102,7 +106,8 @@ async def estimate(body: EstimateIn, user: dict = biz):
         raise HTTPException(status_code=400, detail="نوع الخدمة غير صالح")
     days = DURATION_DAYS.get(body.duration_type) or max(1, body.days_count)
     total, commission, payout = compute_estimate(
-        body.service_type, body.required_count, days, body.rate, body.shipment_count)
+        body.service_type, body.required_count, days, body.rate, body.shipment_count,
+        body.shipments_per_driver)
     return {"duration_days": days, "estimated_total": total,
             "commission": commission, "payout_total": payout,
             "unit": SERVICE_MAP[body.service_type]["unit"]}
@@ -115,11 +120,15 @@ async def create_request(body: RequestIn, user: dict = biz):
     if body.required_count < 1 or body.rate <= 0:
         raise HTTPException(status_code=400, detail="تحقق من العدد والسعر")
     svc = SERVICE_MAP[body.service_type]
-    if svc["has_shipments"] and not body.shipment_count:
-        raise HTTPException(status_code=400, detail="أدخل عدد الشحنات المتوقع")
+    if svc["has_shipments"] and not (body.shipments_per_driver or body.shipment_count):
+        raise HTTPException(status_code=400, detail="أدخل عدد الشحنات المتوقع لكل مندوب")
+    if svc["needs_vehicle"] and not body.vehicle_type:
+        raise HTTPException(status_code=400, detail="حدد نوع المركبة المطلوبة")
+    shipment_count = (body.shipments_per_driver * body.required_count
+                      if body.shipments_per_driver else body.shipment_count)
     days = DURATION_DAYS.get(body.duration_type) or max(1, body.days_count)
     total, commission, payout = compute_estimate(
-        body.service_type, body.required_count, days, body.rate, body.shipment_count)
+        body.service_type, body.required_count, days, body.rate, shipment_count)
     doc = {
         "_id": new_id(),
         "business_id": user["_id"],
@@ -133,7 +142,8 @@ async def create_request(body: RequestIn, user: dict = biz):
         "duration_type": body.duration_type,
         "duration_days": days,
         "rate": body.rate,
-        "shipment_count": body.shipment_count,
+        "shipment_count": shipment_count,
+        "shipments_per_driver": body.shipments_per_driver,
         "vehicle_type": body.vehicle_type,
         "requirements": body.requirements,
         "estimated_total": total,
@@ -188,7 +198,7 @@ async def confirm_request(request_id: str, user: dict = biz):
     accepted = await db.offers.find({"request_id": request_id, "status": "accepted"}).to_list(500)
     if len(accepted) < r["required_count"]:
         raise HTTPException(status_code=400,
-                            detail=f"بانتظار قبول {r['required_count'] - len(accepted)} إضافي قبل التأكيد")
+                            detail=f"بانتظار قبول {r['required_count'] - len(accepted)} مندوب إضافي قبل التأكيد")
     wallet = await get_wallet(user["_id"])
     if wallet["available"] < r["estimated_total"]:
         raise HTTPException(status_code=400,
@@ -216,7 +226,7 @@ async def mark_attendance(request_id: str, offer_id: str, body: AttendanceIn, us
     r = await get_owned_request(request_id, user)
     o = await db.offers.find_one({"_id": offer_id, "request_id": request_id})
     if not o or o["status"] not in ("confirmed", "attendance_confirmed"):
-        raise HTTPException(status_code=400, detail="لا يمكن تحديث حضور هذا العامل")
+        raise HTTPException(status_code=400, detail="لا يمكن تحديث حضور هذا المندوب")
     if body.result == "attended":
         await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "attended"}})
         if r["status"] == "confirmed":
@@ -227,8 +237,8 @@ async def mark_attendance(request_id: str, offer_id: str, body: AttendanceIn, us
                                  {"$inc": {"replacement_count": 1}, "$set": {"replacement_requested": True}})
     w = await db.users.find_one({"_id": o["worker_id"]}, {"name": 1})
     matched = await match_workers(r)
-    await notify_admins("بلاغ تغيّب عامل",
-                        f"العامل {w['name']} لم يحضر لطلب: {r['title']} — تم إرسال عروض بديلة لـ {matched} عامل",
+    await notify_admins("بلاغ تغيّب مندوب",
+                        f"المندوب {w['name']} لم يحضر لطلب: {r['title']} — تم إرسال عروض بديلة لـ {matched} مندوب",
                         "replacement", "/app/admin/requests")
     await notify(user["_id"], "تم تسجيل تغيّب وبدء البحث عن بديل",
                  f"تم إرسال {matched} عرض بديل لطلب: {r['title']}", "replacement",
@@ -265,7 +275,7 @@ async def complete_request(request_id: str, user: dict = biz):
     await db.wallets.update_one({"user_id": user["_id"]},
                                 {"$inc": {"reserved": -r["estimated_total"], "available": refund}})
     await add_txn(user["_id"], "release", released, "debit",
-                  f"تسوية طلب مكتمل: {r['title']} (صُرف للعمال {released} ر.س)", request_id)
+                  f"تسوية طلب مكتمل: {r['title']} (صُرف للمندوبين {released} ر.س)", request_id)
     if refund > 0:
         await add_txn(user["_id"], "refund", refund, "credit",
                       f"استرداد مقاعد غير مشغولة — {r['title']}", request_id)

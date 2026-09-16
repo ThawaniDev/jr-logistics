@@ -17,6 +17,12 @@ export const SERVICES = [
 
 export const SERVICE_MAP = Object.fromEntries(SERVICES.map((s) => [s.key, s]));
 
+// MVP scope: delivery drivers only. Architecture stays intact — enable more
+// categories later by adding their keys here.
+export const ENABLED_SERVICE_KEYS = ["delivery_driver"];
+export const ACTIVE_SERVICES = SERVICES.filter((s) => ENABLED_SERVICE_KEYS.includes(s.key));
+export const COMING_SOON_SERVICES = SERVICES.filter((s) => !ENABLED_SERVICE_KEYS.includes(s.key));
+
 export const DURATIONS = [
   { key: "one_day", label: "يوم واحد", days: 1 },
   { key: "several_days", label: "عدة أيام", days: null },
@@ -74,4 +80,4 @@ export const sar = (n) => `${Number(n || 0).toLocaleString("en-US", { maximumFra
 export const roleHome = (role) =>
   role === "admin" ? "/app/admin" : role === "worker" ? "/app/worker" : "/app/business";
 
-export const ROLE_LABELS = { business: "منشأة", worker: "مزود خدمة", admin: "مدير المنصة" };
+export const ROLE_LABELS = { business: "منشأة", worker: "سائق / مندوب", admin: "مدير المنصة" };

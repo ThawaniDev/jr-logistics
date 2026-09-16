@@ -28,13 +28,13 @@ function DetailsGrid({ r }) {
       </div>
       {r.shipment_count && (
         <div className="col-span-2 bg-navy-800/70 rounded-lg p-2.5 border border-navy-600/40">
-          <p className="text-slate-500">الشحنات</p>
-          <p className="font-semibold mt-1 num">{r.shipment_count} شحنة × {sar(r.rate)}</p>
+          <p className="text-slate-500">الشحنات المتوقعة لك</p>
+          <p className="font-semibold mt-1 num">{r.shipments_per_driver ?? Math.round(r.shipment_count / r.required_count)} شحنة × {sar(r.rate)}</p>
         </div>
       )}
       {r.vehicle_type && (
         <div className="col-span-2 bg-navy-800/70 rounded-lg p-2.5 border border-navy-600/40">
-          <p className="text-slate-500">السيارة المطلوبة</p>
+          <p className="text-slate-500">المركبة المطلوبة</p>
           <p className="font-semibold mt-1">{r.vehicle_type}</p>
         </div>
       )}

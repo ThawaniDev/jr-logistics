@@ -115,7 +115,7 @@ async def respond(offer_id: str, body: RespondIn, user: dict = wrk):
     await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "accepted", "responded_at": now_iso()}})
     if r["status"] == "published":
         await db.requests.update_one({"_id": r["_id"]}, {"$set": {"status": "filling"}})
-    await notify(r["business_id"], "عامل قبل عرضك",
+    await notify(r["business_id"], "مندوب قبل عرضك",
                  f"{user['name']} قبل فرصة: {r['title']} — يمكنك الآن تأكيد الطلب",
                  "accepted", f"/app/business/requests/{r['_id']}")
     return {"ok": True, "status": "accepted"}
@@ -151,7 +151,7 @@ async def checkin(offer_id: str, user: dict = wrk):
     await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "attendance_confirmed",
                                                             "checkin_at": now_iso()}})
     r = await db.requests.find_one({"_id": o["request_id"]})
-    await notify(r["business_id"], "عامل سجّل حضوره",
+    await notify(r["business_id"], "مندوب سجّل حضوره",
                  f"{user['name']} سجّل حضوره لطلب: {r['title']} — أكّد الحضور من لوحتك",
                  "attendance", f"/app/business/requests/{r['_id']}")
     return {"ok": True}

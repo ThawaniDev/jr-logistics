@@ -5,15 +5,15 @@ import { ChevronRight, ChevronLeft, Check, Rocket } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import api, { errMsg } from "@/lib/api";
-import { SERVICES, SERVICE_MAP, DURATIONS, CITIES, sar } from "@/lib/constants";
+import { ACTIVE_SERVICES, SERVICE_MAP, DURATIONS, CITIES, sar } from "@/lib/constants";
 
 const STEPS = ["نوع الخدمة", "التفاصيل والتسعير", "الموقع والجدولة", "المراجعة والنشر"];
 
 export default function RequestNew() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
-    service_type: "", title: "", required_count: 1, rate: "",
-    duration_type: "one_day", days_count: 2, shipment_count: "",
+    service_type: "delivery_driver", title: "", required_count: 1, rate: 7,
+    duration_type: "one_day", days_count: 2, shipments_per_driver: "",
     vehicle_type: "", city: "الرياض", address: "", start_date: "", start_time: "08:00", requirements: "",
   });
   const [busy, setBusy] = useState(false);
@@ -30,17 +30,18 @@ export default function RequestNew() {
   const estimate = useMemo(() => {
     if (!svc || !form.rate) return null;
     const total = svc.has_shipments
-      ? Number(form.rate) * (Number(form.shipment_count) || 0)
+      ? Number(form.rate) * (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)
       : Number(form.rate) * Number(form.required_count || 0) * durationDays;
     return { total, commission: total * 0.1, payout: total * 0.9 };
-  }, [svc, form.rate, form.shipment_count, form.required_count, durationDays]);
+  }, [svc, form.rate, form.shipments_per_driver, form.required_count, durationDays]);
 
   const next = () => {
     if (step === 0 && !form.service_type) return toast.error("اختر نوع الخدمة");
     if (step === 1) {
       if (!form.rate || Number(form.rate) <= 0) return toast.error("أدخل السعر");
       if (form.required_count < 1) return toast.error("أدخل العدد المطلوب");
-      if (svc?.has_shipments && !form.shipment_count) return toast.error("أدخل عدد الشحنات المتوقع");
+      if (svc?.has_shipments && !form.shipments_per_driver) return toast.error("أدخل الشحنات المتوقعة لكل مندوب");
+      if (svc?.needs_vehicle && !form.vehicle_type.trim()) return toast.error("حدد نوع المركبة المطلوبة");
     }
     if (step === 2 && (!form.address.trim() || !form.start_date)) return toast.error("أكمل الموقع والتاريخ");
     setStep((s) => s + 1);
@@ -54,7 +55,7 @@ export default function RequestNew() {
         required_count: Number(form.required_count),
         rate: Number(form.rate),
         days_count: Number(form.days_count),
-        shipment_count: form.shipment_count ? Number(form.shipment_count) : null,
+        shipments_per_driver: form.shipments_per_driver ? Number(form.shipments_per_driver) : null,
         title: form.title || null,
         vehicle_type: form.vehicle_type || null,
         requirements: form.requirements || null,
@@ -93,7 +94,7 @@ export default function RequestNew() {
       <div className="card-surface p-6">
         {step === 0 && (
           <div className="grid sm:grid-cols-2 gap-3" data-testid="step-service">
-            {SERVICES.map((s) => (
+            {ACTIVE_SERVICES.map((s) => (
               <button key={s.key} type="button" data-testid={`pick-service-${s.key}`}
                 onClick={() => setForm({ ...form, service_type: s.key, rate: s.ref_rate })}
                 className={`p-4 rounded-xl border text-right transition-all flex items-start gap-3 ${
@@ -123,9 +124,7 @@ export default function RequestNew() {
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">
-                  {svc.unit === "vehicle_day" ? "عدد السيارات *" : "عدد العمال المطلوب *"}
-                </label>
+                <label className="text-xs text-slate-400 block mb-1.5">عدد المندوبين المطلوب *</label>
                 <Input data-testid="req-count" type="number" min="1" value={form.required_count} onChange={set("required_count")} className="bg-navy-800 border-navy-600 h-11 num" />
               </div>
               <div>
@@ -134,14 +133,14 @@ export default function RequestNew() {
               </div>
               {svc.has_shipments && (
                 <div>
-                  <label className="text-xs text-slate-400 block mb-1.5">عدد الشحنات المتوقع *</label>
-                  <Input data-testid="req-shipments" type="number" min="1" value={form.shipment_count} onChange={set("shipment_count")} className="bg-navy-800 border-navy-600 h-11 num" />
+                  <label className="text-xs text-slate-400 block mb-1.5">الشحنات المتوقعة لكل مندوب *</label>
+                  <Input data-testid="req-shipments" type="number" min="1" value={form.shipments_per_driver} onChange={set("shipments_per_driver")} className="bg-navy-800 border-navy-600 h-11 num" />
                 </div>
               )}
               {svc.needs_vehicle && (
                 <div>
-                  <label className="text-xs text-slate-400 block mb-1.5">نوع السيارة المطلوبة</label>
-                  <Input data-testid="req-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")} placeholder="مثال: دينا، سيدان، فان بضائع" className="bg-navy-800 border-navy-600 h-11" />
+                  <label className="text-xs text-slate-400 block mb-1.5">نوع المركبة المطلوبة *</label>
+                  <Input data-testid="req-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")} placeholder="مثال: دراجة نارية، سيارة، فان صغير" className="bg-navy-800 border-navy-600 h-11" />
                 </div>
               )}
             </div>
@@ -177,8 +176,8 @@ export default function RequestNew() {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">الحي / العنوان *</label>
-                <Input data-testid="req-address" value={form.address} onChange={set("address")} placeholder="مثال: المدينة الصناعية الثانية، مستودع 14" className="bg-navy-800 border-navy-600 h-11" />
+                <label className="text-xs text-slate-400 block mb-1.5">منطقة الخدمة (الأحياء / النطاق) *</label>
+                <Input data-testid="req-address" value={form.address} onChange={set("address")} placeholder="مثال: العليا، النرجس، الياسمين" className="bg-navy-800 border-navy-600 h-11" />
               </div>
               <div>
                 <label className="text-xs text-slate-400 block mb-1.5">تاريخ البدء *</label>
@@ -203,10 +202,10 @@ export default function RequestNew() {
               {[
                 ["الخدمة", svc.name],
                 ["العنوان", form.title || svc.name],
-                ["العدد المطلوب", form.required_count],
+                ["عدد المندوبين", form.required_count],
                 ["المدة", `${DURATIONS.find((d) => d.key === form.duration_type)?.label} (${durationDays} يوم)`],
                 ["السعر", `${sar(form.rate)} ${svc.unit_label}`],
-                ...(svc.has_shipments ? [["عدد الشحنات", form.shipment_count]] : []),
+                ...(svc.has_shipments ? [["الشحنات لكل مندوب", form.shipments_per_driver], ["إجمالي الشحنات", (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)]] : []),
                 ...(svc.needs_vehicle && form.vehicle_type ? [["نوع السيارة", form.vehicle_type]] : []),
                 ["الموقع", `${form.city} — ${form.address}`],
                 ["البدء", `${form.start_date} · ${form.start_time}`],
@@ -220,7 +219,7 @@ export default function RequestNew() {
             <div className="rounded-2xl border border-brand/30 bg-brand/5 p-5 space-y-2" data-testid="cost-breakdown">
               <div className="flex justify-between text-sm"><span className="text-slate-400">التكلفة التقديرية الإجمالية</span><span className="font-heading font-black text-brand text-lg num">{sar(estimate.total)}</span></div>
               <div className="flex justify-between text-xs"><span className="text-slate-500">عمولة المنصة (10%)</span><span className="num text-slate-300">{sar(estimate.commission)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-slate-500">صافي مستحق للعمال</span><span className="num text-slate-300">{sar(estimate.payout)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">صافي مستحق للمندوبين</span><span className="num text-slate-300">{sar(estimate.payout)}</span></div>
               <p className="text-[11px] text-slate-500 pt-2 border-t border-navy-600/40">
                 سيُحجز المبلغ الإجمالي من محفظتك عند تأكيد العمال، ولا يُصرف إلا بعد إتمام العمل وتأكيدك.
               </p>

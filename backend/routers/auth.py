@@ -41,6 +41,7 @@ class RegisterIn(BaseModel):
     industry: Optional[str] = None
     services: List[str] = []
     national_id: Optional[str] = None
+    vehicle_type: Optional[str] = None
     bank_name: Optional[str] = None
     iban: Optional[str] = None
 
@@ -137,6 +138,7 @@ async def register(body: RegisterIn, response: Response):
         user["worker_profile"] = {
             "services": body.services,
             "national_id": body.national_id,
+            "vehicle_type": body.vehicle_type,
             "availability": "available",
             "bank_name": body.bank_name,
             "iban": body.iban,
