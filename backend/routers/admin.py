@@ -4,7 +4,7 @@ from typing import Optional, Literal
 
 from db import db
 from deps import require_roles
-from utils import new_id, now_iso, notify, add_txn, get_wallet, pub_list
+from utils import new_id, now_iso, notify, add_txn, get_wallet, pub, pub_list
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 adm = Depends(require_roles("admin"))
@@ -29,7 +29,7 @@ async def stats(user: dict = adm):
         "pending_withdrawals": await db.withdrawals.count_documents({"status": "pending"}),
         "open_tickets": await db.tickets.count_documents({"status": {"$in": ["open", "in_review"]}}),
         "no_shows": await db.offers.count_documents({"status": "no_show"}),
-        "recent_requests": await db.requests.find().sort("created_at", -1).to_list(6),
+        "recent_requests": pub_list(await db.requests.find().sort("created_at", -1).to_list(6)),
     }
 
 
@@ -45,8 +45,8 @@ async def list_users(role: Optional[str] = None, q: Optional[str] = None, user: 
                  or ql in (u.get("phone") or "")
                  or ql in ((u.get("business_profile") or {}).get("company_name") or "").lower()]
     for u in users:
-        u["wallet"] = await get_wallet(u["_id"])
-    return {"users": users}
+        u["wallet"] = pub(await get_wallet(u["_id"]))
+    return {"users": pub_list(users)}
 
 
 class StatusIn(BaseModel):
@@ -71,11 +71,11 @@ async def list_requests(status: Optional[str] = None, user: dict = adm):
     reqs = await db.requests.find(query).sort("created_at", -1).to_list(300)
     for r in reqs:
         b = await db.users.find_one({"_id": r["business_id"]}, {"business_profile.company_name": 1, "name": 1})
-        r["business"] = b
+        r["business"] = pub(b)
         r["counts"] = {}
         for st in ["offered", "accepted", "confirmed", "attended", "paid", "no_show"]:
             r["counts"][st] = await db.offers.count_documents({"request_id": r["_id"], "status": st})
-    return {"requests": reqs}
+    return {"requests": pub_list(reqs)}
 
 
 @router.get("/requests/{request_id}")
@@ -86,14 +86,14 @@ async def request_detail(request_id: str, user: dict = adm):
     b = await db.users.find_one({"_id": r["business_id"]}, {"business_profile.company_name": 1, "name": 1, "phone": 1})
     offers = await db.offers.find({"request_id": request_id}).to_list(200)
     for o in offers:
-        o["worker"] = await db.users.find_one({"_id": o["worker_id"]},
-                                              {"name": 1, "phone": 1, "worker_profile.rating": 1})
+        o["worker"] = pub(await db.users.find_one({"_id": o["worker_id"]},
+                                                  {"name": 1, "phone": 1, "worker_profile.rating": 1}))
     candidates = await db.users.find(
         {"role": "worker", "status": "active", "worker_profile.availability": "available",
          "worker_profile.services": r["service_type"]}).to_list(50)
     offered_ids = await db.offers.distinct("worker_id", {"request_id": request_id})
     candidates = [c for c in candidates if c["_id"] not in offered_ids]
-    return {"request": r, "business": b, "offers": offers, "candidates": candidates}
+    return {"request": pub(r), "business": pub(b), "offers": pub_list(offers), "candidates": pub_list(candidates)}
 
 
 class MatchIn(BaseModel):
@@ -125,9 +125,9 @@ async def withdrawals(status: Optional[str] = None, user: dict = adm):
     query = {"status": status} if status else {}
     items = await db.withdrawals.find(query).sort("created_at", -1).to_list(300)
     for w in items:
-        w["worker"] = await db.users.find_one({"_id": w["worker_id"]}, {"name": 1, "phone": 1})
-        w["wallet"] = await get_wallet(w["worker_id"])
-    return {"withdrawals": items}
+        w["worker"] = pub(await db.users.find_one({"_id": w["worker_id"]}, {"name": 1, "phone": 1}))
+        w["wallet"] = pub(await get_wallet(w["worker_id"]))
+    return {"withdrawals": pub_list(items)}
 
 
 class DecisionIn(BaseModel):

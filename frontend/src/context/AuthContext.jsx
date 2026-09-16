@@ -9,6 +9,10 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    if (!localStorage.getItem("isnad_token") && !document.cookie.includes("access_token")) {
+      setLoading(false);
+      return;
+    }
     try {
       const { data } = await api.get("/auth/me");
       setUser(data.user);

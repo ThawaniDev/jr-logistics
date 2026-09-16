@@ -1,0 +1,49 @@
+{
+  "summary": "First test round for ISNAD Arabic RTL logistics platform. Backend + frontend tested. Found and fixed one CRITICAL backend bug in require_roles dependency that broke all authenticated POST endpoints. After fix, 22/22 backend tests pass and all frontend flows verified.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "ALL authenticated POST endpoints (business/*, worker/*, admin/* mutations)",
+        "issue": "require_roles inner checker declared `user: dict = None, request: Request = None` — FastAPI treated `user` as a Body parameter, so it required an embedded `{body: {...}, user: {...}}` payload and returned 422 'body: Field required' for every real request. Fixed by removing the misleading `user: dict = None` param from the checker. This bug rendered request creation, offer accept/reject, attendance, complete, cancel, rate, topup, withdraw, admin match, admin withdrawal decision, broadcast, ticket create/reply etc. completely non-functional.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Any protected route landing before login",
+        "issues": ["Two 401 console errors on load (GET /api/auth/me before token) — cosmetic; consider suppressing or short-circuiting when no token exists"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_isnad_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Bug already fixed in /app/backend/deps.py (require_roles checker). Please review the fix.",
+    "Optional: silence the /api/auth/me 401 console noise before authentication."
+  ],
+  "critical_code_review_comments": [
+    "deps.require_roles had a parameter signature that FastAPI interpreted as Body — this is a recurring dependency-injection pitfall; adding a comment or using explicit `Depends(get_current_user)` would harden it.",
+    "Endpoints return raw Mongo documents including string `_id`. Since _id is string-generated via new_id() (not ObjectId), it's JSON-serializable and fine, but exposing internal _id verbatim on user objects (including full worker_profile/business_profile) also leaks nullable phone/email. Consider a public serializer.",
+    "OTP endpoint returns `demo_otp` unconditionally — acceptable for demo build, but flag before production.",
+    "Business /business/estimate & /requests do not verify DURATIONS.get returns None fallback for unknown duration_type — currently mitigated by Literal validator, OK.",
+    "No rate-limiting on OTP endpoint — a real deployment must add throttling."
+  ],
+  "updated_files": [
+    "/app/backend/deps.py",
+    "/app/backend/tests/test_isnad_backend.py"
+  ],
+  "success_rate": {"backend": "100% (22/22 after fix)", "frontend": "100% of tested flows"},
+  "test_credentials": "Loaded from /app/memory/test_credentials.md — admin +966500000001, businesses +966500000101/102/103, workers +966500000201..208. OTP mocked (returned in send-otp response and shown in login banner).",
+  "seed_data_creation": "Created a fresh business request (warehouse_worker x2 @250 SAR) via API for happy-path assertion. Also created a support ticket 'TEST_ticket_from_bot' and admin reply 'TEST_reply from admin'. Business +966500000101 wallet was topped up by 1000 SAR during backend test; req_2 was completed (paying workers u_w2 and u_w8, changing their wallets — expected per problem statement).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend bug in require_roles was fixed. req_2 has been completed (status=completed) and cannot be re-run. Worker off_1 has been accepted. Business +966500000101 has an extra +1000 SAR from topup test. Worker u_w2 (+966500000202) has a new pending withdrawal (50 SAR to SA0380000000608010167519) in addition to seeded wd_1. New user +966599998888 has registration_token generated but never registered. If re-seeding is needed, call the seed endpoint / restart with reseed. All 22 backend tests in /app/backend/tests/test_isnad_backend.py should still pass idempotently (they detect completed state and skip mutation).",
+  "rca of the issue": "RCA: In /app/backend/deps.py, `require_roles` returned an inner async `checker(user: dict = None, request: Request = None)`. FastAPI's dependency system inspects parameters by type: `Request` is auto-injected, but `user: dict = None` was interpreted as an unresolved parameter that FastAPI treats as a Body parameter (dict is a JSON body type by default with no Depends/Query annotation). Because the endpoint had BOTH its own `body: EstimateIn` (or similar) AND this second dict body param `user`, FastAPI switched to 'embedded body mode' and expected `{\"body\": {...}, \"user\": {...}}`. Every real request only sent the natural body, so validation returned 422 with loc=['body','body']. Reproduction: any authenticated POST like /api/business/estimate with a valid token returned 422. Mitigation: removed `user: dict = None` from the checker so only `request: Request` remains (properly auto-injected). All authenticated POST endpoints now respond correctly."
+}

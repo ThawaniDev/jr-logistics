@@ -5,7 +5,7 @@ from typing import Optional, Literal, List
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP, COMMISSION_RATE, DURATION_DAYS
-from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, recalc_worker_rating
+from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, recalc_worker_rating, pub, pub_list
 
 router = APIRouter(prefix="/api/business", tags=["business"])
 biz = Depends(require_roles("business"))
@@ -156,7 +156,7 @@ async def list_requests(user: dict = biz):
         r["counts"] = {}
         for st in ["offered", "accepted", "confirmed", "attendance_confirmed", "attended", "paid", "no_show"]:
             r["counts"][st] = await db.offers.count_documents({"request_id": r["_id"], "status": st})
-    return {"requests": reqs}
+    return {"requests": pub_list(reqs)}
 
 
 async def get_owned_request(request_id: str, user: dict) -> dict:
@@ -174,10 +174,10 @@ async def request_detail(request_id: str, user: dict = biz):
         w = await db.users.find_one({"_id": o["worker_id"]},
                                     {"name": 1, "phone": 1, "city": 1, "worker_profile.rating": 1,
                                      "worker_profile.rating_count": 1, "worker_profile.jobs_completed": 1})
-        o["worker"] = w
+        o["worker"] = pub(w)
     rated = await db.ratings.distinct("offer_id", {"request_id": request_id, "from_user": user["_id"]})
-    return {"request": r, "offers": offers, "rated_offer_ids": rated,
-            "wallet": await get_wallet(user["_id"])}
+    return {"request": pub(r), "offers": pub_list(offers), "rated_offer_ids": rated,
+            "wallet": pub(await get_wallet(user["_id"]))}
 
 
 @router.post("/requests/{request_id}/confirm")
@@ -331,4 +331,5 @@ async def overview(user: dict = biz):
     recent = await db.requests.find({"business_id": user["_id"]}).sort("created_at", -1).to_list(5)
     for r in recent:
         r["counts"] = {"accepted": await db.offers.count_documents({"request_id": r["_id"], "status": "accepted"})}
-    return {"wallet": wallet, "counts": counts, "pending_attendance": pending_attendance, "recent": recent}
+    return {"wallet": pub(wallet), "counts": counts, "pending_attendance": pending_attendance,
+            "recent": pub_list(recent)}

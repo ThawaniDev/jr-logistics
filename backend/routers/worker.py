@@ -5,7 +5,7 @@ from typing import Optional, Literal, List
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP
-from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet
+from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, pub, pub_list
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 wrk = Depends(require_roles("worker"))
@@ -13,12 +13,12 @@ wrk = Depends(require_roles("worker"))
 
 async def enrich_offer(o: dict) -> dict:
     r = await db.requests.find_one({"_id": o["request_id"]})
-    o["request"] = r
+    o["request"] = pub(r)
     if r:
         b = await db.users.find_one({"_id": r["business_id"]},
                                     {"name": 1, "business_profile.company_name": 1,
                                      "business_profile.rating": 1})
-        o["business"] = b
+        o["business"] = pub(b)
     return o
 
 
@@ -58,8 +58,8 @@ async def overview(user: dict = wrk):
     ).sort("created_at", -1).to_list(10)
     for o in jobs:
         await enrich_offer(o)
-    return {"wallet": wallet, "new_offers": new_offers, "active_jobs": active,
-            "jobs_completed": completed, "jobs": jobs,
+    return {"wallet": pub(wallet), "new_offers": new_offers, "active_jobs": active,
+            "jobs_completed": completed, "jobs": pub_list(jobs),
             "availability": user.get("worker_profile", {}).get("availability", "available")}
 
 
@@ -74,7 +74,7 @@ async def my_offers(user: dict = wrk):
     offers = await db.offers.find({"worker_id": user["_id"], "status": "offered"}).sort("created_at", -1).to_list(100)
     for o in offers:
         await enrich_offer(o)
-    return {"offers": offers}
+    return {"offers": pub_list(offers)}
 
 
 @router.get("/available")
@@ -96,9 +96,9 @@ async def available_jobs(user: dict = wrk):
         if accepted + confirmed >= r["required_count"]:
             continue
         b = await db.users.find_one({"_id": r["business_id"]}, {"business_profile.company_name": 1, "name": 1})
-        r["business"] = b
+        r["business"] = pub(b)
         jobs.append(r)
-    return {"jobs": jobs}
+    return {"jobs": pub_list(jobs)}
 
 
 @router.post("/offers/{offer_id}/respond")
@@ -165,7 +165,7 @@ async def my_jobs(user: dict = wrk):
     ).sort("created_at", -1).to_list(100)
     for o in active:
         await enrich_offer(o)
-    return {"jobs": active}
+    return {"jobs": pub_list(active)}
 
 
 @router.get("/history")
@@ -176,7 +176,7 @@ async def history(user: dict = wrk):
     for o in done:
         await enrich_offer(o)
     rated = await db.ratings.distinct("offer_id", {"from_user": user["_id"]})
-    return {"history": done, "rated_offer_ids": rated}
+    return {"history": pub_list(done), "rated_offer_ids": rated}
 
 
 @router.post("/rate")
@@ -220,4 +220,4 @@ async def request_withdrawal(body: WithdrawalIn, user: dict = wrk):
 @router.get("/withdrawals")
 async def my_withdrawals(user: dict = wrk):
     items = await db.withdrawals.find({"worker_id": user["_id"]}).sort("created_at", -1).to_list(100)
-    return {"withdrawals": items}
+    return {"withdrawals": pub_list(items)}

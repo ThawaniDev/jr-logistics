@@ -52,7 +52,7 @@ async def update_profile(body: ProfileIn, user: dict = Depends(get_current_user)
                 updates[f"worker_profile.{f}"] = v
     if updates:
         await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
-    return {"user": await db.users.find_one({"_id": user["_id"]})}
+    return {"user": pub(await db.users.find_one({"_id": user["_id"]}))}
 
 
 @router.get("/wallet")
@@ -102,8 +102,8 @@ async def list_tickets(user: dict = Depends(get_current_user)):
     query = {} if user["role"] == "admin" else {"user_id": user["_id"]}
     items = await db.tickets.find(query).sort("created_at", -1).to_list(200)
     for t in items:
-        t["user"] = await db.users.find_one({"_id": t["user_id"]}, {"name": 1, "role": 1, "phone": 1})
-    return {"tickets": items}
+        t["user"] = pub(await db.users.find_one({"_id": t["user_id"]}, {"name": 1, "role": 1, "phone": 1}))
+    return {"tickets": pub_list(items)}
 
 
 @router.post("/tickets/{ticket_id}/reply")

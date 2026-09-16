@@ -28,7 +28,7 @@ async def get_current_user(request: Request) -> dict:
 
 
 def require_roles(*roles: str):
-    async def checker(user: dict = None, request: Request = None):
+    async def checker(request: Request):
         u = await get_current_user(request)
         if u["role"] not in roles:
             raise HTTPException(status_code=403, detail="لا تملك صلاحية الوصول")

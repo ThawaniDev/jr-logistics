@@ -7,7 +7,7 @@ from typing import Optional, List
 from db import db
 from security import create_access_token, create_registration_token, decode_token
 from deps import get_current_user
-from utils import new_id, now_iso, get_wallet
+from utils import new_id, now_iso, get_wallet, pub
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -96,7 +96,7 @@ async def verify_otp(body: OtpVerify, response: Response):
             raise HTTPException(status_code=403, detail="الحساب موقوف — تواصل مع الدعم")
         token = create_access_token(user)
         set_auth_cookie(response, token)
-        return {"is_new": False, "token": token, "user": user}
+        return {"is_new": False, "token": token, "user": pub(user)}
     return {"is_new": True, "registration_token": create_registration_token(phone), "phone": phone}
 
 
