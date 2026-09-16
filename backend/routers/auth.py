@@ -58,6 +58,9 @@ async def send_otp(body: OtpSend):
     phone = normalize_phone(body.phone)
     if len(phone) < 10:
         raise HTTPException(status_code=400, detail="رقم الجوال غير صحيح")
+    existing = await db.users.find_one({"phone": phone}, {"role": 1})
+    if existing and existing.get("role") in ("admin", "staff"):
+        raise HTTPException(status_code=403, detail="حسابات الإدارة والموظفين تدخل عبر بوابة الإدارة بكلمة المرور")
     code = f"{random.randint(0, 9999):04d}"
     await db.otps.update_one(
         {"phone": phone},

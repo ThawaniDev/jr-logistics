@@ -70,11 +70,9 @@ class TestHealth:
             u = _otp_login(phone)
             assert "token" in u and "user" in u
             assert u["user"]["role"] == role
-        # admin OTP is blocked by design — must use the password portal
+        # admin OTP is blocked by design — must use the password portal (blocked at send)
         r = requests.post(f"{API}/auth/otp/send", json={"phone": "+966500000001"})
-        code = r.json()["demo_otp"]
-        v = requests.post(f"{API}/auth/otp/verify", json={"phone": "+966500000001", "code": code})
-        assert v.status_code == 403
+        assert r.status_code == 403
 
 
 # ============= Insufficient funds =============

@@ -64,7 +64,8 @@ class TestOverlapRestriction:
     """Driver cannot accept two active jobs with overlapping date windows."""
 
     def test_overlap_blocked_on_respond_and_apply(self, biz_token, w1_token):
-        day = (date.today() + timedelta(days=2)).isoformat()
+        import random
+        day = (date.today() + timedelta(days=10 + random.randint(0, 30))).isoformat()
         uid = uuid.uuid4().hex[:6]
         r1 = _mk_req(biz_token, day, f"TEST_overlap_a_{uid}")
         r2 = _mk_req(biz_token, day, f"TEST_overlap_b_{uid}")
@@ -106,7 +107,8 @@ class TestDriverCancellation:
     """Driver cancel with reason → recorded, counted, replacement triggered."""
 
     def test_cancel_with_reason_and_policy(self, biz_token, w1_token, adm_token):
-        day = (date.today() + timedelta(days=3)).isoformat()
+        import random
+        day = (date.today() + timedelta(days=45 + random.randint(0, 30))).isoformat()
         uid = uuid.uuid4().hex[:6]
         r = _mk_req(biz_token, day, f"TEST_cancel_{uid}")
         offers = requests.get(f"{API}/worker/offers", headers=_h(w1_token)).json()["offers"]

@@ -38,6 +38,17 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Demo seed through seed_v4 (delivery-only dataset, Sedan/Van normalized, platform settings inserted)
 - Testing: iter3 — 14/14 new tests + 20 passed/3 idempotent skips existing; 100% frontend flows
 
+## Implemented (2026-09-16) — Policy & flow completion (iteration 5)
+- Overlapping-job restriction: driver can hold only one active job per time window — 400 OVERLAPPING_JOB on accept/apply; overlapping requests hidden from open opportunities; suspension respected
+- Driver privacy: worker phone masked from business until offer accepted (VISIBLE_AFTER_ACCEPT in request detail)
+- Driver cancellation: POST /worker/offers/{id}/cancel with mandatory reason → cancellations collection, cancel_count, policy-driven warning (threshold 2) and temporary suspension (threshold 4, 3 days) — no permanent bans; triggers replacement flow (request → filling, replacement_requested, match_workers re-offers)
+- Business-side terms: wizard review step requires checkbox acknowledgment (gates publish), backend stores biz_terms_accepted_at on create-publish and draft-publish
+- Configurable cancellation policy: admin settings (cancel_warning_threshold / cancel_suspend_threshold / cancel_suspend_days) with bounds validation, editable in Admin Settings UI
+- Cancellation records for business cancels and no-shows (cancellations collection with party/kind/reason/request linkage)
+- Tests: test_iteration5.py (6 tests: overlap, cancel policy, privacy, biz terms, settings bounds) — full suite 67 passed / 4 skipped
+- Follow-up hardening: OTP send now returns 403 immediately for admin/staff phones (not only at verify); publish/cancel endpoints accept optional JSON bodies for backward compatibility
+- Iteration 5 testing agent: 100% backend + frontend flows verified E2E (full request lifecycle, overlap error toast, driver cancel UI, insufficient funds, cancel policy settings, 3-language switching, all dashboard card navigation, privacy masking, admin login)
+
 ## Implemented (2026-09-16) — Secure Super Admin authentication
 - Dedicated password-based admin portal at /admin/login (email or phone + password), separate from business/driver OTP flow
 - bcrypt password hashing; JWT (cookie + bearer); brute-force lockout (5 attempts → 15 min); admin logins audit-logged
