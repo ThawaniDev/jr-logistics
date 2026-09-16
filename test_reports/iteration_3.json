@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 3 backend + frontend verification of ISNAD pricing settings, drafts, dashboards, and full pricing flow. Added /app/backend/tests/test_iteration3.py (14 tests, 14 passed). Existing tests/test_isnad_backend.py: 20 passed, 3 skipped (idempotent skips for already-mutated demo state). Frontend Playwright covered: admin settings edit-persist-restore, wizard cost breakdown showing 480/48/432 at rate=8, vehicle dropdown driven by admin settings (سيدان/فان), draft save → detail page with pricing-breakdown + publish-request-btn, all 8 business stat cards, all 3 driver stat cards + both jobs-group-active/upcoming, all 3 wallet cards. Everything works as spec'd.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_isnad_backend.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Settings persistence: verified admin PATCH /api/admin/settings + GET works and public /api/catalog/defaults exposes them; snapshotting commission_rate onto request docs is correct (business.py:154).",
+    "compute_estimate branches on `shipments_per_driver or shipment_count` but create_request pre-multiplies before storing (business.py:135) — behavior consistent but slightly duplicated logic; low priority.",
+    "Wizard vehicle dropdown was Input in iteration 2, now correctly a <select> populated from /catalog/defaults (RequestNew.jsx:167).",
+    "publish endpoint correctly rejects non-draft requests with 400 (verified).",
+    "Note (unchanged from prev iterations): OTP is returned unconditionally in send-otp response — acceptable for demo mode only.",
+    "Rate-limit still absent on /api/auth/otp/*."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3.py"
+  ],
+  "success_rate": {"backend": "100% (14/14 new + 20 passed / 3 idempotent skip existing)", "frontend": "100% of tested flows"},
+  "test_credentials": "Loaded from /app/memory/test_credentials.md — admin +966500000001, businesses +966500000101..103, drivers +966500000201..208. OTP mocked (in send-otp response and login page banner data-testid='demo-otp-code').",
+  "seed_data_creation": "New requests created during this run: (a) TEST_default_rate_fallback published request under u_b1 (2 drivers × 30 shipments × 9 SAR = 540, commission 64.8 — created while admin settings were temporarily at rate=9/commission=0.12, snapshotted onto the request), (b) TEST_draft_flow جدة published (was draft then published, 480/48/432 at rate=8), (c) TEST_wizard_ui_run جدة draft (from UI wizard, still in draft — has pricing-breakdown + publish-request-btn on detail). Admin settings RESTORED to default_rate=8, commission_rate=0.10, vehicle_types=[سيدان, فان]. 5-star rating with comment TEST_rate_iter3 added on one paid offer of req_d2.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Admin settings are currently at defaults (8 SAR / 10% / [سيدان, فان]). Seeded demo state from prior iterations: req_d2 completed with all offers paid + rated, wd_1 approved (محمد wallet ≈ 52 SAR), req_d3 filling with ناصر accepted. Additional TEST_ requests exist under u_b1. To login via Playwright: fill [data-testid='login-phone-input'] → click [data-testid='login-send-otp-btn'] → read [data-testid='demo-otp-code'] → click [data-testid='otp-code-input'] with force=True then keyboard.type(code) → verify auto-navigates (verify-btn may not need to be clicked). Wizard vehicle field is now a proper <select> — use select_option not fill.",
+  "rca of the issue": "N/A — no bugs found this iteration. All new iteration 3 features (admin pricing control, defaults propagation, draft/publish, commission snapshot, extended dashboards, driver wallet cards) work correctly at both API and UI levels."
+}

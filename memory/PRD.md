@@ -24,20 +24,26 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 
 ## Implemented (2026-06-16)
 - Full phone-OTP auth (mocked SMS) with role-based registration
-- Complete request lifecycle with escrow wallet, 10% commission, attendance tracking, no-show replacement offers, settlement with partial refunds
-- Worker opportunity feed + open jobs marketplace, availability status, check-in
-- Withdrawal requests with admin approve/reject
-- Notifications (event-driven + admin broadcast), support tickets with threaded replies, two-way ratings
-- Admin dashboards, user management (suspend/activate), manual worker matching
-- Idempotent demo seed: 3 businesses, 8 workers, 6 requests (all states), wallets/transactions, ratings, tickets, notifications
-- Testing: 22/22 backend pytest + full E2E flows verified (iteration_1)
+- Complete request lifecycle with escrow wallet, attendance tracking, no-show replacement offers, settlement with partial refunds
+- **Configurable platform pricing (Admin Dashboard → التسعير والإعدادات, no code changes): default price per shipment (8 SAR), commission % (10%), vehicle types (سيدان/فان), service areas (cities)** — stored in `settings` collection, exposed via GET/PATCH /api/admin/settings and public /api/catalog/defaults; commission_rate snapshotted onto each request at creation
+- **Draft → Publish flow**: save request as draft, publish later (POST /requests/{id}/publish triggers matching)
+- **Full pricing breakdown** shown pre-publish (base amount, commission %, drivers' net, total charged) and on request detail (pricing-breakdown card incl. per-driver net)
+- Service renamed to "مندوب توصيل موثوق"; vehicle types = Sedan/Van (settings-driven dropdowns across wizard, register, driver profile)
+- Business dashboard: available/reserved/total spent/platform fees + active/attendance-pending/completed/cancelled counts
+- Driver dashboard: new offers, active jobs, pending/available/paid earnings, rating; jobs grouped into active-now vs upcoming
+- Driver wallet: pending (in-progress escrowed) / available / paid earnings cards
+- Extra notifications: request created, replacement found, driver acceptance ack, job completed (business)
+- Withdrawal requests with admin approve/reject; two-way ratings on completed jobs
+- Admin: dashboards, user management, manual matching, broadcast, support tickets
+- Demo seed through seed_v4 (delivery-only dataset, Sedan/Van normalized, platform settings inserted)
+- Testing: iter3 — 14/14 new tests + 20 passed/3 idempotent skips existing; 100% frontend flows
 
 ## Backlog
-- **P1**: Real SMS provider (Twilio) integration; real payment gateway (Moyasar/Stripe) replacing demo top-up; weekly auto-settlement for week/month contracts; worker document/identity verification upload (object storage)
-- **P2**: Push notifications, in-app chat between business & worker, advanced reports/analytics charts for admin, CSV export, geolocation-based matching, recurring contract templates
-- **P3**: Multi-language (EN toggle), native mobile apps, invoice generation (PDF), audit log viewer
+- **P1**: Real SMS provider (Twilio); real payment gateway (Moyasar/Stripe); OTP rate-limiting; weekly auto-settlement for long contracts; driver ID verification upload
+- **P2**: Push notifications, in-app chat, analytics charts, CSV export, geo-based matching, recurring contracts
+- **P3**: Multi-language (EN), mobile apps, PDF invoices, audit log
 
 ## Next Tasks
-1. Collect production keys (Twilio for SMS OTP, payment gateway) when going live
-2. Identity verification flow for workers (national ID upload via object storage)
+1. Collect production keys (Twilio, payment gateway) when going live
+2. Add OTP rate limiting before production
 3. Weekly settlement cron for long-duration contracts
