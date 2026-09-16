@@ -1,13 +1,52 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 
 from db import db
 from deps import require_roles
-from utils import new_id, now_iso, notify, add_txn, get_wallet, pub, pub_list
+from utils import new_id, now_iso, notify, add_txn, get_wallet, pub, pub_list, get_settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 adm = Depends(require_roles("admin"))
+
+
+@router.get("/settings")
+async def get_platform_settings(user: dict = adm):
+    return {"settings": await get_settings()}
+
+
+class SettingsIn(BaseModel):
+    default_rate: Optional[float] = None
+    commission_rate: Optional[float] = None
+    vehicle_types: Optional[List[str]] = None
+    service_areas: Optional[List[str]] = None
+
+
+@router.patch("/settings")
+async def update_platform_settings(body: SettingsIn, user: dict = adm):
+    updates = {}
+    if body.default_rate is not None:
+        if body.default_rate <= 0:
+            raise HTTPException(status_code=400, detail="السعر الافتراضي يجب أن يكون أكبر من صفر")
+        updates["default_rate"] = body.default_rate
+    if body.commission_rate is not None:
+        if not 0 < body.commission_rate <= 0.5:
+            raise HTTPException(status_code=400, detail="العمولة يجب أن تكون بين 1% و 50%")
+        updates["commission_rate"] = body.commission_rate
+    if body.vehicle_types is not None:
+        cleaned = [v.strip() for v in body.vehicle_types if v.strip()]
+        if not cleaned:
+            raise HTTPException(status_code=400, detail="أضف نوع مركبة واحداً على الأقل")
+        updates["vehicle_types"] = cleaned
+    if body.service_areas is not None:
+        cleaned = [v.strip() for v in body.service_areas if v.strip()]
+        if not cleaned:
+            raise HTTPException(status_code=400, detail="أضف منطقة خدمة واحدة على الأقل")
+        updates["service_areas"] = cleaned
+    if not updates:
+        raise HTTPException(status_code=400, detail="لا توجد تغييرات")
+    await db.settings.update_one({"key": "platform"}, {"$set": updates}, upsert=True)
+    return {"settings": await get_settings()}
 
 
 @router.get("/stats")

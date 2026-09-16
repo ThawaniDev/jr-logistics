@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Zap, Briefcase, Wallet, Star, MapPin, Calendar, CheckCircle2 } from "lucide-react";
+import { Zap, Briefcase, Wallet, Star, MapPin, Calendar, CheckCircle2, Clock, Banknote } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -54,9 +54,14 @@ export default function WorkerDashboard() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard testid="stat-offers" icon={Zap} label="عروض جديدة" value={data.new_offers} sub="بانتظار ردك" tone="gold" />
-        <StatCard testid="stat-active-jobs" icon={Briefcase} label="مهام نشطة" value={data.active_jobs} tone="cyan" />
+        <StatCard testid="stat-active-jobs" icon={Briefcase} label="مهام نشطة وقادمة" value={data.active_jobs} tone="cyan" />
+        <StatCard testid="stat-pending" icon={Clock} label="أرباح قيد الإنجاز" value={sar(data.pending_earnings)} sub="محجوزة لحين تأكيد المنشأة" tone="gold" />
         <StatCard testid="stat-earnings" icon={Wallet} label="الأرباح المتاحة" value={sar(data.wallet.available)} sub="قابلة للسحب" tone="brand" />
+      </div>
+      <div className="grid sm:grid-cols-3 gap-4">
+        <StatCard testid="stat-paid" icon={Banknote} label="إجمالي الأرباح المدفوعة" value={sar(data.paid_earnings)} tone="cyan" />
         <StatCard testid="stat-rating" icon={Star} label="تقييمك" value={wp.rating ? `${wp.rating} / 5` : "—"} sub={`${data.jobs_completed} مهمة مكتملة`} tone="blue" />
+        <StatCard testid="stat-completed-jobs" icon={CheckCircle2} label="مهام مكتملة" value={data.jobs_completed} tone="brand" />
       </div>
 
       {data.new_offers > 0 && (
@@ -69,51 +74,62 @@ export default function WorkerDashboard() {
         </Link>
       )}
 
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="heading text-lg font-bold">مهامي القادمة والجارية</h2>
-          <Link to="/app/worker/jobs" className="text-xs text-brand hover:underline" data-testid="view-all-jobs">عرض الكل</Link>
-        </div>
-        {data.jobs.length === 0 ? (
-          <EmptyState icon={Briefcase} title="لا توجد مهام مؤكدة" desc="اقبل العروض من صفحة الفرص المتاحة لتظهر مهامك هنا" testid="jobs-empty">
-            <Link to="/app/worker/opportunities" data-testid="empty-browse-btn"
-              className="mt-2 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover">
-              تصفح الفرص
-            </Link>
-          </EmptyState>
-        ) : (
-          <div className="space-y-3">
-            {data.jobs.map((o) => (
-              <div key={o._id} className="card-surface card-surface-hover p-4 flex items-center gap-4 flex-wrap" data-testid={`dashboard-job-${o._id}`}>
-                <div className="flex-1 min-w-[220px]">
-                  <p className="font-semibold text-sm">{o.request?.title}</p>
-                  <p className="text-xs text-slate-500 mt-1 flex items-center gap-3 flex-wrap">
-                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {o.request?.city}</span>
-                    <span className="flex items-center gap-1 num"><Calendar className="w-3 h-3" /> {o.request?.start_date} · {o.request?.start_time}</span>
-                    <span>{o.business?.business_profile?.company_name || o.business?.name}</span>
-                  </p>
-                </div>
-                <StatusBadge kind="offer" status={o.status} />
-                {o.status === "confirmed" && (
-                  <button
-                    data-testid={`checkin-btn-${o._id}`}
-                    onClick={async () => {
-                      try {
-                        await api.post(`/worker/offers/${o._id}/checkin`);
-                        toast.success("تم تسجيل حضورك — بانتظار تأكيد المنشأة");
-                        load();
-                      } catch (e) { toast.error(errMsg(e)); }
-                    }}
-                    className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-4 py-2 text-xs hover:bg-brand-hover transition-colors"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" /> تسجيل الحضور
-                  </button>
-                )}
+      {data.jobs.length === 0 ? (
+        <EmptyState icon={Briefcase} title="لا توجد مهام حالياً" desc="اقبل العروض من صفحة الفرص المتاحة لتظهر مهامك هنا" testid="jobs-empty">
+          <Link to="/app/worker/opportunities" data-testid="empty-browse-btn"
+            className="mt-2 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover">
+            تصفح الفرص
+          </Link>
+        </EmptyState>
+      ) : (
+        <div className="space-y-8">
+          {[
+            { title: "المهمة النشطة الآن", key: "active", items: data.jobs.filter((o) => ["attendance_confirmed", "attended"].includes(o.status)) },
+            { title: "المهام القادمة", key: "upcoming", items: data.jobs.filter((o) => ["accepted", "confirmed"].includes(o.status)) },
+          ].map((group) => (
+            <div key={group.key} data-testid={`jobs-group-${group.key}`}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="heading text-lg font-bold">{group.title}</h2>
+                <Link to="/app/worker/jobs" className="text-xs text-brand hover:underline" data-testid={`view-all-jobs-${group.key}`}>عرض الكل</Link>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              {group.items.length === 0 ? (
+                <div className="card-surface p-6 text-center text-sm text-slate-500" data-testid={`jobs-empty-${group.key}`}>لا توجد مهام هنا حالياً</div>
+              ) : (
+                <div className="space-y-3">
+                  {group.items.map((o) => (
+                    <div key={o._id} className="card-surface card-surface-hover p-4 flex items-center gap-4 flex-wrap" data-testid={`dashboard-job-${o._id}`}>
+                      <div className="flex-1 min-w-[220px]">
+                        <p className="font-semibold text-sm">{o.request?.title}</p>
+                        <p className="text-xs text-slate-500 mt-1 flex items-center gap-3 flex-wrap">
+                          <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {o.request?.city}</span>
+                          <span className="flex items-center gap-1 num"><Calendar className="w-3 h-3" /> {o.request?.start_date} · {o.request?.start_time}</span>
+                          <span>{o.business?.business_profile?.company_name || o.business?.name}</span>
+                        </p>
+                      </div>
+                      <StatusBadge kind="offer" status={o.status} />
+                      {o.status === "confirmed" && (
+                        <button
+                          data-testid={`checkin-btn-${o._id}`}
+                          onClick={async () => {
+                            try {
+                              await api.post(`/worker/offers/${o._id}/checkin`);
+                              toast.success("تم تسجيل حضورك — بانتظار تأكيد المنشأة");
+                              load();
+                            } catch (e) { toast.error(errMsg(e)); }
+                          }}
+                          className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-4 py-2 text-xs hover:bg-brand-hover transition-colors"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> تسجيل الحضور
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

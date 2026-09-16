@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 
 export const SERVICES = [
-  { key: "delivery_driver", name: "سائقو التوصيل والمندوبون", short: "سائقي توصيل", icon: Bike, unit: "shipment", unit_label: "لكل شحنة", desc: "مندوبو توصيل بمركباتهم لتوصيل الشحنات داخل المدينة", has_shipments: true, needs_vehicle: true, ref_rate: 7 },
+  { key: "delivery_driver", name: "مندوب توصيل موثوق", short: "مندوب توصيل", icon: Bike, unit: "shipment", unit_label: "لكل شحنة", desc: "مندوبو توصيل موثوقون بمركباتهم لتوصيل الشحنات داخل المدينة", has_shipments: true, needs_vehicle: true, ref_rate: 8 },
   { key: "warehouse_worker", name: "عمال مستودعات", short: "عمال مستودعات", icon: Warehouse, unit: "worker_day", unit_label: "للعامل / اليوم", desc: "عمالة تشغيلية لدعم عمليات المستودعات اليومية", has_shipments: false, needs_vehicle: false, ref_rate: 250 },
   { key: "loading_unloading", name: "عمال تحميل وتنزيل", short: "تحميل وتنزيل", icon: PackageOpen, unit: "worker_day", unit_label: "للعامل / اليوم", desc: "طواقم تحميل وتنزيل للشاحنات والحاويات", has_shipments: false, needs_vehicle: false, ref_rate: 220 },
   { key: "sorting_packing", name: "عمال فرز وتغليف", short: "فرز وتغليف", icon: PackageCheck, unit: "worker_day", unit_label: "للعامل / اليوم", desc: "فرز الشحنات وتغليفها وتجهيزها للشحن", has_shipments: false, needs_vehicle: false, ref_rate: 230 },
@@ -33,6 +33,7 @@ export const DURATIONS = [
 export const CITIES = ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة", "المدينة المنورة", "نيوم", "تبوك", "أبها", "بريدة"];
 
 export const REQUEST_STATUS = {
+  draft: { label: "مسودة", cls: "bg-slate-700/40 text-slate-400 border-slate-600/40" },
   published: { label: "منشور — بانتظار القبول", cls: "bg-amber-500/10 text-amber-400 border-amber-500/30" },
   filling: { label: "قيد التعبئة", cls: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
   confirmed: { label: "مؤكد — مبلغ محجوز", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
@@ -76,6 +77,8 @@ export const TICKET_STATUS = {
 };
 
 export const sar = (n) => `${Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 2 })} ر.س`;
+
+export const DEFAULT_VEHICLE_TYPES = ["سيدان", "فان"];
 
 export const roleHome = (role) =>
   role === "admin" ? "/app/admin" : role === "worker" ? "/app/worker" : "/app/business";

@@ -1,6 +1,20 @@
 import uuid
 from datetime import datetime, timezone
 from db import db
+from catalog import (DEFAULT_RATE, DEFAULT_COMMISSION_RATE,
+                     DEFAULT_VEHICLE_TYPES, DEFAULT_SERVICE_AREAS)
+
+
+async def get_settings() -> dict:
+    s = await db.settings.find_one({"key": "platform"})
+    if not s:
+        s = {"key": "platform", "default_rate": DEFAULT_RATE,
+             "commission_rate": DEFAULT_COMMISSION_RATE,
+             "vehicle_types": DEFAULT_VEHICLE_TYPES,
+             "service_areas": DEFAULT_SERVICE_AREAS}
+        await db.settings.insert_one(s)
+    s.pop("_id", None)
+    return s
 
 
 def new_id() -> str:

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Wallet, Lock, ClipboardList, PlusCircle, UserCheck, ChevronLeft, AlertTriangle } from "lucide-react";
+import { Wallet, Lock, ClipboardList, PlusCircle, UserCheck, ChevronLeft, AlertTriangle, Banknote, Percent, CheckCircle2, XCircle } from "lucide-react";
 import api from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -47,8 +47,15 @@ export default function BusinessDashboard() {
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard testid="stat-available" icon={Wallet} label="الرصيد المتاح" value={sar(wallet.available)} sub="أموال تجريبية" tone="brand" />
         <StatCard testid="stat-reserved" icon={Lock} label="مبالغ محجوزة (ضمان)" value={sar(wallet.reserved)} sub="تُحرر عند إتمام الطلبات" tone="gold" />
-        <StatCard testid="stat-active" icon={ClipboardList} label="طلبات نشطة" value={active} sub={`${counts.completed} طلب مكتمل`} tone="cyan" />
-        <StatCard testid="stat-attendance" icon={UserCheck} label="حضور بانتظار التأكيد" value={pending_attendance} tone="blue" />
+        <StatCard testid="stat-spent" icon={Banknote} label="إجمالي المصروف" value={sar(data.total_spent)} sub="تسويات الطلبات المكتملة" tone="cyan" />
+        <StatCard testid="stat-fees" icon={Percent} label="رسوم المنصة المدفوعة" value={sar(data.platform_fees)} sub="ضمن التسويات المكتملة" tone="blue" />
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard testid="stat-active" icon={ClipboardList} label="طلبات نشطة" value={active} sub={`${counts.draft || 0} مسودة`} tone="brand" />
+        <StatCard testid="stat-attendance" icon={UserCheck} label="حضور بانتظار التأكيد" value={pending_attendance} tone="gold" />
+        <StatCard testid="stat-completed" icon={CheckCircle2} label="طلبات مكتملة" value={counts.completed} tone="cyan" />
+        <StatCard testid="stat-cancelled" icon={XCircle} label="طلبات ملغاة" value={counts.cancelled} tone="blue" />
       </div>
 
       <div>

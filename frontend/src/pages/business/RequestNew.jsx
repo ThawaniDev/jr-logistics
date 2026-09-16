@@ -1,23 +1,39 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ChevronRight, ChevronLeft, Check, Rocket } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import api, { errMsg } from "@/lib/api";
-import { ACTIVE_SERVICES, SERVICE_MAP, DURATIONS, CITIES, sar } from "@/lib/constants";
+import { ACTIVE_SERVICES, SERVICE_MAP, DURATIONS, sar, DEFAULT_VEHICLE_TYPES } from "@/lib/constants";
 
 const STEPS = ["نوع الخدمة", "التفاصيل والتسعير", "الموقع والجدولة", "المراجعة والنشر"];
 
 export default function RequestNew() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
-    service_type: "delivery_driver", title: "", required_count: 1, rate: 7,
+    service_type: "delivery_driver", title: "", required_count: 1, rate: "",
     duration_type: "one_day", days_count: 2, shipments_per_driver: "",
     vehicle_type: "", city: "الرياض", address: "", start_date: "", start_time: "08:00", requirements: "",
   });
+  const [defaults, setDefaults] = useState({
+    default_rate: 8, commission_rate: 0.10,
+    vehicle_types: DEFAULT_VEHICLE_TYPES,
+    service_areas: ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة", "المدينة المنورة"],
+  });
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.get("/catalog/defaults")
+      .then(({ data }) => setDefaults({
+        default_rate: data.default_rate,
+        commission_rate: data.commission_rate,
+        vehicle_types: data.vehicle_types?.length ? data.vehicle_types : DEFAULT_VEHICLE_TYPES,
+        service_areas: data.service_areas?.length ? data.service_areas : defaults.service_areas,
+      }))
+      .catch(() => {});
+  }, []);
 
   const svc = form.service_type ? SERVICE_MAP[form.service_type] : null;
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -28,17 +44,19 @@ export default function RequestNew() {
   }, [form.duration_type, form.days_count]);
 
   const estimate = useMemo(() => {
-    if (!svc || !form.rate) return null;
+    const rate = Number(form.rate) || defaults.default_rate;
+    if (!svc) return null;
     const total = svc.has_shipments
-      ? Number(form.rate) * (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)
-      : Number(form.rate) * Number(form.required_count || 0) * durationDays;
-    return { total, commission: total * 0.1, payout: total * 0.9 };
-  }, [svc, form.rate, form.shipments_per_driver, form.required_count, durationDays]);
+      ? rate * (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)
+      : rate * Number(form.required_count || 0) * durationDays;
+    const commission = total * defaults.commission_rate;
+    return { total, commission, payout: total - commission, rate };
+  }, [svc, form.rate, form.shipments_per_driver, form.required_count, durationDays, defaults]);
 
   const next = () => {
     if (step === 0 && !form.service_type) return toast.error("اختر نوع الخدمة");
     if (step === 1) {
-      if (!form.rate || Number(form.rate) <= 0) return toast.error("أدخل السعر");
+      if (form.rate && Number(form.rate) <= 0) return toast.error("أدخل سعراً صحيحاً");
       if (form.required_count < 1) return toast.error("أدخل العدد المطلوب");
       if (svc?.has_shipments && !form.shipments_per_driver) return toast.error("أدخل الشحنات المتوقعة لكل مندوب");
       if (svc?.needs_vehicle && !form.vehicle_type.trim()) return toast.error("حدد نوع المركبة المطلوبة");
@@ -47,22 +65,28 @@ export default function RequestNew() {
     setStep((s) => s + 1);
   };
 
-  const publish = async () => {
+  const publish = async (asDraft = false) => {
     setBusy(true);
     try {
       const payload = {
         ...form,
         required_count: Number(form.required_count),
-        rate: Number(form.rate),
+        rate: form.rate ? Number(form.rate) : 0,
         days_count: Number(form.days_count),
         shipments_per_driver: form.shipments_per_driver ? Number(form.shipments_per_driver) : null,
         title: form.title || null,
         vehicle_type: form.vehicle_type || null,
         requirements: form.requirements || null,
+        publish: !asDraft,
       };
       const { data } = await api.post("/business/requests", payload);
-      toast.success(`تم نشر الطلب — أُرسل لـ ${data.matched_workers} عامل مطابق`);
-      navigate(`/app/business/requests/${data.request._id}`);
+      if (asDraft) {
+        toast.success("تم حفظ الطلب كمسودة — انشره من صفحة الطلب عند الجاهزية");
+        navigate(`/app/business/requests/${data.request._id}`);
+      } else {
+        toast.success(`تم نشر الطلب — أُرسل لـ ${data.matched_workers} مندوب مطابق`);
+        navigate(`/app/business/requests/${data.request._id}`);
+      }
     } catch (err) {
       toast.error(errMsg(err));
     } finally {
@@ -128,8 +152,8 @@ export default function RequestNew() {
                 <Input data-testid="req-count" type="number" min="1" value={form.required_count} onChange={set("required_count")} className="bg-navy-800 border-navy-600 h-11 num" />
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">السعر المعروض ({svc.unit_label}) * — ر.س</label>
-                <Input data-testid="req-rate" type="number" min="1" value={form.rate} onChange={set("rate")} className="bg-navy-800 border-navy-600 h-11 num" />
+                <label className="text-xs text-slate-400 block mb-1.5">سعر الشحنة (ر.س) — الافتراضي <span className="num text-brand">{defaults.default_rate}</span> ر.س</label>
+                <Input data-testid="req-rate" type="number" min="1" value={form.rate} onChange={set("rate")} placeholder={String(defaults.default_rate)} className="bg-navy-800 border-navy-600 h-11 num" />
               </div>
               {svc.has_shipments && (
                 <div>
@@ -143,7 +167,7 @@ export default function RequestNew() {
                   <select data-testid="req-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
                     className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
                     <option value="">اختر نوع المركبة…</option>
-                    {["دراجة نارية", "سيارة", "فان صغير"].map((v) => <option key={v}>{v}</option>)}
+                    {defaults.vehicle_types.map((v) => <option key={v}>{v}</option>)}
                   </select>
                 </div>
               )}
@@ -176,7 +200,7 @@ export default function RequestNew() {
                 <label className="text-xs text-slate-400 block mb-1.5">المدينة *</label>
                 <select data-testid="req-city" value={form.city} onChange={set("city")}
                   className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
-                  {CITIES.map((c) => <option key={c}>{c}</option>)}
+                  {defaults.service_areas.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
               <div>
@@ -208,7 +232,7 @@ export default function RequestNew() {
                 ["العنوان", form.title || svc.name],
                 ["عدد المندوبين", form.required_count],
                 ["المدة", `${DURATIONS.find((d) => d.key === form.duration_type)?.label} (${durationDays} يوم)`],
-                ["السعر", `${sar(form.rate)} ${svc.unit_label}`],
+                ["سعر الشحنة", form.rate ? sar(form.rate) : `الافتراضي: ${sar(defaults.default_rate)}`],
                 ...(svc.has_shipments ? [["الشحنات لكل مندوب", form.shipments_per_driver], ["إجمالي الشحنات", (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)]] : []),
                 ...(svc.needs_vehicle && form.vehicle_type ? [["نوع السيارة", form.vehicle_type]] : []),
                 ["الموقع", `${form.city} — ${form.address}`],
@@ -221,11 +245,12 @@ export default function RequestNew() {
               ))}
             </div>
             <div className="rounded-2xl border border-brand/30 bg-brand/5 p-5 space-y-2" data-testid="cost-breakdown">
-              <div className="flex justify-between text-sm"><span className="text-slate-400">التكلفة التقديرية الإجمالية</span><span className="font-heading font-black text-brand text-lg num">{sar(estimate.total)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-slate-500">عمولة المنصة (10%)</span><span className="num text-slate-300">{sar(estimate.commission)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-slate-500">صافي مستحق للمندوبين</span><span className="num text-slate-300">{sar(estimate.payout)}</span></div>
-              <p className="text-[11px] text-slate-500 pt-2 border-t border-navy-600/40">
-                سيُحجز المبلغ الإجمالي من محفظتك عند تأكيد العمال، ولا يُصرف إلا بعد إتمام العمل وتأكيدك.
+              <div className="flex justify-between text-xs"><span className="text-slate-500">المبلغ الأساسي (إجمالي الشحنات × سعر الشحنة)</span><span className="num text-slate-300">{sar(estimate.total)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">عمولة المنصة (<span className="num">{Math.round(defaults.commission_rate * 100)}%</span>) — إيراد المنصة</span><span className="num text-slate-300">{sar(estimate.commission)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">صافي أرباح المندوبين</span><span className="num text-slate-300">{sar(estimate.payout)}</span></div>
+              <div className="flex justify-between text-sm pt-2 border-t border-navy-600/40"><span className="text-slate-300 font-semibold">الإجمالي المحصّل منك (يُحجز في محفظة الضمان)</span><span className="font-heading font-black text-brand text-lg num">{sar(estimate.total)}</span></div>
+              <p className="text-[11px] text-slate-500">
+                لا يُصرف المبلغ إلا بعد إتمام العمل وتأكيدك. العمولة تُحسب بالنسبة المعتمدة حالياً من إدارة المنصة.
               </p>
             </div>
           </div>
@@ -244,10 +269,16 @@ export default function RequestNew() {
             التالي <ChevronLeft className="w-4 h-4" />
           </button>
         ) : (
-          <button onClick={publish} disabled={busy} data-testid="wizard-publish-btn"
-            className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors disabled:opacity-50 shadow-[0_0_25px_rgba(0,229,163,0.3)]">
-            <Rocket className="w-4 h-4" /> {busy ? "جاري النشر…" : "نشر الطلب وإرسال العروض"}
-          </button>
+          <div className="flex gap-3">
+            <button onClick={() => publish(false)} disabled={busy} data-testid="wizard-publish-btn"
+              className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors disabled:opacity-50 shadow-[0_0_25px_rgba(0,229,163,0.3)]">
+              <Rocket className="w-4 h-4" /> {busy ? "جاري النشر…" : "نشر الطلب وإرسال العروض"}
+            </button>
+            <button onClick={() => publish(true)} disabled={busy} data-testid="wizard-draft-btn"
+              className="flex items-center gap-2 border border-navy-600 text-slate-300 font-semibold rounded-xl px-5 py-3 text-sm hover:border-brand/40 hover:text-brand transition-colors disabled:opacity-50">
+              حفظ كمسودة
+            </button>
+          </div>
         )}
       </div>
     </div>

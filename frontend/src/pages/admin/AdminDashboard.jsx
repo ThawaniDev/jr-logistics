@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Building2, Users, Banknote, LifeBuoy, RefreshCcw, Wallet, ClipboardList, Send } from "lucide-react";
+import { Building2, Users, Banknote, LifeBuoy, RefreshCcw, Wallet, ClipboardList, Send, Settings, ChevronLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
@@ -75,6 +75,18 @@ export default function AdminDashboard() {
           <p className="text-[11px] text-slate-500 mt-1">تتطلب بدائل</p>
         </Link>
       </div>
+
+      <Link to="/app/admin/settings" data-testid="admin-pricing-link"
+        className="card-surface card-surface-hover p-4 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/25 flex items-center justify-center shrink-0">
+          <Settings className="w-5 h-5 text-brand" />
+        </div>
+        <div className="flex-1">
+          <p className="font-heading font-bold text-sm">التسعير والإعدادات</p>
+          <p className="text-[11px] text-slate-500">السعر الافتراضي للشحنة، عمولة المنصة، أنواع المركبات ومناطق الخدمة — بدون تعديل الكود</p>
+        </div>
+        <ChevronLeft className="w-4 h-4 text-slate-500" />
+      </Link>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <div>

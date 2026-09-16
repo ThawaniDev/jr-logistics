@@ -267,3 +267,19 @@ async def seed_all():
             await db.users.update_one({"_id": w["_id"]},
                                       {"$set": {"worker_profile.vehicle_type": w.get("vehicle_type")}})
         await db.settings.update_one({"key": "seed_v3"}, {"$set": {"key": "seed_v3", "at": now_iso()}}, upsert=True)
+
+    if not await db.settings.find_one({"key": "seed_v4"}):
+        # platform pricing settings (admin-editable) + normalize vehicles to Sedan/Van
+        await db.settings.update_one(
+            {"key": "platform"},
+            {"$setOnInsert": {"key": "platform", "default_rate": 8, "commission_rate": 0.10,
+                              "vehicle_types": ["سيدان", "فان"],
+                              "service_areas": ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة",
+                                                 "المدينة المنورة", "نيوم", "تبوك", "أبها", "بريدة"]}},
+            upsert=True)
+        for rid, v in [("req_1", "سيدان"), ("req_d1", "سيدان"), ("req_d2", "فان"), ("req_d3", "فان")]:
+            await db.requests.update_one({"_id": rid}, {"$set": {"vehicle_type": v}})
+        for i, w in enumerate(WORKERS):
+            await db.users.update_one({"_id": w["_id"]},
+                                      {"$set": {"worker_profile.vehicle_type": "سيدان" if i % 2 == 0 else "فان"}})
+        await db.settings.update_one({"key": "seed_v4"}, {"$set": {"key": "seed_v4", "at": now_iso()}}, upsert=True)

@@ -1,12 +1,20 @@
 COMMISSION_RATE = 0.10
 
+# Platform defaults — the LIVE values live in db.settings ("platform") and are
+# editable from the Admin Dashboard without code changes. These are fallbacks.
+DEFAULT_RATE = 8
+DEFAULT_COMMISSION_RATE = 0.10
+DEFAULT_VEHICLE_TYPES = ["سيدان", "فان"]
+DEFAULT_SERVICE_AREAS = ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة",
+                         "المدينة المنورة", "نيوم", "تبوك", "أبها", "بريدة"]
+
 DURATION_DAYS = {"one_day": 1, "week": 7, "month": 30}
 
 SERVICES = [
     {
         "key": "delivery_driver",
-        "name": "سائقو التوصيل والمندوبون",
-        "short": "سائقي توصيل",
+        "name": "مندوب توصيل موثوق",
+        "short": "مندوب توصيل",
         "icon": "Bike",
         "unit": "shipment",
         "unit_label": "لكل شحنة",

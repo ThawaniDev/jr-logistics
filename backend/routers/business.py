@@ -4,8 +4,8 @@ from typing import Optional, Literal, List
 
 from db import db
 from deps import require_roles
-from catalog import SERVICE_MAP, COMMISSION_RATE, DURATION_DAYS
-from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, recalc_worker_rating, pub, pub_list
+from catalog import SERVICE_MAP, DEFAULT_COMMISSION_RATE, DURATION_DAYS
+from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings
 
 router = APIRouter(prefix="/api/business", tags=["business"])
 biz = Depends(require_roles("business"))
@@ -13,14 +13,15 @@ biz = Depends(require_roles("business"))
 
 def compute_estimate(service_key: str, required_count: int, duration_days: int,
                      rate: float, shipment_count: Optional[int],
-                     shipments_per_driver: Optional[int] = None):
+                     shipments_per_driver: Optional[int] = None,
+                     commission_rate: float = DEFAULT_COMMISSION_RATE):
     svc = SERVICE_MAP[service_key]
     if svc["unit"] == "shipment":
         total_shipments = (shipments_per_driver or 0) * required_count or (shipment_count or 0)
         total = round(rate * total_shipments, 2)
     else:
         total = round(rate * required_count * duration_days, 2)
-    commission = round(total * COMMISSION_RATE, 2)
+    commission = round(total * commission_rate, 2)
     return total, commission, round(total - commission, 2)
 
 
@@ -84,6 +85,7 @@ class RequestIn(BaseModel):
     shipments_per_driver: Optional[int] = None
     vehicle_type: Optional[str] = None
     requirements: Optional[str] = None
+    publish: bool = True
 
 
 class TopupIn(BaseModel):
@@ -105,11 +107,14 @@ async def estimate(body: EstimateIn, user: dict = biz):
     if body.service_type not in SERVICE_MAP:
         raise HTTPException(status_code=400, detail="نوع الخدمة غير صالح")
     days = DURATION_DAYS.get(body.duration_type) or max(1, body.days_count)
+    settings = await get_settings()
+    rate = body.rate if body.rate and body.rate > 0 else settings["default_rate"]
     total, commission, payout = compute_estimate(
-        body.service_type, body.required_count, days, body.rate, body.shipment_count,
-        body.shipments_per_driver)
-    return {"duration_days": days, "estimated_total": total,
+        body.service_type, body.required_count, days, rate, body.shipment_count,
+        body.shipments_per_driver, commission_rate=settings["commission_rate"])
+    return {"duration_days": days, "rate": rate, "estimated_total": total,
             "commission": commission, "payout_total": payout,
+            "commission_rate": settings["commission_rate"],
             "unit": SERVICE_MAP[body.service_type]["unit"]}
 
 
@@ -117,18 +122,22 @@ async def estimate(body: EstimateIn, user: dict = biz):
 async def create_request(body: RequestIn, user: dict = biz):
     if body.service_type not in SERVICE_MAP:
         raise HTTPException(status_code=400, detail="نوع الخدمة غير صالح")
-    if body.required_count < 1 or body.rate <= 0:
-        raise HTTPException(status_code=400, detail="تحقق من العدد والسعر")
+    if body.required_count < 1:
+        raise HTTPException(status_code=400, detail="تحقق من العدد المطلوب")
     svc = SERVICE_MAP[body.service_type]
     if svc["has_shipments"] and not (body.shipments_per_driver or body.shipment_count):
         raise HTTPException(status_code=400, detail="أدخل عدد الشحنات المتوقع لكل مندوب")
     if svc["needs_vehicle"] and not body.vehicle_type:
         raise HTTPException(status_code=400, detail="حدد نوع المركبة المطلوبة")
+    settings = await get_settings()
+    rate = body.rate if body.rate and body.rate > 0 else settings["default_rate"]
+    commission_rate = settings["commission_rate"]
     shipment_count = (body.shipments_per_driver * body.required_count
                       if body.shipments_per_driver else body.shipment_count)
     days = DURATION_DAYS.get(body.duration_type) or max(1, body.days_count)
     total, commission, payout = compute_estimate(
-        body.service_type, body.required_count, days, body.rate, shipment_count)
+        body.service_type, body.required_count, days, rate, shipment_count,
+        commission_rate=commission_rate)
     doc = {
         "_id": new_id(),
         "business_id": user["_id"],
@@ -141,7 +150,8 @@ async def create_request(body: RequestIn, user: dict = biz):
         "start_time": body.start_time,
         "duration_type": body.duration_type,
         "duration_days": days,
-        "rate": body.rate,
+        "rate": rate,
+        "commission_rate": commission_rate,
         "shipment_count": shipment_count,
         "shipments_per_driver": body.shipments_per_driver,
         "vehicle_type": body.vehicle_type,
@@ -149,14 +159,34 @@ async def create_request(body: RequestIn, user: dict = biz):
         "estimated_total": total,
         "commission": commission,
         "payout_total": payout,
-        "status": "published",
+        "status": "published" if body.publish else "draft",
         "replacement_count": 0,
         "is_demo": False,
         "created_at": now_iso(),
     }
     await db.requests.insert_one(doc)
-    matched = await match_workers(doc)
+    matched = 0
+    if doc["status"] == "published":
+        matched = await match_workers(doc)
+        await notify(user["_id"], "تم إنشاء طلبك ونشره",
+                     f"طلب: {doc['title']} — أُرسل لـ {matched} مندوب مطابق",
+                     "request", f"/app/business/requests/{doc['_id']}")
     return {"request": doc, "matched_workers": matched}
+
+
+@router.post("/requests/{request_id}/publish")
+async def publish_request(request_id: str, user: dict = biz):
+    r = await get_owned_request(request_id, user)
+    if r["status"] != "draft":
+        raise HTTPException(status_code=400, detail="يمكن نشر المسودات فقط")
+    await db.requests.update_one({"_id": request_id},
+                                 {"$set": {"status": "published", "published_at": now_iso()}})
+    r["status"] = "published"
+    matched = await match_workers(r)
+    await notify(user["_id"], "تم نشر طلبك",
+                 f"طلب: {r['title']} — أُرسل لـ {matched} مندوب مطابق",
+                 "request", f"/app/business/requests/{request_id}")
+    return {"ok": True, "matched_workers": matched}
 
 
 @router.get("/requests")
@@ -259,7 +289,7 @@ async def complete_request(request_id: str, user: dict = biz):
     released = 0.0
     for o in payable:
         earning = share
-        commission = round(earning * COMMISSION_RATE, 2)
+        commission = round(earning * r.get("commission_rate", DEFAULT_COMMISSION_RATE), 2)
         net = round(earning - commission, 2)
         released += earning
         await db.wallets.update_one({"user_id": o["worker_id"]}, {"$inc": {"available": net}})
@@ -334,12 +364,20 @@ async def topup(body: TopupIn, user: dict = biz):
 async def overview(user: dict = biz):
     wallet = await get_wallet(user["_id"])
     counts = {}
-    for st in ["published", "filling", "confirmed", "in_progress", "completed", "cancelled"]:
+    for st in ["draft", "published", "filling", "confirmed", "in_progress", "completed", "cancelled"]:
         counts[st] = await db.requests.count_documents({"business_id": user["_id"], "status": st})
     pending_attendance = await db.offers.count_documents(
         {"business_id": user["_id"], "status": "attendance_confirmed"})
+    spent = await db.transactions.aggregate(
+        [{"$match": {"user_id": user["_id"], "type": "release"}},
+         {"$group": {"_id": None, "t": {"$sum": "$amount"}}}]).to_list(1)
+    fees = await db.requests.aggregate(
+        [{"$match": {"business_id": user["_id"], "status": "completed"}},
+         {"$group": {"_id": None, "t": {"$sum": "$commission"}}}]).to_list(1)
     recent = await db.requests.find({"business_id": user["_id"]}).sort("created_at", -1).to_list(5)
     for r in recent:
         r["counts"] = {"accepted": await db.offers.count_documents({"request_id": r["_id"], "status": "accepted"})}
     return {"wallet": pub(wallet), "counts": counts, "pending_attendance": pending_attendance,
+            "total_spent": round(spent[0]["t"], 2) if spent else 0,
+            "platform_fees": round(fees[0]["t"], 2) if fees else 0,
             "recent": pub_list(recent)}

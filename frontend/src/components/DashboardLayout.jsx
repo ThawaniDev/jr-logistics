@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import {
   LayoutDashboard, ClipboardList, PlusCircle, Wallet, LifeBuoy, Building2,
-  Zap, Briefcase, User, Users, Banknote, Bell, LogOut, Menu, X, ShieldCheck,
+  Zap, Briefcase, User, Users, Banknote, Bell, LogOut, Menu, X, ShieldCheck, Settings,
 } from "lucide-react";
 import { sar, roleHome } from "@/lib/constants";
 
@@ -32,6 +32,7 @@ const NAVS = {
     { to: "/app/admin/users", label: "المستخدمون", icon: Users },
     { to: "/app/admin/requests", label: "الطلبات والمطابقة", icon: ClipboardList },
     { to: "/app/admin/withdrawals", label: "طلبات السحب", icon: Banknote },
+    { to: "/app/admin/settings", label: "التسعير والإعدادات", icon: Settings },
     { to: "/app/notifications", label: "الإشعارات", icon: Bell },
     { to: "/app/admin/support", label: "الدعم والشكاوى", icon: LifeBuoy },
   ],

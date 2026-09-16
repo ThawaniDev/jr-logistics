@@ -28,6 +28,7 @@ import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminUsers from "@/pages/admin/AdminUsers";
 import AdminRequests from "@/pages/admin/AdminRequests";
 import AdminWithdrawals from "@/pages/admin/AdminWithdrawals";
+import AdminSettings from "@/pages/admin/AdminSettings";
 
 function RoleIndex() {
   const { user, loading } = useAuth();
@@ -61,6 +62,7 @@ function App() {
             <Route path="admin/users" element={<AdminUsers />} />
             <Route path="admin/requests" element={<AdminRequests />} />
             <Route path="admin/withdrawals" element={<AdminWithdrawals />} />
+            <Route path="admin/settings" element={<AdminSettings />} />
             <Route path="admin/support" element={<Support />} />
             <Route path="support" element={<Support />} />
             <Route path="notifications" element={<Notifications />} />

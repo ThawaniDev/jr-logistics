@@ -54,12 +54,22 @@ async def overview(user: dict = wrk):
         {"worker_id": user["_id"], "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended"]}})
     completed = user.get("worker_profile", {}).get("jobs_completed", 0)
     jobs = await db.offers.find(
-        {"worker_id": user["_id"], "status": {"$in": ["confirmed", "attendance_confirmed", "attended"]}}
+        {"worker_id": user["_id"],
+         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended"]}}
     ).sort("created_at", -1).to_list(10)
+    pending = 0.0
     for o in jobs:
         await enrich_offer(o)
+        if o.get("request") and o["status"] in ("confirmed", "attendance_confirmed", "attended"):
+            req = o["request"]
+            share = req["estimated_total"] / req["required_count"]
+            pending += share * (1 - req.get("commission_rate", 0.10))
+    earned = [t for t in await db.transactions.find(
+        {"user_id": user["_id"], "type": "earning"}).to_list(500)]
+    paid_total = round(sum(t["amount"] for t in earned), 2)
     return {"wallet": pub(wallet), "new_offers": new_offers, "active_jobs": active,
             "jobs_completed": completed, "jobs": pub_list(jobs),
+            "pending_earnings": round(pending, 2), "paid_earnings": paid_total,
             "availability": user.get("worker_profile", {}).get("availability", "available")}
 
 
@@ -118,6 +128,14 @@ async def respond(offer_id: str, body: RespondIn, user: dict = wrk):
     await notify(r["business_id"], "مندوب قبل عرضك",
                  f"{user['name']} قبل فرصة: {r['title']} — يمكنك الآن تأكيد الطلب",
                  "accepted", f"/app/business/requests/{r['_id']}")
+    if o.get("is_replacement"):
+        await notify(r["business_id"], "تم العثور على بديل",
+                     f"{user['name']} قبل عرض الاستبدال لطلب: {r['title']}",
+                     "replacement", f"/app/business/requests/{r['_id']}")
+        await db.requests.update_one({"_id": r["_id"]}, {"$set": {"replacement_requested": False}})
+    await notify(user["_id"], "تم استلام قبولك",
+                 f"قبلت فرصة: {r['title']} — بانتظار تأكيد المنشأة وحجز المبلغ",
+                 "accepted", "/app/worker/jobs")
     return {"ok": True, "status": "accepted"}
 
 

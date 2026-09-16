@@ -6,7 +6,7 @@ import { Building2, UserCheck, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { ACTIVE_SERVICES, CITIES, roleHome } from "@/lib/constants";
+import { ACTIVE_SERVICES, roleHome, DEFAULT_VEHICLE_TYPES } from "@/lib/constants";
 
 export default function Register() {
   const [token, setToken] = useState(null);
@@ -14,9 +14,18 @@ export default function Register() {
   const [role, setRole] = useState(null);
   const [form, setForm] = useState({ name: "", email: "", city: "الرياض", company_name: "", cr_number: "", industry: "", national_id: "", vehicle_type: "" });
   const [services, setServices] = useState(["delivery_driver"]);
+  const [vehicleTypes, setVehicleTypes] = useState(DEFAULT_VEHICLE_TYPES);
+  const [serviceAreas, setServiceAreas] = useState(["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة", "المدينة المنورة"]);
   const [busy, setBusy] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.get("/catalog/defaults").then(({ data }) => {
+      if (data.vehicle_types?.length) setVehicleTypes(data.vehicle_types);
+      if (data.service_areas?.length) setServiceAreas(data.service_areas);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const t = sessionStorage.getItem("isnad_reg_token");
@@ -114,7 +123,7 @@ export default function Register() {
                 <label className="text-xs text-slate-400 block mb-1.5">المدينة</label>
                 <select data-testid="register-city" value={form.city} onChange={set("city")}
                   className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
-                  {CITIES.map((c) => <option key={c}>{c}</option>)}
+                  {serviceAreas.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
               {role === "business" && (
@@ -144,7 +153,7 @@ export default function Register() {
                     <select data-testid="register-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
                       className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
                       <option value="">اختر…</option>
-                      {["دراجة نارية", "سيارة", "فان صغير"].map((v) => <option key={v}>{v}</option>)}
+                      {vehicleTypes.map((v) => <option key={v}>{v}</option>)}
                     </select>
                   </div>
                 </>

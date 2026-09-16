@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Wallet, Banknote, ArrowDownLeft, ArrowUpRight, Landmark } from "lucide-react";
+import { Wallet, Banknote, ArrowDownLeft, ArrowUpRight, Landmark, Clock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
@@ -50,11 +50,10 @@ export default function WorkerWallet() {
         <p className="text-sm text-slate-400 mt-1">أرباحك من المهام المكتملة وطلبات السحب — أموال تجريبية</p>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <StatCard testid="wallet-available" icon={Wallet} label="الرصيد المتاح للسحب" value={sar(wallet.available)} tone="brand" sub="يُضاف فور تأكيد المنشأة لإتمام العمل" />
-        <StatCard testid="wallet-earned" icon={Banknote} label="إجمالي ما تم صرفه" tone="cyan"
-          value={sar(transactions.filter((t) => t.type === "earning").reduce((s, t) => s + t.amount, 0))}
-          sub="صافي بعد عمولة المنصة 10%" />
+      <div className="grid sm:grid-cols-3 gap-4">
+        <StatCard testid="wallet-pending" icon={Clock} label="أرباح قيد الإنجاز" value={sar(data.pending_earnings || 0)} tone="gold" sub="محجوزة — تُحرر بعد تأكيد المنشأة لإتمام العمل" />
+        <StatCard testid="wallet-available" icon={Wallet} label="الرصيد المتاح للسحب" value={sar(wallet.available)} tone="brand" sub="قابل للسحب فوراً" />
+        <StatCard testid="wallet-paid" icon={Banknote} label="إجمالي الأرباح المدفوعة" value={sar(data.paid_earnings || 0)} tone="cyan" sub="صافي بعد عمولة المنصة" />
       </div>
 
       <form onSubmit={submit} className="card-surface p-6 space-y-4" data-testid="withdrawal-form">

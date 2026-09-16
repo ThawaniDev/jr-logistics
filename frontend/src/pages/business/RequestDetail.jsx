@@ -119,7 +119,31 @@ export default function RequestDetail() {
           </div>
         )}
 
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3" data-testid="pricing-breakdown">
+          {[
+            ["المبلغ الأساسي", sar(r.estimated_total)],
+            [`عمولة المنصة (${Math.round((r.commission_rate ?? 0.10) * 100)}%)`, sar(r.commission)],
+            ["صافي أرباح المندوبين", sar(r.payout_total)],
+            ["صافي كل مندوب تقريباً", sar(Math.round((r.payout_total / r.required_count) * 100) / 100)],
+          ].map(([k, v]) => (
+            <div key={k} className="bg-brand/5 rounded-xl p-3 border border-brand/20">
+              <p className="text-[11px] text-slate-500">{k}</p>
+              <p className="font-heading font-bold text-brand num mt-1">{v}</p>
+            </div>
+          ))}
+        </div>
+
         <div className="flex flex-wrap gap-3 mt-6 pt-5 border-t border-navy-600/40">
+          {r.status === "draft" && (
+            <button
+              data-testid="publish-request-btn"
+              disabled={busy === "publish"}
+              onClick={() => act("publish", () => api.post(`/business/requests/${id}/publish`), "تم نشر الطلب وإرسال العروض للمندوبين")}
+              className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover disabled:opacity-40 transition-colors"
+            >
+              {busy === "publish" ? "جاري النشر…" : "نشر الطلب وإرسال العروض"}
+            </button>
+          )}
           {["published", "filling"].includes(r.status) && (
             <button
               data-testid="confirm-request-btn"

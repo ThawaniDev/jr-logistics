@@ -5,7 +5,7 @@ from typing import Optional, List
 from db import db
 from deps import get_current_user
 from catalog import SERVICES, ENABLED_SERVICES
-from utils import new_id, now_iso, notify, get_wallet, pub, pub_list
+from utils import new_id, now_iso, notify, get_wallet, pub, pub_list, get_settings
 
 router = APIRouter(prefix="/api", tags=["common"])
 
@@ -19,6 +19,13 @@ async def health():
 async def catalog_services():
     enabled = [s for s in SERVICES if s["key"] in ENABLED_SERVICES]
     return {"services": enabled}
+
+
+@router.get("/catalog/defaults")
+async def catalog_defaults():
+    s = await get_settings()
+    return {"default_rate": s["default_rate"], "commission_rate": s["commission_rate"],
+            "vehicle_types": s["vehicle_types"], "service_areas": s["service_areas"]}
 
 
 class ProfileIn(BaseModel):
@@ -61,7 +68,21 @@ async def update_profile(body: ProfileIn, user: dict = Depends(get_current_user)
 async def wallet(user: dict = Depends(get_current_user)):
     w = await get_wallet(user["_id"])
     txns = await db.transactions.find({"user_id": user["_id"]}).sort("created_at", -1).to_list(200)
-    return {"wallet": pub(w), "transactions": pub_list(txns)}
+    result = {"wallet": pub(w), "transactions": pub_list(txns)}
+    if user["role"] == "worker":
+        active = await db.offers.find(
+            {"worker_id": user["_id"],
+             "status": {"$in": ["confirmed", "attendance_confirmed", "attended"]}}).to_list(200)
+        pending = 0.0
+        for o in active:
+            req = await db.requests.find_one({"_id": o["request_id"]})
+            if req:
+                share = req["estimated_total"] / req["required_count"]
+                pending += share * (1 - req.get("commission_rate", 0.10))
+        result["pending_earnings"] = round(pending, 2)
+        result["paid_earnings"] = round(
+            sum(t["amount"] for t in txns if t["type"] == "earning"), 2)
+    return result
 
 
 @router.get("/notifications")
