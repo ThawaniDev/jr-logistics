@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 224 58% 10%;
+        --foreground: 210 40% 98%;
+        --card: 221 39% 13%;
+        --card-foreground: 210 40% 98%;
+        --popover: 221 39% 12%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 160 100% 45%;
+        --primary-foreground: 224 58% 10%;
+        --secondary: 217 33% 17%;
+        --secondary-foreground: 210 40% 96%;
+        --muted: 217 33% 17%;
+        --muted-foreground: 215 20% 65%;
+        --accent: 38 92% 50%;
+        --accent-foreground: 224 58% 10%;
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 217 33% 22%;
+        --input: 217 33% 24%;
+        --ring: 160 100% 45%;
+        --radius: 0.75rem;
+    }
+
+    * {
+        @apply border-border;
+    }
+
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        @apply bg-background text-foreground font-sans;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    ::selection {
+        background: rgba(0, 229, 163, 0.3);
+    }
+
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #0b132b;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 8px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+    }
+}
+
+@layer components {
+    .glass {
+        @apply backdrop-blur-xl bg-navy-850/80 border border-navy-600/50 shadow-2xl;
+    }
+    .card-surface {
+        @apply border border-navy-600/60 rounded-xl bg-navy-800/50 transition-all duration-200;
+    }
+    .card-surface-hover {
+        @apply hover:border-brand/40 hover:shadow-[0_0_25px_rgba(0,229,163,0.08)];
+    }
+    .num {
+        direction: ltr;
+        unicode-bidi: embed;
+    }
+    .heading {
+        @apply font-heading;
+    }
+    .text-gradient-brand {
+        background: linear-gradient(120deg, #00e5a3 0%, #06b6d4 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+    .hero-grid {
+        background-image:
+            linear-gradient(rgba(51, 65, 85, 0.25) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(51, 65, 85, 0.25) 1px, transparent 1px);
+        background-size: 44px 44px;
+    }
+    .chip {
+        @apply px-3 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 whitespace-nowrap;
+    }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+    [data-debug-wrapper="true"] > * {
+        margin-left: inherit;
+        margin-right: inherit;
+        margin-top: inherit;
+        margin-bottom: inherit;
+        padding-left: inherit;
+        padding-right: inherit;
+        padding-top: inherit;
+        padding-bottom: inherit;
+        column-gap: inherit;
+        row-gap: inherit;
+        gap: inherit;
+        border-left-width: inherit;
+        border-right-width: inherit;
+        border-top-width: inherit;
+        border-bottom-width: inherit;
+        border-left-style: inherit;
+        border-right-style: inherit;
+        border-top-style: inherit;
+        border-bottom-style: inherit;
+        border-left-color: inherit;
+        border-right-color: inherit;
+        border-top-color: inherit;
+        border-bottom-color: inherit;
+    }
+}

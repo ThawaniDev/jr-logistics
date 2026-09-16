@@ -1,0 +1,256 @@
+import { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { toast } from "sonner";
+import {
+  ArrowRight, MapPin, Calendar, Clock, Users, Star, CheckCircle2,
+  XCircle, Lock, Flag, UserCheck, RefreshCcw,
+} from "lucide-react";
+import api, { errMsg } from "@/lib/api";
+import { StatusBadge } from "@/components/StatusBadge";
+import { SERVICE_MAP, DURATIONS, sar } from "@/lib/constants";
+
+function Stars({ value, onChange, testid }) {
+  return (
+    <div className="flex gap-1" data-testid={testid}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <button key={s} type="button" onClick={() => onChange?.(s)} data-testid={`${testid}-${s}`}
+          className={onChange ? "hover:scale-110 transition-transform" : "cursor-default"}>
+          <Star className={`w-5 h-5 ${s <= value ? "fill-amber-400 text-amber-400" : "text-slate-600"}`} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function RequestDetail() {
+  const { id } = useParams();
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [ratingFor, setRatingFor] = useState(null);
+  const [score, setScore] = useState(5);
+  const [comment, setComment] = useState("");
+
+  const load = () => api.get(`/business/requests/${id}`).then(({ data }) => setData(data)).catch((e) => toast.error(errMsg(e)));
+  useEffect(() => { load(); }, [id]);
+
+  if (!data) return <p className="text-slate-500 text-sm">جاري التحميل…</p>;
+  const { request: r, offers, rated_offer_ids, wallet } = data;
+  const svc = SERVICE_MAP[r.service_type];
+  const acceptedCount = offers.filter((o) => o.status === "accepted").length;
+  const activeOffers = offers.filter((o) => !["rejected", "cancelled"].includes(o.status));
+  const canConfirm = ["published", "filling"].includes(r.status) && acceptedCount >= r.required_count;
+  const canComplete = ["confirmed", "in_progress"].includes(r.status) &&
+    offers.some((o) => ["attended", "attendance_confirmed"].includes(o.status));
+
+  const act = async (key, fn, success) => {
+    setBusy(key);
+    try {
+      const res = await fn();
+      toast.success(success);
+      await load();
+      return res;
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const submitRating = (offerId) =>
+    act(`rate-${offerId}`, () => api.post(`/business/requests/${id}/rate`, { offer_id: offerId, score, comment }),
+      "تم إرسال التقييم").then((res) => { if (res) { setRatingFor(null); setComment(""); } });
+
+  return (
+    <div className="space-y-6" data-testid="request-detail-page">
+      <Link to="/app/business/requests" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-brand" data-testid="back-to-requests">
+        <ArrowRight className="w-4 h-4" /> العودة لطلباتي
+      </Link>
+
+      <div className="card-surface p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-brand/10 border border-brand/25 flex items-center justify-center shrink-0">
+              {svc && <svc.icon className="w-7 h-7 text-brand" />}
+            </div>
+            <div>
+              <h1 className="heading text-xl font-extrabold">{r.title}</h1>
+              <p className="text-sm text-slate-400 mt-1">{svc?.name}</p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <StatusBadge kind="request" status={r.status} />
+                {r.replacement_requested && r.status !== "completed" && (
+                  <span className="chip bg-rose-500/10 text-rose-400 border-rose-500/30 animate-pulse-soft">
+                    <RefreshCcw className="w-3 h-3" /> بديل قيد البحث
+                  </span>
+                )}
+                {r.is_demo && <span className="chip bg-navy-700 text-slate-400 border-navy-600">بيانات تجريبية</span>}
+              </div>
+            </div>
+          </div>
+          <div className="text-left">
+            <p className="text-[11px] text-slate-500">التكلفة الإجمالية</p>
+            <p className="heading text-2xl font-black text-brand num">{sar(r.estimated_total)}</p>
+            <p className="text-[11px] text-slate-500 mt-1">عمولة المنصة: <span className="num">{sar(r.commission)}</span></p>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6 text-sm">
+          <div className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 flex items-center gap-3">
+            <MapPin className="w-4 h-4 text-brand shrink-0" />
+            <div><p className="text-[11px] text-slate-500">الموقع</p><p className="font-semibold mt-0.5">{r.city} — {r.address}</p></div>
+          </div>
+          <div className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 flex items-center gap-3">
+            <Calendar className="w-4 h-4 text-brand shrink-0" />
+            <div><p className="text-[11px] text-slate-500">التاريخ</p><p className="font-semibold mt-0.5 num">{r.start_date}</p></div>
+          </div>
+          <div className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 flex items-center gap-3">
+            <Clock className="w-4 h-4 text-brand shrink-0" />
+            <div><p className="text-[11px] text-slate-500">الوقت والمدة</p><p className="font-semibold mt-0.5"><span className="num">{r.start_time}</span> · {DURATIONS.find((d) => d.key === r.duration_type)?.label} ({r.duration_days} يوم)</p></div>
+          </div>
+          <div className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 flex items-center gap-3">
+            <Users className="w-4 h-4 text-brand shrink-0" />
+            <div><p className="text-[11px] text-slate-500">العدد والسعر</p><p className="font-semibold mt-0.5"><span className="num">{r.required_count}</span> × <span className="num">{sar(r.rate)}</span> {svc?.unit_label}</p></div>
+          </div>
+        </div>
+        {(r.shipment_count || r.vehicle_type || r.requirements) && (
+          <div className="mt-3 bg-navy-800/60 rounded-xl p-4 border border-navy-600/40 text-sm space-y-1.5">
+            {r.shipment_count && <p><span className="text-slate-500">عدد الشحنات المتوقع:</span> <span className="num font-semibold">{r.shipment_count}</span></p>}
+            {r.vehicle_type && <p><span className="text-slate-500">نوع السيارة:</span> <span className="font-semibold">{r.vehicle_type}</span></p>}
+            {r.requirements && <p><span className="text-slate-500">متطلبات:</span> {r.requirements}</p>}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-3 mt-6 pt-5 border-t border-navy-600/40">
+          {["published", "filling"].includes(r.status) && (
+            <button
+              data-testid="confirm-request-btn"
+              disabled={!canConfirm || busy === "confirm"}
+              onClick={() => act("confirm", () => api.post(`/business/requests/${id}/confirm`), "تم التأكيد وحجز المبلغ في محفظة الضمان")}
+              className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover disabled:opacity-40 transition-colors"
+            >
+              <Lock className="w-4 h-4" />
+              {busy === "confirm" ? "جاري التأكيد…" : `تأكيد الطلب وحجز ${sar(r.estimated_total)}`}
+            </button>
+          )}
+          {["published", "filling"].includes(r.status) && !canConfirm && (
+            <p className="text-xs text-amber-400 self-center" data-testid="confirm-hint">
+              بانتظار قبول <span className="num font-bold">{r.required_count - acceptedCount}</span> عامل إضافي للتمكن من التأكيد — رصيدك المتاح: <span className="num">{sar(wallet.available)}</span>
+            </p>
+          )}
+          {canComplete && (
+            <button
+              data-testid="complete-request-btn"
+              disabled={busy === "complete"}
+              onClick={() => act("complete", () => api.post(`/business/requests/${id}/complete`), "تم إنهاء الطلب وصرف الأرباح للعمال")}
+              className="flex items-center gap-2 bg-green-500 text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-green-400 disabled:opacity-40 transition-colors"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {busy === "complete" ? "جاري الإنهاء…" : "تأكيد إتمام العمل وصرف الأرباح"}
+            </button>
+          )}
+          {!["completed", "cancelled"].includes(r.status) && (
+            <button
+              data-testid="cancel-request-btn"
+              disabled={busy === "cancel"}
+              onClick={() => act("cancel", () => api.post(`/business/requests/${id}/cancel`), "تم إلغاء الطلب")}
+              className="flex items-center gap-2 border border-rose-500/40 text-rose-400 font-semibold rounded-xl px-5 py-2.5 text-sm hover:bg-rose-500/10 disabled:opacity-40 transition-colors"
+            >
+              <XCircle className="w-4 h-4" /> إلغاء الطلب
+            </button>
+          )}
+          <Link to="/app/support" data-testid="report-problem-btn"
+            className="flex items-center gap-2 border border-navy-600 text-slate-300 font-semibold rounded-xl px-5 py-2.5 text-sm hover:border-amber-500/40 hover:text-amber-400 transition-colors">
+            <Flag className="w-4 h-4" /> الإبلاغ عن مشكلة
+          </Link>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="heading text-lg font-bold mb-4">
+          المرشحون والعمال <span className="text-sm text-slate-500 font-normal num">({activeOffers.length})</span>
+        </h2>
+        {activeOffers.length === 0 ? (
+          <div className="card-surface p-8 text-center text-sm text-slate-500" data-testid="no-offers">
+            لا توجد ترشيحات بعد — ستصل العروض للعمال المتاحين المطابقين تلقائياً
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-4">
+            {activeOffers.map((o) => (
+              <div key={o._id} className="card-surface p-5 space-y-4" data-testid={`offer-card-${o._id}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-full bg-navy-700 border border-navy-600 flex items-center justify-center font-heading font-bold text-brand">
+                      {o.worker?.name?.[0] || "؟"}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{o.worker?.name}</p>
+                      <p className="text-[11px] text-slate-500 num">{o.worker?.phone}</p>
+                    </div>
+                  </div>
+                  <StatusBadge kind="offer" status={o.status} />
+                </div>
+                <div className="flex items-center gap-4 text-xs text-slate-400">
+                  {o.worker?.worker_profile?.rating && (
+                    <span className="flex items-center gap-1">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                      <span className="num">{o.worker.worker_profile.rating}</span>
+                    </span>
+                  )}
+                  <span>مهام مكتملة: <span className="num">{o.worker?.worker_profile?.jobs_completed || 0}</span></span>
+                  {o.is_replacement && <span className="text-rose-400">عرض بديل</span>}
+                </div>
+
+                {["confirmed", "attendance_confirmed"].includes(o.status) && ["confirmed", "in_progress"].includes(r.status) && (
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      data-testid={`attend-btn-${o._id}`}
+                      disabled={busy === `att-${o._id}`}
+                      onClick={() => act(`att-${o._id}`, () => api.post(`/business/requests/${id}/attendance/${o._id}`, { result: "attended" }), "تم تأكيد الحضور")}
+                      className="flex-1 flex items-center justify-center gap-2 bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-semibold rounded-xl px-3 py-2 text-xs hover:bg-emerald-500/25 transition-colors"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" /> تأكيد الحضور
+                    </button>
+                    <button
+                      data-testid={`noshow-btn-${o._id}`}
+                      disabled={busy === `no-${o._id}`}
+                      onClick={() => act(`no-${o._id}`, () => api.post(`/business/requests/${id}/attendance/${o._id}`, { result: "no_show" }), "تم تسجيل التغيب وطلب بديل")}
+                      className="flex-1 flex items-center justify-center gap-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold rounded-xl px-3 py-2 text-xs hover:bg-rose-500/20 transition-colors"
+                    >
+                      <XCircle className="w-3.5 h-3.5" /> لم يحضر — طلب بديل
+                    </button>
+                  </div>
+                )}
+
+                {o.status === "paid" && !rated_offer_ids.includes(o._id) && (
+                  ratingFor === o._id ? (
+                    <div className="space-y-3 pt-1" data-testid={`rating-form-${o._id}`}>
+                      <Stars value={score} onChange={setScore} testid={`stars-${o._id}`} />
+                      <div className="flex gap-2">
+                        <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="تعليق (اختياري)"
+                          data-testid={`rating-comment-${o._id}`}
+                          className="flex-1 bg-navy-800 border border-navy-600 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
+                        <button onClick={() => submitRating(o._id)} data-testid={`rating-submit-${o._id}`}
+                          className="bg-amber-400 text-navy-900 font-bold rounded-xl px-4 text-xs hover:bg-amber-300">
+                          إرسال
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setRatingFor(o._id); setScore(5); }} data-testid={`rate-btn-${o._id}`}
+                      className="w-full flex items-center justify-center gap-2 border border-amber-500/30 text-amber-400 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-amber-500/10 transition-colors">
+                      <Star className="w-3.5 h-3.5" /> تقييم العامل — صافي الأرباح: <span className="num">{sar(o.earning)}</span>
+                    </button>
+                  )
+                )}
+                {o.status === "paid" && rated_offer_ids.includes(o._id) && (
+                  <p className="text-[11px] text-green-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> تم التقييم — الأرباح المصروفة: <span className="num">{sar(o.earning)}</span>
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

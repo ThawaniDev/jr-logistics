@@ -1,0 +1,133 @@
+{
+  "brand_identity": {
+    "name_ar": "إسناد اللوجستية",
+    "name_en": "ISNAD Operational Logistics Platform",
+    "tagline_ar": "المنصة السعودية الذكية لإدارة وإسناد الموارد اللوجستية والتشغيلية",
+    "tagline_en": "Saudi Smart Marketplace for Temporary Logistics & Workforce Operations",
+    "archetype": "Architectural Performance & Tactical Saudi Tech",
+    "tone": "Professional, Reliable, Fast, Trustworthy, Modern Saudi Enterprise"
+  },
+  "typography": {
+    "font_family_primary": "'IBM Plex Sans Arabic', 'Tajawal', sans-serif",
+    "font_family_heading": "'Tajawal', 'Alexandria', sans-serif",
+    "font_family_mono": "'IBM Plex Mono', monospace",
+    "font_google_imports": [
+      "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Tajawal:wght@400;500;700;900&family=Alexandria:wght@400;600;700&display=swap"
+    ],
+    "text_sizes": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-bold leading-snug",
+      "h3": "text-xl sm:text-2xl font-bold leading-snug",
+      "h4": "text-lg sm:text-xl font-semibold",
+      "body": "text-base leading-relaxed",
+      "body_sm": "text-sm leading-normal",
+      "caption": "text-xs font-medium text-slate-400"
+    },
+    "forbidden_fonts": ["Inter", "Space Grotesk", "Roboto", "Comic Sans"]
+  },
+  "colors": {
+    "mode": "dark_navy_hybrid",
+    "foundation": {
+      "bg_primary": "#0B132B",
+      "bg_secondary": "#0F172A",
+      "bg_card": "#1E293B",
+      "bg_card_elevated": "#1E293B/80",
+      "border_subtle": "#334155",
+      "text_primary": "#F8FAFC",
+      "text_secondary": "#94A3B8",
+      "text_muted": "#64748B"
+    },
+    "brand_accents": {
+      "primary_emerald": "#00E5A3",
+      "primary_emerald_hover": "#00C48C",
+      "accent_amber": "#F59E0B",
+      "accent_cyan": "#06B6D4",
+      "status_blue_matched": "#3B82F6",
+      "status_green_completed": "#10B981",
+      "status_amber_pending": "#F59E0B",
+      "status_red_problem": "#EF4444"
+    },
+    "light_mode_fallback": {
+      "bg_primary": "#F8FAFC",
+      "bg_card": "#FFFFFF",
+      "border": "#E2E8F0",
+      "text_primary": "#0F172A"
+    },
+    "forbidden_colors": ["#7351B7", "#1B93A4"]
+  },
+  "rtl_system_rules": {
+    "dir": "rtl",
+    "lang": "ar",
+    "text_alignment": "right by default for Arabic content",
+    "number_formatting": "LTR for numbers, amounts (SAR), phone numbers, dates, IBANs using dir='ltr' inline wrappers",
+    "flex_grid_direction": "Natural flex/grid in RTL mode (flex-row-reverse where required or relying on CSS dir='rtl')",
+    "icon_flip_rules": "Flip directional arrows (chevron-left points right for forward flow in Arabic). Do NOT flip universal icons like search, wallet, truck, or checkmarks",
+    "spacing_logical_props": "Use me-*, ms-*, ps-*, pe-* instead of mr-*, ml-*"
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-slate-900/80 border border-slate-700/50 shadow-2xl",
+    "card_borders": "border border-slate-700/60 rounded-xl bg-slate-800/50 hover:border-emerald-500/40 transition-all duration-200",
+    "glow_effects": "shadow-[0_0_25px_rgba(0,229,163,0.15)]",
+    "status_badges": {
+      "open": "bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold",
+      "matched": "bg-blue-500/10 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-full text-xs font-semibold",
+      "in_progress": "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-semibold",
+      "completed": "bg-green-500/10 text-green-300 border border-green-500/30 px-3 py-1 rounded-full text-xs font-semibold",
+      "replacement_requested": "bg-rose-500/10 text-rose-400 border border-rose-500/30 px-3 py-1 rounded-full text-xs font-semibold animate-pulse",
+      "cancelled": "bg-slate-700/40 text-slate-400 border border-slate-600/40 px-3 py-1 rounded-full text-xs font-semibold"
+    }
+  },
+  "landing_page_structure": [
+    "Hero Header with Glassmorphism Nav (Logo 'إسناد', Quick Nav, Role Selector CTA)",
+    "Hero Banner with Modern Saudi Urban/Logistics Backdrop, Dynamic Punchy Headline, Live Marketplace Metrics Badge",
+    "Services Grid (6 Key Services: Delivery Couriers, Warehouse Staff, Loading/Unloading, Inventory Sorting, Fleet Cars With/Without Drivers, Temporary Event Operations)",
+    "How It Works Flow (Company Creates Request -> AI/Instant Worker Matching -> Attendance Tracking & Escrow Wallet Protection)",
+    "Interactive Estimate Calculator (Select service type, duration, worker quantity -> Instant SAR estimate)",
+    "Trust & Compliance Banner (Saudi Vision 2030 support, CR Verification, SAMA-compliant Escrow Wallets, Attendance Geo-fencing)",
+    "Dual Role Onboarding CTA Cards (Company Registration / Worker Service Provider)",
+    "Footer with Platform Links, Regional Hubs (Riyadh, Jeddah, Dammam, NEOM), Contact Support & Regulatory Disclosures"
+  ],
+  "dashboards_layout": {
+    "business_dashboard": [
+      "Header with Wallet Balance (SAR), Escrow Hold, Active Requests Counter, Urgent Replacement Alerts",
+      "Create Service Request Wizard (4-step modal or dedicated view: Service Selection -> Duration/Vehicle Specs -> Location/Schedule -> Cost Breakdown & Escrow Fund)",
+      "Active Requests Matrix Table with Status Chips, Confirmed Worker Details, Geo Attendance Status, Replacement Request trigger",
+      "Wallet Transactions & Top-up Modal",
+      "Worker Rating & Dispute Support Drawer"
+    ],
+    "worker_dashboard": [
+      "Worker Status Switch (متاح للعمل Now / غير متاح), Wallet Available Earnings (SAR), Completed Jobs Rating",
+      "Available Opportunities Feed with Full Details Before Accepting (Location, Duration, Daily/Hourly Rate, Service Category, Company Name)",
+      "Accepted Jobs & Today's Shift Card with Attendance Confirmation Button (تسجيل الحضور الجغرافي)",
+      "Problem / No-Show Reporting Button",
+      "Earnings Wallet with Direct Withdrawal Requests (IBAN)"
+    ],
+    "admin_dashboard": [
+      "Platform KPI Overview (Total SAR Volume, Active Companies, Registered Service Providers, Shift Completion Rate)",
+      "Request Matching & Manual Worker Dispatch Board",
+      "No-Show & Replacement Override Management Desk",
+      "Escrow Wallets & Withdrawal Approvals Queue",
+      "Support Tickets & Performance Ratings Monitor"
+    ]
+  },
+  "image_urls": {
+    "hero_logistics_warehouse": "https://images.pexels.com/photos/4487383/pexels-photo-4487383.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "delivery_cargo_fleet": "https://images.unsplash.com/photo-1601467995997-ac1ae9a8fff4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHw0fHxkZWxpdmVyeSUyMHRydWNrJTIwbG9naXN0aWNzJTIwY2FyZ298ZW58MHx8fHwxNzg5NTM1MTQyfDA&ixlib=rb-4.1.0&q=85",
+    "saudi_business_skyline": "https://images.pexels.com/photos/38096888/pexels-photo-38096888.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "saudi_executive": "https://images.unsplash.com/photo-1616147147027-60d49d3582c4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBzYXVkaSUyMGJ1c2luZXNzJTIwc2t5bGluZSUyMHdvcmtlcnxlbnwwfHx8fDE3ODk1MzUxNDJ8MA&ixlib=rb-4.1.0&q=85",
+    "forklift_warehouse": "https://images.pexels.com/photos/36398150/pexels-photo-36398150.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "delivery_van_goods": "https://images.pexels.com/photos/6407553/pexels-photo-6407553.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+  },
+  "instructions_to_main_agent": [
+    "Always wrap interactive components with data-testid attributes (e.g. data-testid='create-request-btn', data-testid='worker-accept-job-1', data-testid='wallet-topup-input').",
+    "Ensure dir='rtl' is active on the html element or main wrapper, and use IBM Plex Sans Arabic for body text and Tajawal for headers.",
+    "Implement real mock data state in local storage or React context so requests created by companies instantly pop up on the Worker Job Feed and Admin Dispatch view.",
+    "Support full role switching between Business, Worker, and Admin for demonstration without friction.",
+    "Never use raw transparent backgrounds on sticky headers or modals."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Prioritize smooth micro-animations using Framer Motion or Tailwind transitions.",
+    "Keep contrast ratios high: dark navy background (#0B132B / #0F172A) with vivid Emerald (#00E5A3) and Amber (#F59E0B) accents.",
+    "Strictly follow Arabic RTL layout patterns without breaking LTR format for numbers and IBANs."
+  ]
+}

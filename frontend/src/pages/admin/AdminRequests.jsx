@@ -1,0 +1,159 @@
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { ClipboardList, UserPlus, ChevronDown, ChevronUp, X } from "lucide-react";
+import api, { errMsg } from "@/lib/api";
+import { StatusBadge } from "@/components/StatusBadge";
+import { EmptyState } from "@/components/EmptyState";
+import { SERVICE_MAP, REQUEST_STATUS, sar } from "@/lib/constants";
+
+export default function AdminRequests() {
+  const [requests, setRequests] = useState(null);
+  const [filter, setFilter] = useState("");
+  const [detail, setDetail] = useState(null);
+  const [matchWorker, setMatchWorker] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    api.get("/admin/requests", { params: { status: filter || undefined } })
+      .then(({ data }) => setRequests(data.requests)).catch(() => {});
+  useEffect(() => { load(); }, [filter]);
+
+  const openDetail = async (id) => {
+    if (detail?.request._id === id) return setDetail(null);
+    try {
+      const { data } = await api.get(`/admin/requests/${id}`);
+      setDetail(data);
+      setMatchWorker("");
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const doMatch = async () => {
+    if (!matchWorker) return toast.error("اختر عاملاً للمطابقة");
+    setBusy(true);
+    try {
+      await api.post(`/admin/requests/${detail.request._id}/match`, { worker_id: matchWorker });
+      toast.success("تم إرسال العرض للعامل");
+      openDetail(detail.request._id);
+      const { data } = await api.get(`/admin/requests/${detail.request._id}`);
+      setDetail(data);
+      load();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6" data-testid="admin-requests-page">
+      <div>
+        <h1 className="heading text-2xl font-extrabold">الطلبات والمطابقة</h1>
+        <p className="text-sm text-slate-400 mt-1">متابعة جميع الطلبات والتدخل اليدوي في المطابقة والبدائل</p>
+      </div>
+
+      <div className="flex gap-2 flex-wrap" data-testid="admin-request-filters">
+        <button onClick={() => setFilter("")} data-testid="afilter-all"
+          className={`chip ${!filter ? "bg-brand/15 text-brand border-brand/40" : "bg-navy-800 text-slate-400 border-navy-600"}`}>
+          الكل
+        </button>
+        {Object.entries(REQUEST_STATUS).map(([k, v]) => (
+          <button key={k} onClick={() => setFilter(k)} data-testid={`afilter-${k}`}
+            className={`chip ${filter === k ? v.cls : "bg-navy-800 text-slate-400 border-navy-600"}`}>
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {!requests ? (
+        <p className="text-slate-500 text-sm">جاري التحميل…</p>
+      ) : requests.length === 0 ? (
+        <EmptyState icon={ClipboardList} title="لا توجد طلبات" testid="admin-requests-empty" />
+      ) : (
+        <div className="space-y-3">
+          {requests.map((r) => (
+            <div key={r._id} className="card-surface overflow-hidden" data-testid={`admin-request-${r._id}`}>
+              <button onClick={() => openDetail(r._id)} data-testid={`admin-request-toggle-${r._id}`}
+                className="w-full flex flex-wrap items-center gap-4 p-4 text-right hover:bg-navy-700/20 transition-colors">
+                <div className="flex-1 min-w-[220px]">
+                  <p className="font-semibold text-sm">{r.title}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {r.business?.business_profile?.company_name || r.business?.name} · {r.city} · <span className="num">{r.start_date}</span>
+                  </p>
+                </div>
+                <div className="text-xs text-slate-400">
+                  مقبول <span className="num text-blue-400 font-bold">{r.counts.accepted + r.counts.confirmed + r.counts.attended + r.counts.paid}</span>
+                  <span className="num text-slate-600"> / {r.required_count}</span>
+                  {r.counts.no_show > 0 && <span className="text-rose-400 ms-2">تغيّب: <span className="num">{r.counts.no_show}</span></span>}
+                </div>
+                <p className="font-heading font-bold text-brand num text-sm">{sar(r.estimated_total)}</p>
+                <StatusBadge kind="request" status={r.status} pulse={r.replacement_requested && r.status !== "completed"} />
+                {detail?.request._id === r._id ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+              </button>
+
+              {detail?.request._id === r._id && (
+                <div className="border-t border-navy-600/50 p-5 bg-navy-850/40 space-y-4" data-testid={`admin-request-detail-${r._id}`}>
+                  <div className="grid sm:grid-cols-3 gap-3 text-xs">
+                    <div className="bg-navy-800 rounded-xl p-3 border border-navy-600/40">
+                      <p className="text-slate-500">المنشأة</p>
+                      <p className="font-semibold mt-1">{detail.business?.business_profile?.company_name || detail.business?.name}</p>
+                      <p className="text-slate-500 num mt-0.5">{detail.business?.phone}</p>
+                    </div>
+                    <div className="bg-navy-800 rounded-xl p-3 border border-navy-600/40">
+                      <p className="text-slate-500">الخدمة والعدد</p>
+                      <p className="font-semibold mt-1">{SERVICE_MAP[r.service_type]?.name}</p>
+                      <p className="text-slate-500 mt-0.5">العدد: <span className="num">{r.required_count}</span> · <span className="num">{sar(r.rate)}</span> {SERVICE_MAP[r.service_type]?.unit_label}</p>
+                    </div>
+                    <div className="bg-navy-800 rounded-xl p-3 border border-navy-600/40">
+                      <p className="text-slate-500">التكلفة</p>
+                      <p className="font-semibold mt-1 text-brand num">{sar(r.estimated_total)}</p>
+                      <p className="text-slate-500 mt-0.5">عمولة: <span className="num">{sar(r.commission)}</span></p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 mb-2">العروض والعمال ({detail.offers.length})</p>
+                    <div className="flex flex-wrap gap-2">
+                      {detail.offers.map((o) => (
+                        <div key={o._id} className="chip bg-navy-800 border-navy-600" data-testid={`admin-offer-${o._id}`}>
+                          {o.worker?.name}
+                          <StatusBadge kind="offer" status={o.status} />
+                        </div>
+                      ))}
+                      {detail.offers.length === 0 && <p className="text-xs text-slate-500">لا توجد عروض بعد</p>}
+                    </div>
+                  </div>
+
+                  {["published", "filling", "confirmed", "in_progress"].includes(r.status) && (
+                    <div className="flex flex-wrap gap-3 items-end pt-2 border-t border-navy-600/40">
+                      <div className="flex-1 min-w-[220px]">
+                        <label className="text-[11px] text-slate-500 block mb-1.5">مطابقة يدوية — إرسال عرض لعامل متاح</label>
+                        <select data-testid={`match-select-${r._id}`} value={matchWorker} onChange={(e) => setMatchWorker(e.target.value)}
+                          className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-10 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                          <option value="">اختر عاملاً…</option>
+                          {detail.candidates.map((c) => (
+                            <option key={c._id} value={c._id}>
+                              {c.name} — {c.city} {c.worker_profile?.rating ? `(${c.worker_profile.rating}★)` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button onClick={doMatch} disabled={busy} data-testid={`match-btn-${r._id}`}
+                        className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-5 h-10 text-sm hover:bg-brand-hover disabled:opacity-50 transition-colors">
+                        <UserPlus className="w-4 h-4" /> إرسال عرض
+                      </button>
+                      <button onClick={() => setDetail(null)} className="text-slate-500 hover:text-slate-300" data-testid={`match-close-${r._id}`}>
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
