@@ -92,3 +92,27 @@ def pub(doc):
 
 def pub_list(docs):
     return [pub(d) for d in docs]
+
+
+async def audit(user: dict, action: str, entity: str = None, entity_id: str = None,
+                before=None, after=None, note: str = None):
+    await db.audit_logs.insert_one({
+        "_id": new_id(),
+        "actor_id": user["_id"],
+        "actor_name": user.get("name", ""),
+        "actor_role": user.get("staff_profile", {}).get("staff_role") or user.get("role"),
+        "action": action,
+        "entity": entity,
+        "entity_id": entity_id,
+        "before": before,
+        "after": after,
+        "note": note,
+        "created_at": now_iso(),
+    })
+
+
+async def notify_staff(permission: str, title: str, body: str, ntype: str = "admin", link: str = None):
+    staff = await db.users.find({"role": "staff", "status": "active"}).to_list(100)
+    for s in staff:
+        if permission in (s.get("staff_profile") or {}).get("permissions", []):
+            await notify(s["_id"], title, body, ntype, link)

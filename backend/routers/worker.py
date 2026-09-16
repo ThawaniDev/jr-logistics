@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Literal, List
+from datetime import date, timedelta
 
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP
-from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, pub, pub_list
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 wrk = Depends(require_roles("worker"))
@@ -28,10 +29,12 @@ class AvailabilityIn(BaseModel):
 
 class RespondIn(BaseModel):
     action: Literal["accept", "reject"]
+    terms: bool = False
 
 
 class ApplyIn(BaseModel):
     request_id: str
+    terms: bool = False
 
 
 class WithdrawalIn(BaseModel):
@@ -49,28 +52,45 @@ class RateBizIn(BaseModel):
 @router.get("/overview")
 async def overview(user: dict = wrk):
     wallet = await get_wallet(user["_id"])
+    wp = user.get("worker_profile", {})
     new_offers = await db.offers.count_documents({"worker_id": user["_id"], "status": "offered"})
     active = await db.offers.count_documents(
-        {"worker_id": user["_id"], "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended"]}})
-    completed = user.get("worker_profile", {}).get("jobs_completed", 0)
+        {"worker_id": user["_id"],
+         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed"]}})
+    completed = wp.get("jobs_completed", 0)
     jobs = await db.offers.find(
         {"worker_id": user["_id"],
-         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended"]}}
+         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed"]}}
     ).sort("created_at", -1).to_list(10)
     pending = 0.0
     for o in jobs:
         await enrich_offer(o)
-        if o.get("request") and o["status"] in ("confirmed", "attendance_confirmed", "attended"):
+        if o.get("request") and o["status"] in ("confirmed", "attendance_confirmed", "attended", "driver_completed"):
             req = o["request"]
             share = req["estimated_total"] / req["required_count"]
             pending += share * (1 - req.get("commission_rate", 0.10))
     earned = [t for t in await db.transactions.find(
         {"user_id": user["_id"], "type": "earning"}).to_list(500)]
     paid_total = round(sum(t["amount"] for t in earned), 2)
+    today = date.today().isoformat()
+    soon = (date.today() + timedelta(days=30)).isoformat()
+    docs = await db.driver_documents.find({"worker_id": user["_id"]}).to_list(50)
+    expiring = [d for d in docs if d["status"] == "verified" and d.get("expiry_date")
+                and today <= d["expiry_date"] <= soon]
+    for d in expiring:
+        if not await db.notifications.find_one({"user_id": user["_id"], "meta.doc_id": d["_id"]}):
+            await db.notifications.insert_one({
+                "_id": new_id(), "user_id": user["_id"],
+                "title": "مستندك يقترب من الانتهاء",
+                "body": f"مستند {d['type']} ينتهي بتاريخ {d['expiry_date']} — جدّده لتظل مؤهلاً للفرص",
+                "type": "document", "link": "/app/worker/documents", "read": False,
+                "meta": {"doc_id": d["_id"]}, "created_at": now_iso()})
     return {"wallet": pub(wallet), "new_offers": new_offers, "active_jobs": active,
             "jobs_completed": completed, "jobs": pub_list(jobs),
             "pending_earnings": round(pending, 2), "paid_earnings": paid_total,
-            "availability": user.get("worker_profile", {}).get("availability", "available")}
+            "verification_status": wp.get("verification_status", "pending"),
+            "expiring_docs": len(expiring),
+            "availability": wp.get("availability", "available")}
 
 
 @router.patch("/availability")
@@ -120,9 +140,14 @@ async def respond(offer_id: str, body: RespondIn, user: dict = wrk):
     if body.action == "reject":
         await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "rejected", "responded_at": now_iso()}})
         return {"ok": True, "status": "rejected"}
+    if user.get("worker_profile", {}).get("verification_status") != "verified":
+        raise HTTPException(status_code=403, detail="حسابك غير موثّق — أكمل رفع وتوثيق مستنداتك لقبول الفرص")
+    if not body.terms:
+        raise HTTPException(status_code=400, detail="يجب الموافقة على الشروط والأحكام قبل قبول الفرصة")
     if r["status"] not in ("published", "filling"):
         raise HTTPException(status_code=400, detail="انتهت صلاحية هذه الفرصة")
-    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "accepted", "responded_at": now_iso()}})
+    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "accepted", "responded_at": now_iso(),
+                                                            "terms_accepted_at": now_iso()}})
     if r["status"] == "published":
         await db.requests.update_one({"_id": r["_id"]}, {"$set": {"status": "filling"}})
     await notify(r["business_id"], "مندوب قبل عرضك",
@@ -146,12 +171,17 @@ async def apply(body: ApplyIn, user: dict = wrk):
         raise HTTPException(status_code=404, detail="الفرصة غير متاحة")
     if r["service_type"] not in user.get("worker_profile", {}).get("services", []):
         raise HTTPException(status_code=400, detail="هذه الخدمة غير موجودة في ملفك")
+    if user.get("worker_profile", {}).get("verification_status") != "verified":
+        raise HTTPException(status_code=403, detail="حسابك غير موثّق — أكمل رفع وتوثيق مستنداتك لقبول الفرص")
+    if not body.terms:
+        raise HTTPException(status_code=400, detail="يجب الموافقة على الشروط والأحكام قبل قبول الفرصة")
     if await db.offers.find_one({"request_id": body.request_id, "worker_id": user["_id"]}):
         raise HTTPException(status_code=400, detail="لديك عرض مسبق على هذا الطلب")
     o = {
         "_id": new_id(), "request_id": r["_id"], "worker_id": user["_id"],
         "business_id": r["business_id"], "status": "accepted", "is_replacement": False,
         "earning": 0, "created_at": now_iso(), "responded_at": now_iso(),
+        "terms_accepted_at": now_iso(),
     }
     await db.offers.insert_one(o)
     if r["status"] == "published":
@@ -175,11 +205,55 @@ async def checkin(offer_id: str, user: dict = wrk):
     return {"ok": True}
 
 
+@router.post("/offers/{offer_id}/finish")
+async def finish_job(offer_id: str, user: dict = wrk):
+    o = await db.offers.find_one({"_id": offer_id, "worker_id": user["_id"]})
+    if not o or o["status"] != "attended":
+        raise HTTPException(status_code=400, detail="يمكن إنهاء المهمة بعد تأكيد حضورك من المنشأة")
+    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "driver_completed",
+                                                            "finished_at": now_iso()}})
+    r = await db.requests.find_one({"_id": o["request_id"]})
+    await notify(r["business_id"], "المندوب أنهى المهمة",
+                 f"{user['name']} أنهى مهمة: {r['title']} — أكّد الإتمام لإتمام التسوية وصرف الأرباح",
+                 "completed", f"/app/business/requests/{r['_id']}")
+    return {"ok": True}
+
+
+class NoWorkIn(BaseModel):
+    note: Optional[str] = None
+
+
+@router.post("/offers/{offer_id}/no-work")
+async def report_no_work(offer_id: str, body: NoWorkIn, user: dict = wrk):
+    o = await db.offers.find_one({"_id": offer_id, "worker_id": user["_id"]})
+    if not o or o["status"] not in ("attendance_confirmed", "attended"):
+        raise HTTPException(status_code=400, detail="يمكن الإبلاغ بعد تسجيل حضورك في الموقع فقط")
+    if o.get("no_work_reported"):
+        raise HTTPException(status_code=400, detail="تم الإبلاغ عن هذه المهمة مسبقاً")
+    r = await db.requests.find_one({"_id": o["request_id"]})
+    await db.offers.update_one({"_id": offer_id}, {"$set": {"no_work_reported": True}})
+    ticket = {
+        "_id": new_id(), "user_id": user["_id"],
+        "subject": f"لم يتم توفير العمل — {r['title']}",
+        "category": "not_put_to_work",
+        "message": body.note or "حضرت في الموعد والموقع المحددين ولم تُوفر المنشأة العمل المتفق عليه",
+        "request_id": r["_id"], "offer_id": offer_id,
+        "priority": "urgent", "escalation": "support", "status": "open",
+        "activity": [{"action": "created", "by": user["name"], "at": now_iso()}],
+        "replies": [], "is_demo": user.get("is_demo", False), "created_at": now_iso(),
+    }
+    await db.tickets.insert_one(ticket)
+    await notify_admins("حالة عدم توفير عمل", f"{user['name']} أبلغ عن عدم توفير العمل — {r['title']}",
+                        "case", "/app/admin/cases")
+    await notify_staff("cases", "حالة عدم توفير عمل", f"{user['name']} — {r['title']}", "case", "/app/admin/cases")
+    return {"ok": True, "ticket_id": ticket["_id"]}
+
+
 @router.get("/jobs")
 async def my_jobs(user: dict = wrk):
     active = await db.offers.find(
         {"worker_id": user["_id"],
-         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended"]}}
+         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed"]}}
     ).sort("created_at", -1).to_list(100)
     for o in active:
         await enrich_offer(o)
@@ -207,7 +281,8 @@ async def rate_business(body: RateBizIn, user: dict = wrk):
     await db.ratings.update_one(
         {"offer_id": body.offer_id, "from_user": user["_id"]},
         {"$set": {"to_user": o["business_id"], "request_id": o["request_id"],
-                  "score": body.score, "comment": body.comment, "created_at": now_iso(), "_id": new_id()}},
+                  "score": body.score, "comment": body.comment, "created_at": now_iso()},
+         "$setOnInsert": {"_id": new_id()}},
         upsert=True)
     ratings = await db.ratings.find({"to_user": o["business_id"]}).to_list(1000)
     avg = round(sum(x["score"] for x in ratings) / len(ratings), 1)

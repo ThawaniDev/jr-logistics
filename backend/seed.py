@@ -283,3 +283,42 @@ async def seed_all():
             await db.users.update_one({"_id": w["_id"]},
                                       {"$set": {"worker_profile.vehicle_type": "سيدان" if i % 2 == 0 else "فان"}})
         await db.settings.update_one({"key": "seed_v4"}, {"$set": {"key": "seed_v4", "at": now_iso()}}, upsert=True)
+
+    if not await db.settings.find_one({"key": "seed_v5"}):
+        # staff accounts with role presets
+        staff = [
+            {"_id": "u_s1", "phone": "+966500000301", "name": "أمل الزهراني", "staff_role": "support"},
+            {"_id": "u_s2", "phone": "+966500000302", "name": "بدر العنزي", "staff_role": "operations"},
+            {"_id": "u_s3", "phone": "+966500000303", "name": "سارة القحطاني", "staff_role": "finance"},
+        ]
+        from catalog import STAFF_ROLE_PRESETS
+        for s in staff:
+            if not await db.users.find_one({"_id": s["_id"]}):
+                await db.users.insert_one({
+                    "_id": s["_id"], "phone": s["phone"], "email": None, "name": s["name"],
+                    "role": "staff", "status": "active", "city": "الرياض", "is_demo": True,
+                    "staff_profile": {"staff_role": s["staff_role"],
+                                      "permissions": STAFF_ROLE_PRESETS[s["staff_role"]]},
+                    "created_at": now_iso(),
+                })
+        # verified documents for all demo drivers
+        from datetime import date, timedelta
+        expiry = (date.today() + timedelta(days=365)).isoformat()
+        for w in WORKERS:
+            for dtype in ("national_id", "driving_license", "vehicle_registration"):
+                if not await db.driver_documents.find_one({"worker_id": w["_id"], "type": dtype, "status": "verified"}):
+                    await db.driver_documents.insert_one({
+                        "_id": new_id(), "worker_id": w["_id"], "type": dtype,
+                        "file_path": None, "original_filename": f"demo-{dtype}.pdf",
+                        "content_type": "application/pdf", "size": 0,
+                        "expiry_date": expiry, "status": "verified",
+                        "reviewed_by": "u_admin", "uploaded_at": now_iso(), "is_demo": True,
+                    })
+            await db.users.update_one({"_id": w["_id"]},
+                                      {"$set": {"worker_profile.verification_status": "verified"}})
+        # compensation policy default
+        s = await db.settings.find_one({"key": "platform"})
+        if s and "no_work_compensation_pct" not in s:
+            await db.settings.update_one({"key": "platform"},
+                                         {"$set": {"no_work_compensation_pct": 100}})
+        await db.settings.update_one({"key": "seed_v5"}, {"$set": {"key": "seed_v5", "at": now_iso()}}, upsert=True)

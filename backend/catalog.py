@@ -8,6 +8,32 @@ DEFAULT_VEHICLE_TYPES = ["سيدان", "فان"]
 DEFAULT_SERVICE_AREAS = ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة",
                          "المدينة المنورة", "نيوم", "تبوك", "أبها", "بريدة"]
 
+# Staff role presets (Super Admin = role "admin" with all permissions)
+STAFF_ROLE_PRESETS = {
+    "support": ["stats", "tickets", "users_view", "requests_view"],
+    "operations": ["stats", "requests", "requests_view", "drivers", "documents", "attendance",
+                   "replacements", "cases", "tickets", "users_view"],
+    "finance": ["stats", "wallets", "withdrawals", "transactions", "reports", "requests_view"],
+    "supervisor": ["stats", "requests", "requests_view", "drivers", "documents", "attendance",
+                   "replacements", "cases", "tickets", "users", "users_view",
+                   "withdrawals", "transactions", "reports", "ratings", "audit"],
+}
+
+DOC_TYPES = [
+    {"key": "national_id", "name": "الهوية / الإقامة", "required": True},
+    {"key": "driving_license", "name": "رخصة القيادة", "required": True},
+    {"key": "vehicle_registration", "name": "استمارة المركبة", "required": True},
+    {"key": "vehicle_photo", "name": "صورة المركبة", "required": False},
+]
+
+TICKET_CATEGORIES = {
+    "business": ["driver_no_show", "driver_refused", "shipment_count", "location_issue",
+                 "payment_issue", "replacement_request", "urgent", "other"],
+    "worker": ["business_not_ready", "not_put_to_work", "shipment_count_differs",
+               "location_issue", "task_issue", "attendance_issue", "payment_issue",
+               "cancellation", "other"],
+}
+
 DURATION_DAYS = {"one_day": 1, "week": 7, "month": 30}
 
 SERVICES = [

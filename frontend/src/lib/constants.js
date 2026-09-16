@@ -48,6 +48,7 @@ export const OFFER_STATUS = {
   confirmed: { label: "مؤكد", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
   attendance_confirmed: { label: "سجّل حضوره", cls: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30" },
   attended: { label: "حاضر", cls: "bg-green-500/10 text-green-300 border-green-500/30" },
+  driver_completed: { label: "أنهى المهمة — بانتظار تأكيد المنشأة", cls: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
   paid: { label: "مدفوع", cls: "bg-green-500/10 text-green-300 border-green-500/30" },
   no_show: { label: "لم يحضر", cls: "bg-rose-500/10 text-rose-400 border-rose-500/30" },
   rejected: { label: "مرفوض", cls: "bg-slate-700/40 text-slate-400 border-slate-600/40" },
@@ -81,6 +82,6 @@ export const sar = (n) => `${Number(n || 0).toLocaleString("en-US", { maximumFra
 export const DEFAULT_VEHICLE_TYPES = ["سيدان", "فان"];
 
 export const roleHome = (role) =>
-  role === "admin" ? "/app/admin" : role === "worker" ? "/app/worker" : "/app/business";
+  role === "admin" || role === "staff" ? "/app/admin" : role === "worker" ? "/app/worker" : "/app/business";
 
 export const ROLE_LABELS = { business: "منشأة", worker: "سائق / مندوب", admin: "مدير المنصة" };

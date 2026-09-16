@@ -97,8 +97,10 @@ class TestBusiness:
         assert r.status_code == 200, r.text
         j = r.json()
         # 2 drivers × 30 shipments × 8 SAR = 480
+        defaults = requests.get(f"{API}/catalog/defaults").json()
+        expected_commission = round(480 * defaults["commission_rate"], 2)
         assert j["estimated_total"] == 480
-        assert j["commission"] == 48
+        assert j["commission"] == expected_commission
         assert j["unit"] == "shipment"
 
     def test_topup(self, biz_token):

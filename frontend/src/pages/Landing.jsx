@@ -6,6 +6,8 @@ import {
   MapPin, Clock, BadgeCheck, ArrowLeft, Star, ClipboardList,
 } from "lucide-react";
 import { ACTIVE_SERVICES, COMING_SOON_SERVICES, sar } from "@/lib/constants";
+import { useI18n } from "@/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 const HERO_IMG = "https://images.pexels.com/photos/4487383/pexels-photo-4487383.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
 
@@ -15,6 +17,7 @@ const fadeUp = {
 };
 
 function Estimator() {
+  const { t } = useI18n();
   const [serviceKey, setServiceKey] = useState("delivery_driver");
   const [count, setCount] = useState(4);
   const [days, setDays] = useState(3);
@@ -26,11 +29,11 @@ function Estimator() {
   const commission = total * 0.1;
   return (
     <div className="glass rounded-2xl p-6 sm:p-8">
-      <p className="text-brand text-sm font-semibold mb-1">حاسبة فورية</p>
-      <h3 className="heading font-extrabold text-2xl mb-6">قدّر تكلفة طلبك في ثوانٍ</h3>
+      <p className="text-brand text-sm font-semibold mb-1">{t("landing.estCalc")}</p>
+      <h3 className="heading font-extrabold text-2xl mb-6">{t("landing.estTitle")}</h3>
       <div className="grid sm:grid-cols-3 gap-4">
         <div>
-          <label className="text-xs text-slate-400 block mb-2">نوع الخدمة</label>
+          <label className="text-xs text-slate-400 block mb-2">{t("landing.estService")}</label>
           <select
             data-testid="est-service"
             value={serviceKey}
@@ -38,14 +41,12 @@ function Estimator() {
             className="w-full bg-navy-800 border border-navy-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand"
           >
             {ACTIVE_SERVICES.map((s) => (
-              <option key={s.key} value={s.key}>{s.name}</option>
+              <option key={s.key} value={s.key}>{t(`svc.${s.key}_name`)}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className="text-xs text-slate-400 block mb-2">
-            {svc.unit === "shipment" ? "عدد السائقين" : svc.unit === "vehicle_day" ? "عدد السيارات" : "عدد العمال"}
-          </label>
+          <label className="text-xs text-slate-400 block mb-2">{t("landing.estCount")}</label>
           <input
             data-testid="est-count"
             type="number" min="1" value={count}
@@ -55,7 +56,7 @@ function Estimator() {
         </div>
         {svc.unit !== "shipment" && (
           <div>
-            <label className="text-xs text-slate-400 block mb-2">عدد الأيام</label>
+            <label className="text-xs text-slate-400 block mb-2">{t("landing.estDays")}</label>
             <input
               data-testid="est-days"
               type="number" min="1" value={days}
@@ -67,10 +68,10 @@ function Estimator() {
       </div>
       <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-t border-navy-600/50 pt-5">
         <div>
-          <p className="text-xs text-slate-400">التكلفة التقديرية الإجمالية</p>
+          <p className="text-xs text-slate-400">{t("landing.estTotal")}</p>
           <p className="heading text-4xl font-black text-gradient-brand num" data-testid="est-total">{sar(total)}</p>
           <p className="text-[11px] text-slate-500 mt-1">
-            تشمل عمولة المنصة {sar(commission)} — تُحجز في محفظتك ولا تُصرف إلا بعد إتمام العمل
+            {t("landing.estNote")} — <span className="num">{sar(commission)}</span>
           </p>
         </div>
         <Link
@@ -78,7 +79,7 @@ function Estimator() {
           data-testid="est-cta"
           className="bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors shadow-[0_0_25px_rgba(0,229,163,0.3)]"
         >
-          أنشئ طلبك الآن
+          {t("landing.estCta")}
         </Link>
       </div>
     </div>
@@ -86,6 +87,24 @@ function Estimator() {
 }
 
 export default function Landing() {
+  const { t } = useI18n();
+  const stats = [
+    [t("landing.stat1v"), t("landing.stat1l")],
+    [t("landing.stat2v"), t("landing.stat2l")],
+    [t("landing.stat3v"), t("landing.stat3l")],
+  ];
+  const steps = [
+    { icon: ClipboardList, t: t("landing.step1t"), d: t("landing.step1d") },
+    { icon: Zap, t: t("landing.step2t"), d: t("landing.step2d") },
+    { icon: BadgeCheck, t: t("landing.step3t"), d: t("landing.step3d") },
+    { icon: Wallet, t: t("landing.step4t"), d: t("landing.step4d") },
+  ];
+  const trust = [
+    { icon: ShieldCheck, t: t("landing.trust1t"), d: t("landing.trust1d") },
+    { icon: MapPin, t: t("landing.trust2t"), d: t("landing.trust2d") },
+    { icon: Clock, t: t("landing.trust3t"), d: t("landing.trust3d") },
+    { icon: Star, t: t("landing.trust4t"), d: t("landing.trust4d") },
+  ];
   return (
     <div className="min-h-screen bg-navy-900 text-slate-100 overflow-x-hidden">
       <header className="fixed top-0 inset-x-0 z-50 glass border-x-0 border-t-0">
@@ -97,21 +116,22 @@ export default function Landing() {
             <span className="font-heading font-extrabold text-xl">إسناد</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-slate-300">
-            <a href="#services" className="hover:text-brand transition-colors">الخدمات</a>
-            <a href="#how" className="hover:text-brand transition-colors">كيف نعمل</a>
-            <a href="#estimate" className="hover:text-brand transition-colors">حاسبة التكلفة</a>
-            <a href="#join" className="hover:text-brand transition-colors">انضم إلينا</a>
+            <a href="#services" className="hover:text-brand transition-colors">{t("landing.navServices")}</a>
+            <a href="#how" className="hover:text-brand transition-colors">{t("landing.navHow")}</a>
+            <a href="#estimate" className="hover:text-brand transition-colors">{t("landing.navEst")}</a>
+            <a href="#join" className="hover:text-brand transition-colors">{t("landing.navJoin")}</a>
           </nav>
           <div className="flex items-center gap-3">
+            <LanguageSwitcher compact />
             <Link to="/login" data-testid="landing-login-btn" className="text-sm text-slate-300 hover:text-brand transition-colors px-3 py-2">
-              تسجيل الدخول
+              {t("landing.login")}
             </Link>
             <Link
               to="/login"
               data-testid="landing-start-btn"
               className="bg-brand text-navy-900 text-sm font-bold rounded-full px-5 py-2.5 hover:bg-brand-hover transition-colors shadow-[0_0_20px_rgba(0,229,163,0.35)]"
             >
-              ابدأ الآن
+              {t("landing.start")}
             </Link>
           </div>
         </div>
@@ -126,34 +146,33 @@ export default function Landing() {
             <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0}
               className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand/10 border border-brand/25 text-brand text-xs font-semibold mb-6">
               <span className="w-2 h-2 rounded-full bg-brand animate-pulse-soft" />
-              منصة سعودية — السوق مفتوح الآن
+              {t("landing.badge")}
             </motion.div>
             <motion.h1 variants={fadeUp} initial="hidden" animate="show" custom={1}
               className="heading text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.15] tracking-tight">
-              أسنِد عملياتك اللوجستية
-              <span className="block text-gradient-brand mt-2">للكفاءات الجاهزة فوراً</span>
+              {t("landing.heroT1")}
+              <span className="block text-gradient-brand mt-2">{t("landing.heroT2")}</span>
             </motion.h1>
             <motion.p variants={fadeUp} initial="hidden" animate="show" custom={2}
               className="mt-6 text-slate-400 text-base sm:text-lg leading-relaxed max-w-xl">
-              اطلب مندوبي توصيل جاهزين خلال دقائق — أنشئ طلبك، استقبل المطابقات،
-              أكّد الحضور، وادفع بأمان عبر محفظة ضمان. كل ذلك من منصة واحدة.
+              {t("landing.heroSub")}
             </motion.p>
             <motion.div variants={fadeUp} initial="hidden" animate="show" custom={3} className="mt-8 flex flex-wrap gap-4">
               <Link to="/login" data-testid="hero-business-cta"
                 className="group flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-2xl px-7 py-3.5 hover:bg-brand-hover transition-all shadow-[0_0_30px_rgba(0,229,163,0.3)]">
                 <Building2 className="w-5 h-5" />
-                أنا منشأة تحتاج موارد
-                <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                {t("landing.bizCta")}
+                <ChevronLeft className="w-4 h-4 rtl:rotate-0 ltr:rotate-180 group-hover:-translate-x-1 rtl:group-hover:-translate-x-1 ltr:group-hover:translate-x-1 transition-transform" />
               </Link>
               <Link to="/login" data-testid="hero-worker-cta"
                 className="flex items-center gap-2 border border-navy-600 bg-navy-800/60 text-slate-100 font-bold rounded-2xl px-7 py-3.5 hover:border-brand/50 hover:text-brand transition-all">
                 <UserCheck className="w-5 h-5" />
-                أنا سائق / مندوب توصيل
+                {t("landing.drvCta")}
               </Link>
             </motion.div>
             <motion.div variants={fadeUp} initial="hidden" animate="show" custom={4}
               className="mt-10 grid grid-cols-3 gap-4 max-w-md">
-              {[["< 1 د", "لنشر طلبك"], ["10%", "عمولة شفافة"], ["24/7", "متابعة ودعم"]].map(([v, l]) => (
+              {stats.map(([v, l]) => (
                 <div key={l} className="card-surface p-3 text-center">
                   <p className="heading text-2xl font-black text-brand num">{v}</p>
                   <p className="text-[11px] text-slate-500 mt-1">{l}</p>
@@ -164,7 +183,7 @@ export default function Landing() {
           <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.7, delay: 0.2 }}
             className="relative hidden lg:block">
             <div className="rounded-3xl overflow-hidden border border-navy-600/60 shadow-2xl">
-              <img src={HERO_IMG} alt="عمليات لوجستية" className="w-full h-[420px] object-cover" />
+              <img src={HERO_IMG} alt={t("landing.heroAlt")} className="w-full h-[420px] object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-navy-900/90 via-transparent" />
             </div>
             <div className="absolute -bottom-5 right-6 glass rounded-2xl px-5 py-4 flex items-center gap-3">
@@ -172,8 +191,8 @@ export default function Landing() {
                 <Zap className="w-5 h-5 text-brand" />
               </div>
               <div>
-                <p className="text-sm font-bold">مطابقة فورية</p>
-                <p className="text-[11px] text-slate-400">العامل المناسب يصله العرض خلال ثوانٍ</p>
+                <p className="text-sm font-bold">{t("landing.fc1t")}</p>
+                <p className="text-[11px] text-slate-400">{t("landing.fc1d")}</p>
               </div>
             </div>
             <div className="absolute -top-5 left-6 glass rounded-2xl px-5 py-4 flex items-center gap-3">
@@ -181,8 +200,8 @@ export default function Landing() {
                 <ShieldCheck className="w-5 h-5 text-amber-400" />
               </div>
               <div>
-                <p className="text-sm font-bold">محفظة ضمان</p>
-                <p className="text-[11px] text-slate-400">لا يُصرف المبلغ إلا بعد تأكيد الإنجاز</p>
+                <p className="text-sm font-bold">{t("landing.fc2t")}</p>
+                <p className="text-[11px] text-slate-400">{t("landing.fc2d")}</p>
               </div>
             </div>
           </motion.div>
@@ -191,10 +210,10 @@ export default function Landing() {
 
       <section id="services" className="py-20 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
-          <p className="text-brand text-sm font-semibold text-center">خدمتنا في النسخة الأولى</p>
-          <h2 className="heading text-3xl sm:text-4xl font-black text-center mt-2">مندوبو توصيل موثوقون — عند الطلب</h2>
+          <p className="text-brand text-sm font-semibold text-center">{t("landing.svcEyebrow")}</p>
+          <h2 className="heading text-3xl sm:text-4xl font-black text-center mt-2">{t("landing.svcTitle")}</h2>
           <p className="text-slate-400 text-center mt-3 max-w-2xl mx-auto text-sm sm:text-base">
-            اطلب العدد الذي تحتاجه، حدد منطقة الخدمة ونوع المركبة والشحنات المتوقعة، وتابع الحضور والتسوية من لوحة واحدة
+            {t("landing.svcSub")}
           </p>
           <div className="mt-12 max-w-3xl mx-auto">
             {ACTIVE_SERVICES.map((s) => (
@@ -207,35 +226,32 @@ export default function Landing() {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <h3 className="heading font-extrabold text-xl">{s.name}</h3>
-                      <span className="chip bg-brand/15 text-brand border-brand/30">متاح الآن</span>
+                      <h3 className="heading font-extrabold text-xl">{t(`svc.${s.key}_name`)}</h3>
+                      <span className="chip bg-brand/15 text-brand border-brand/30">{t("landing.availableNow")}</span>
                     </div>
-                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                      مندوبون بمركباتهم (دراجة نارية أو سيارة) لتوصيل شحناتك داخل المدينة — حدد عدد المندوبين،
-                      منطقة الخدمة، نوع المركبة، والشحنات المتوقعة لكل مندوب، وادفع لكل شحنة.
-                    </p>
+                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">{t("landing.svcDesc")}</p>
                     <div className="flex flex-wrap gap-4 mt-4 text-xs text-slate-500">
-                      <span>التسعير: لكل شحنة</span>
-                      <span>تأكيد حضور لحظي</span>
-                      <span>بديل تلقائي عند التغيب</span>
+                      <span>{t("landing.svcP1")}</span>
+                      <span>{t("landing.svcP2")}</span>
+                      <span>{t("landing.svcP3")}</span>
                     </div>
                   </div>
                   <Link to="/login" data-testid="service-cta-delivery"
                     className="shrink-0 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover transition-colors">
-                    اطلب مندوبين
+                    {t("landing.orderDrivers")}
                   </Link>
                 </div>
               </motion.div>
             ))}
           </div>
           <div className="mt-10 text-center" data-testid="coming-soon-services">
-            <p className="text-xs text-slate-500 mb-4">خدمات قادمة على نفس المنصة — البنية جاهزة للتوسع</p>
+            <p className="text-xs text-slate-500 mb-4">{t("landing.comingNote")}</p>
             <div className="flex flex-wrap justify-center gap-2">
               {COMING_SOON_SERVICES.map((s) => (
                 <span key={s.key} data-testid={`coming-${s.key}`}
                   className="chip bg-navy-800/50 text-slate-500 border-navy-700 opacity-70">
-                  <s.icon className="w-3.5 h-3.5" /> {s.short}
-                  <span className="text-[9px] text-amber-500/70">قريباً</span>
+                  <s.icon className="w-3.5 h-3.5" /> {t(`svc.${s.key}_short`)}
+                  <span className="text-[9px] text-amber-500/70">{t("landing.comingSoon")}</span>
                 </span>
               ))}
             </div>
@@ -245,15 +261,10 @@ export default function Landing() {
 
       <section id="how" className="py-20 px-4 sm:px-6 bg-navy-850/50 border-y border-navy-600/40">
         <div className="max-w-7xl mx-auto">
-          <p className="text-brand text-sm font-semibold text-center">دورة عمل محكمة</p>
-          <h2 className="heading text-3xl sm:text-4xl font-black text-center mt-2">من الطلب إلى الدفع في أربع خطوات</h2>
+          <p className="text-brand text-sm font-semibold text-center">{t("landing.howEyebrow")}</p>
+          <h2 className="heading text-3xl sm:text-4xl font-black text-center mt-2">{t("landing.howTitle")}</h2>
           <div className="grid md:grid-cols-4 gap-5 mt-12">
-            {[
-              { icon: ClipboardList, t: "أنشئ طلبك", d: "حدّد عدد المندوبين، منطقة الخدمة، نوع المركبة والميزانية — وانشر الطلب فوراً" },
-              { icon: Zap, t: "مطابقة فورية", d: "يصل العرض للمندوبين المتاحين المطابقين مع كامل التفاصيل قبل القبول" },
-              { icon: BadgeCheck, t: "تأكيد وحضور", d: "أكّد المندوبين، احجز المبلغ في محفظة الضمان، وتتبّع الحضور لحظياً" },
-              { icon: Wallet, t: "تسوية آمنة", d: "عند إتمام العمل تُصرف الأرباح للمندوب تلقائياً بعد خصم العمولة" },
-            ].map((s, i) => (
+            {steps.map((s, i) => (
               <motion.div key={s.t} variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={i}
                 className="card-surface p-6 relative">
                 <span className="absolute top-4 left-5 heading text-5xl font-black text-navy-700/60 num">{i + 1}</span>
@@ -276,12 +287,7 @@ export default function Landing() {
 
       <section className="py-16 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {[
-            { icon: ShieldCheck, t: "محافظ ضمان", d: "أموالك محجوزة بأمان ولا تُصرف إلا بعد تأكيد إتمام العمل" },
-            { icon: MapPin, t: "تغطية وطنية", d: "الرياض، جدة، الدمام، نيوم — وتوسّع مستمر في المناطق" },
-            { icon: Clock, t: "استجابة سريعة", d: "مطابقة وإشعارات فورية عند نشر أي طلب جديد" },
-            { icon: Star, t: "تقييمات موثوقة", d: "سجل أداء وتقييمات شفافة لكل منشأة ومزود خدمة" },
-          ].map((f) => (
+          {trust.map((f) => (
             <div key={f.t} className="card-surface p-5 flex gap-4">
               <div className="w-10 h-10 shrink-0 rounded-xl bg-gold/10 border border-amber-500/25 flex items-center justify-center">
                 <f.icon className="w-5 h-5 text-amber-400" />
@@ -300,27 +306,21 @@ export default function Landing() {
           <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }}
             className="card-surface card-surface-hover p-8 bg-gradient-to-bl from-brand/10 to-transparent">
             <Building2 className="w-10 h-10 text-brand mb-4" />
-            <h3 className="heading text-2xl font-extrabold">للمنشآت والشركات</h3>
-            <p className="text-slate-400 mt-3 text-sm leading-relaxed">
-              متجرك يغرق بالطلبات؟ حملة توصيل تحتاج مندوبين إضافيين؟
-              أنشئ طلبك بدقة — عدد المندوبين، المنطقة، نوع المركبة — وتحكم كاملاً بالتأكيد والحضور والدفع.
-            </p>
+            <h3 className="heading text-2xl font-extrabold">{t("landing.joinBizT")}</h3>
+            <p className="text-slate-400 mt-3 text-sm leading-relaxed">{t("landing.joinBizD")}</p>
             <Link to="/login" data-testid="join-business-btn"
               className="inline-flex items-center gap-2 mt-6 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors">
-              سجّل منشأتك <ArrowLeft className="w-4 h-4" />
+              {t("landing.joinBizBtn")} <ArrowLeft className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
             </Link>
           </motion.div>
           <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={1}
             className="card-surface card-surface-hover p-8 bg-gradient-to-bl from-amber-500/10 to-transparent">
             <UserCheck className="w-10 h-10 text-amber-400 mb-4" />
-            <h3 className="heading text-2xl font-extrabold">للسائقين والمندوبين</h3>
-            <p className="text-slate-400 mt-3 text-sm leading-relaxed">
-              فعّل حالة التوفر واستقبل فرص توصيل بتفاصيل كاملة قبل القبول — المنطقة، نوع المركبة،
-              الشحنات المتوقعة، والأرباح. أرباحك تصل محفظتك فور تأكيد الإنجاز، واسحبها إلى حسابك البنكي.
-            </p>
+            <h3 className="heading text-2xl font-extrabold">{t("landing.joinDrvT")}</h3>
+            <p className="text-slate-400 mt-3 text-sm leading-relaxed">{t("landing.joinDrvD")}</p>
             <Link to="/login" data-testid="join-worker-btn"
               className="inline-flex items-center gap-2 mt-6 bg-amber-400 text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-amber-300 transition-colors">
-              انضم كمندوب توصيل <ArrowLeft className="w-4 h-4" />
+              {t("landing.joinDrvBtn")} <ArrowLeft className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
             </Link>
           </motion.div>
         </div>
@@ -334,15 +334,13 @@ export default function Landing() {
             </div>
             <div>
               <p className="font-heading font-bold">إسناد</p>
-              <p className="text-[11px] text-slate-500">منصة سعودية للموارد اللوجستية والتشغيلية المؤقتة</p>
+              <p className="text-[11px] text-slate-500">{t("landing.footerTag")}</p>
             </div>
           </div>
-          <p className="text-xs text-slate-500 text-center">
-            الرياض · جدة · الدمام · نيوم — جميع الأموال والبيانات في هذه النسخة تجريبية لأغراض العرض
-          </p>
+          <p className="text-xs text-slate-500 text-center">{t("landing.footerNote")}</p>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <Users className="w-4 h-4 text-brand" />
-            دعم رؤية السعودية 2030 لتمكين سوق العمل المرن
+            {t("landing.footerVision")}
           </div>
         </div>
       </footer>

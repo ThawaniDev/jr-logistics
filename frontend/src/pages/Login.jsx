@@ -7,9 +7,12 @@ import { Input } from "@/components/ui/input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n } from "@/i18n";
 import { roleHome } from "@/lib/constants";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 export default function Login() {
+  const { t } = useI18n();
   const [step, setStep] = useState("phone");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -20,14 +23,14 @@ export default function Login() {
 
   const sendOtp = async (e) => {
     e?.preventDefault();
-    if (!phone.trim()) return toast.error("أدخل رقم الجوال");
+    if (!phone.trim()) return toast.error(t("auth.phoneLabel"));
     setBusy(true);
     try {
       const { data } = await api.post("/auth/otp/send", { phone });
       setPhone(data.phone);
       setDemoOtp(data.demo_otp);
       setStep("otp");
-      toast.success("تم إرسال رمز التحقق");
+      toast.success(t("auth.sendOtp"));
     } catch (err) {
       toast.error(errMsg(err));
     } finally {
@@ -37,7 +40,7 @@ export default function Login() {
 
   const verify = async (e) => {
     e?.preventDefault();
-    if (code.length !== 4) return toast.error("أدخل الرمز المكوّن من 4 أرقام");
+    if (code.length !== 4) return toast.error("OTP");
     setBusy(true);
     try {
       const { data } = await api.post("/auth/otp/verify", { phone, code });
@@ -48,7 +51,7 @@ export default function Login() {
         return;
       }
       login(data.token, data.user);
-      toast.success(`أهلاً بك، ${data.user.name}`);
+      toast.success(data.user.name);
       navigate(roleHome(data.user.role));
     } catch (err) {
       toast.error(errMsg(err));
@@ -59,7 +62,10 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-navy-900 text-slate-100 flex items-center justify-center px-4 hero-grid relative">
-      <div className="absolute -top-24 left-1/3 w-96 h-96 rounded-full bg-brand/10 blur-[130px] pointer-events-none" />
+      <div className="absolute -top-24 start-1/3 w-96 h-96 rounded-full bg-brand/10 blur-[130px] pointer-events-none" />
+      <div className="absolute top-4 end-4 z-10">
+        <LanguageSwitcher />
+      </div>
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
         className="w-full max-w-md">
         <Link to="/" className="flex items-center justify-center gap-3 mb-8" data-testid="login-logo">
@@ -70,10 +76,10 @@ export default function Login() {
         </Link>
         <div className="glass rounded-3xl p-8">
           <div className="flex items-center gap-3 mb-6">
-            <ShieldCheck className="w-6 h-6 text-brand" />
+            <ShieldCheck className="w-6 h-6 text-brand shrink-0" />
             <div>
-              <h1 className="heading font-extrabold text-xl">الدخول برقم الجوال</h1>
-              <p className="text-xs text-slate-400 mt-0.5">بدون كلمة مرور — رمز تحقق آمن</p>
+              <h1 className="heading font-extrabold text-xl">{t("auth.loginTitle")}</h1>
+              <p className="text-xs text-slate-400 mt-0.5">{t("auth.loginSub")}</p>
             </div>
           </div>
           <AnimatePresence mode="wait">
@@ -81,16 +87,16 @@ export default function Login() {
               <motion.form key="phone" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                 onSubmit={sendOtp} className="space-y-5">
                 <div>
-                  <label className="text-sm text-slate-300 block mb-2">رقم الجوال السعودي</label>
+                  <label className="text-sm text-slate-300 block mb-2">{t("auth.phoneLabel")}</label>
                   <div className="relative">
-                    <Phone className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <Phone className="absolute end-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                     <Input
                       data-testid="login-phone-input"
                       dir="ltr"
                       placeholder="+966 5X XXX XXXX"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="pr-10 h-12 bg-navy-800 border-navy-600 text-left"
+                      className="pe-10 h-12 bg-navy-800 border-navy-600 text-left"
                     />
                   </div>
                 </div>
@@ -99,26 +105,24 @@ export default function Login() {
                   disabled={busy}
                   className="w-full h-12 bg-brand text-navy-900 font-bold rounded-xl hover:bg-brand-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {busy ? "جاري الإرسال…" : "إرسال رمز التحقق"}
-                  <ArrowRight className="w-4 h-4 rotate-180" />
+                  {busy ? t("auth.sending") : t("auth.sendOtp")}
+                  <ArrowRight className="w-4 h-4 rtl:rotate-180" />
                 </button>
-                <p className="text-[11px] text-slate-500 text-center leading-relaxed">
-                  نسخة تجريبية: سيظهر رمز التحقق على الشاشة بدلاً من رسالة نصية
-                </p>
+                <p className="text-[11px] text-slate-500 text-center leading-relaxed">{t("auth.demoMode")}</p>
               </motion.form>
             ) : (
               <motion.form key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                 onSubmit={verify} className="space-y-5">
                 <p className="text-sm text-slate-300 text-center">
-                  أدخل الرمز المرسل إلى <span className="num text-brand font-semibold">{phone}</span>
+                  {t("auth.otpTo")} <span className="num text-brand font-semibold">{phone}</span>
                 </p>
                 {demoOtp && (
                   <div data-testid="demo-otp-banner" className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-center">
-                    <p className="text-[11px] text-amber-400/80">وضع العرض التجريبي — رمز التحقق:</p>
+                    <p className="text-[11px] text-amber-400/80">{t("auth.demoMode")}</p>
                     <p className="heading text-2xl font-black text-amber-400 num tracking-[0.4em]" data-testid="demo-otp-code">{demoOtp}</p>
                   </div>
                 )}
-                <div dir="ltr" className="flex justify-center" data-testid="otp-input">
+                <div dir="ltr" className="flex justify-center">
                   <InputOTP maxLength={4} value={code} onChange={setCode} data-testid="otp-code-input">
                     <InputOTPGroup>
                       {[0, 1, 2, 3].map((i) => (
@@ -133,20 +137,18 @@ export default function Login() {
                   className="w-full h-12 bg-brand text-navy-900 font-bold rounded-xl hover:bg-brand-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <KeyRound className="w-4 h-4" />
-                  {busy ? "جاري التحقق…" : "تحقق وادخل"}
+                  {busy ? t("auth.verifying") : t("auth.verify")}
                 </button>
                 <button type="button" onClick={() => { setStep("phone"); setCode(""); }}
                   data-testid="login-back-btn"
                   className="w-full text-sm text-slate-400 hover:text-brand transition-colors">
-                  تغيير رقم الجوال
+                  {t("auth.changeNumber")}
                 </button>
               </motion.form>
             )}
           </AnimatePresence>
         </div>
-        <p className="text-center text-xs text-slate-500 mt-6">
-          ليس لديك حساب؟ أدخل رقم جوالك وسننشئ حسابك فوراً
-        </p>
+        <p className="text-center text-xs text-slate-500 mt-6">{t("auth.noAccount")}</p>
       </motion.div>
     </div>
   );

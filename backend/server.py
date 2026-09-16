@@ -14,7 +14,9 @@ from routers.business import router as business_router
 from routers.worker import router as worker_router
 from routers.admin import router as admin_router
 from routers.common import router as common_router
+from routers.documents import router as documents_router
 from seed import seed_all
+from storage import init_storage
 
 app = FastAPI(title="ISNAD API")
 
@@ -23,6 +25,7 @@ app.include_router(business_router)
 app.include_router(worker_router)
 app.include_router(admin_router)
 app.include_router(common_router)
+app.include_router(documents_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +47,13 @@ async def startup():
     await db.offers.create_index("request_id")
     await db.offers.create_index("worker_id")
     await db.transactions.create_index("user_id")
+    await db.audit_logs.create_index("created_at")
+    await db.driver_documents.create_index("worker_id")
+    try:
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
     await seed_all()
     logger.info("ISNAD API ready — demo data seeded")
 

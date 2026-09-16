@@ -1,12 +1,14 @@
-export function StatCard({ icon: Icon, label, value, sub, tone = "brand", testid }) {
+import { Link } from "react-router-dom";
+
+export function StatCard({ icon: Icon, label, value, sub, tone = "brand", testid, to }) {
   const tones = {
     brand: "from-brand/15 to-transparent text-brand",
     gold: "from-amber-500/15 to-transparent text-amber-400",
     blue: "from-blue-500/15 to-transparent text-blue-400",
     cyan: "from-cyan-500/15 to-transparent text-cyan-400",
   };
-  return (
-    <div data-testid={testid} className={`card-surface card-surface-hover p-5 bg-gradient-to-bl ${tones[tone]}`}>
+  const inner = (
+    <>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-slate-400">{label}</p>
@@ -19,6 +21,9 @@ export function StatCard({ icon: Icon, label, value, sub, tone = "brand", testid
           </div>
         )}
       </div>
-    </div>
+    </>
   );
+  const cls = `card-surface card-surface-hover p-5 bg-gradient-to-bl ${tones[tone]} block`;
+  if (to) return <Link to={to} data-testid={testid} className={cls}>{inner}</Link>;
+  return <div data-testid={testid} className={cls}>{inner}</div>;
 }

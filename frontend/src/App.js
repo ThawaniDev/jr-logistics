@@ -1,6 +1,7 @@
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { I18nProvider } from "@/i18n";
 import { Toaster } from "@/components/ui/sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { roleHome } from "@/lib/constants";
@@ -23,12 +24,17 @@ import WorkerOpportunities from "@/pages/worker/WorkerOpportunities";
 import WorkerJobs from "@/pages/worker/WorkerJobs";
 import WorkerWallet from "@/pages/worker/WorkerWallet";
 import WorkerProfile from "@/pages/worker/WorkerProfile";
+import WorkerDocuments from "@/pages/worker/WorkerDocuments";
 
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminUsers from "@/pages/admin/AdminUsers";
 import AdminRequests from "@/pages/admin/AdminRequests";
 import AdminWithdrawals from "@/pages/admin/AdminWithdrawals";
 import AdminSettings from "@/pages/admin/AdminSettings";
+import AdminStaff from "@/pages/admin/AdminStaff";
+import AdminDocuments from "@/pages/admin/AdminDocuments";
+import AdminCases from "@/pages/admin/AdminCases";
+import AdminAudit from "@/pages/admin/AdminAudit";
 
 function RoleIndex() {
   const { user, loading } = useAuth();
@@ -40,37 +46,44 @@ function RoleIndex() {
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/app" element={<DashboardLayout />}>
-            <Route index element={<RoleIndex />} />
-            <Route path="business" element={<BusinessDashboard />} />
-            <Route path="business/requests" element={<BusinessRequests />} />
-            <Route path="business/requests/new" element={<RequestNew />} />
-            <Route path="business/requests/:id" element={<RequestDetail />} />
-            <Route path="business/wallet" element={<BusinessWallet />} />
-            <Route path="business/profile" element={<BusinessProfile />} />
-            <Route path="worker" element={<WorkerDashboard />} />
-            <Route path="worker/opportunities" element={<WorkerOpportunities />} />
-            <Route path="worker/jobs" element={<WorkerJobs />} />
-            <Route path="worker/wallet" element={<WorkerWallet />} />
-            <Route path="worker/profile" element={<WorkerProfile />} />
-            <Route path="admin" element={<AdminDashboard />} />
-            <Route path="admin/users" element={<AdminUsers />} />
-            <Route path="admin/requests" element={<AdminRequests />} />
-            <Route path="admin/withdrawals" element={<AdminWithdrawals />} />
-            <Route path="admin/settings" element={<AdminSettings />} />
-            <Route path="admin/support" element={<Support />} />
-            <Route path="support" element={<Support />} />
-            <Route path="notifications" element={<Notifications />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-      <Toaster position="top-center" richColors dir="rtl" />
+      <I18nProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/app" element={<DashboardLayout />}>
+              <Route index element={<RoleIndex />} />
+              <Route path="business" element={<BusinessDashboard />} />
+              <Route path="business/requests" element={<BusinessRequests />} />
+              <Route path="business/requests/new" element={<RequestNew />} />
+              <Route path="business/requests/:id" element={<RequestDetail />} />
+              <Route path="business/wallet" element={<BusinessWallet />} />
+              <Route path="business/profile" element={<BusinessProfile />} />
+              <Route path="worker" element={<WorkerDashboard />} />
+              <Route path="worker/opportunities" element={<WorkerOpportunities />} />
+              <Route path="worker/jobs" element={<WorkerJobs />} />
+              <Route path="worker/wallet" element={<WorkerWallet />} />
+              <Route path="worker/documents" element={<WorkerDocuments />} />
+              <Route path="worker/profile" element={<WorkerProfile />} />
+              <Route path="admin" element={<AdminDashboard />} />
+              <Route path="admin/users" element={<AdminUsers />} />
+              <Route path="admin/requests" element={<AdminRequests />} />
+              <Route path="admin/withdrawals" element={<AdminWithdrawals />} />
+              <Route path="admin/settings" element={<AdminSettings />} />
+              <Route path="admin/staff" element={<AdminStaff />} />
+              <Route path="admin/documents" element={<AdminDocuments />} />
+              <Route path="admin/cases" element={<AdminCases />} />
+              <Route path="admin/audit" element={<AdminAudit />} />
+              <Route path="admin/support" element={<Support />} />
+              <Route path="support" element={<Support />} />
+              <Route path="notifications" element={<Notifications />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+        <Toaster position="top-center" richColors dir="rtl" />
+      </I18nProvider>
     </AuthProvider>
   );
 }

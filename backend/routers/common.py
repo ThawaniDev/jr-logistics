@@ -3,9 +3,9 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 from db import db
-from deps import get_current_user
-from catalog import SERVICES, ENABLED_SERVICES
-from utils import new_id, now_iso, notify, get_wallet, pub, pub_list, get_settings
+from deps import get_current_user, require_staff
+from catalog import SERVICES, ENABLED_SERVICES, TICKET_CATEGORIES
+from utils import new_id, now_iso, notify, get_wallet, pub, pub_list, get_settings, audit
 
 router = APIRouter(prefix="/api", tags=["common"])
 
@@ -32,6 +32,7 @@ class ProfileIn(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     city: Optional[str] = None
+    language: Optional[str] = None
     company_name: Optional[str] = None
     cr_number: Optional[str] = None
     industry: Optional[str] = None
@@ -45,7 +46,7 @@ class ProfileIn(BaseModel):
 @router.patch("/profile")
 async def update_profile(body: ProfileIn, user: dict = Depends(get_current_user)):
     updates = {}
-    for f in ("name", "email", "city"):
+    for f in ("name", "email", "city", "language"):
         v = getattr(body, f)
         if v is not None:
             updates[f] = v
@@ -102,6 +103,8 @@ class TicketIn(BaseModel):
     subject: str
     category: str = "general"
     message: str
+    request_id: Optional[str] = None
+    priority: Optional[str] = None
 
 
 class ReplyIn(BaseModel):
@@ -110,46 +113,91 @@ class ReplyIn(BaseModel):
 
 @router.post("/tickets")
 async def create_ticket(body: TicketIn, user: dict = Depends(get_current_user)):
+    allowed = TICKET_CATEGORIES.get(user["role"], []) + ["general"]
+    category = body.category if body.category in allowed else "general"
+    priority = body.priority if body.priority in ("normal", "urgent") else \
+        ("urgent" if category in ("urgent", "driver_no_show", "not_put_to_work") else "normal")
     doc = {
         "_id": new_id(), "user_id": user["_id"], "subject": body.subject,
-        "category": body.category, "message": body.message,
-        "status": "open", "replies": [], "is_demo": user.get("is_demo", False),
+        "category": category, "message": body.message,
+        "request_id": body.request_id, "priority": priority,
+        "escalation": "support", "status": "open",
+        "activity": [{"action": "created", "by": user["name"], "at": now_iso()}],
+        "replies": [], "is_demo": user.get("is_demo", False),
         "created_at": now_iso(),
     }
     await db.tickets.insert_one(doc)
-    return {"ticket": doc}
+    return {"ticket": pub(doc)}
 
 
 @router.get("/tickets")
 async def list_tickets(user: dict = Depends(get_current_user)):
-    query = {} if user["role"] == "admin" else {"user_id": user["_id"]}
+    if user["role"] in ("admin", "staff"):
+        from deps import user_permissions
+        if user["role"] != "admin" and "tickets" not in user_permissions(user):
+            raise HTTPException(status_code=403, detail="لا تملك صلاحية الوصول")
+        query = {}
+    else:
+        query = {"user_id": user["_id"]}
     items = await db.tickets.find(query).sort("created_at", -1).to_list(200)
     for t in items:
         t["user"] = pub(await db.users.find_one({"_id": t["user_id"]}, {"name": 1, "role": 1, "phone": 1}))
+        if t.get("request_id"):
+            t["request"] = pub(await db.requests.find_one(
+                {"_id": t["request_id"]},
+                {"title": 1, "city": 1, "start_date": 1, "estimated_total": 1, "status": 1}))
     return {"tickets": pub_list(items)}
 
 
 @router.post("/tickets/{ticket_id}/reply")
 async def reply_ticket(ticket_id: str, body: ReplyIn, user: dict = Depends(get_current_user)):
     t = await db.tickets.find_one({"_id": ticket_id})
-    if not t or (user["role"] != "admin" and t["user_id"] != user["_id"]):
+    if not t or (user["role"] not in ("admin", "staff") and t["user_id"] != user["_id"]):
         raise HTTPException(status_code=404, detail="التذكرة غير موجودة")
-    reply = {"from_admin": user["role"] == "admin", "author": user["name"],
+    is_staff = user["role"] in ("admin", "staff")
+    reply = {"from_admin": is_staff, "author": user["name"],
              "message": body.message, "at": now_iso()}
-    new_status = "in_review" if user["role"] == "admin" else "open"
+    new_status = "in_review" if is_staff else "open"
     await db.tickets.update_one({"_id": ticket_id},
-                                {"$push": {"replies": reply}, "$set": {"status": new_status}})
-    if user["role"] == "admin":
+                                {"$push": {"replies": reply,
+                                           "activity": {"action": "reply", "by": user["name"],
+                                                        "at": now_iso()}},
+                                 "$set": {"status": new_status}})
+    if is_staff:
         await notify(t["user_id"], "رد جديد على تذكرتك", f"{t['subject']}: {body.message[:80]}", "support", "/app/support")
+    return {"ok": True}
+
+
+class EscalateIn(BaseModel):
+    level: str
+
+
+@router.post("/tickets/{ticket_id}/escalate")
+async def escalate_ticket(ticket_id: str, body: EscalateIn, user: dict = Depends(require_staff("tickets"))):
+    t = await db.tickets.find_one({"_id": ticket_id})
+    if not t:
+        raise HTTPException(status_code=404, detail="التذكرة غير موجودة")
+    if body.level not in ("support", "operations", "account_manager"):
+        raise HTTPException(status_code=400, detail="مستوى تصعيد غير صالح")
+    await db.tickets.update_one({"_id": ticket_id},
+                                {"$set": {"escalation": body.level},
+                                 "$push": {"activity": {"action": "escalated", "by": user["name"],
+                                                        "at": now_iso(), "note": body.level}}})
+    await audit(user, "ticket_escalated", "ticket", ticket_id,
+                before=t.get("escalation"), after=body.level)
     return {"ok": True}
 
 
 @router.post("/tickets/{ticket_id}/resolve")
 async def resolve_ticket(ticket_id: str, user: dict = Depends(get_current_user)):
     t = await db.tickets.find_one({"_id": ticket_id})
-    if not t or (user["role"] != "admin" and t["user_id"] != user["_id"]):
+    if not t or (user["role"] not in ("admin", "staff") and t["user_id"] != user["_id"]):
         raise HTTPException(status_code=404, detail="التذكرة غير موجودة")
-    await db.tickets.update_one({"_id": ticket_id}, {"$set": {"status": "resolved", "resolved_at": now_iso()}})
-    if user["role"] == "admin":
+    await db.tickets.update_one({"_id": ticket_id},
+                                {"$set": {"status": "resolved", "resolved_at": now_iso()},
+                                 "$push": {"activity": {"action": "resolved", "by": user["name"],
+                                                        "at": now_iso()}}})
+    if user["role"] in ("admin", "staff"):
+        await audit(user, "ticket_resolved", "ticket", ticket_id)
         await notify(t["user_id"], "تم حل تذكرتك", t["subject"], "support", "/app/support")
     return {"ok": True}

@@ -34,3 +34,29 @@ def require_roles(*roles: str):
             raise HTTPException(status_code=403, detail="لا تملك صلاحية الوصول")
         return u
     return checker
+
+
+def user_permissions(user: dict) -> set:
+    if user["role"] == "admin":
+        return {"*"}
+    if user["role"] == "staff":
+        return set((user.get("staff_profile") or {}).get("permissions", []))
+    return set()
+
+
+def require_staff(*perms: str):
+    async def checker(request: Request):
+        u = await get_current_user(request)
+        if u["role"] not in ("admin", "staff"):
+            raise HTTPException(status_code=403, detail="لا تملك صلاحية الوصول")
+        if u["role"] == "admin":
+            return u
+        granted = user_permissions(u)
+        if any(p in granted for p in perms):
+            return u
+        raise HTTPException(status_code=403, detail="لا تملك صلاحية الوصول لهذا القسم")
+    return checker
+
+
+def require_admin():
+    return require_roles("admin")

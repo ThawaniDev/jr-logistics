@@ -29,6 +29,7 @@ async def match_workers(request: dict) -> int:
     workers = await db.users.find({
         "role": "worker", "status": "active",
         "worker_profile.availability": "available",
+        "worker_profile.verification_status": "verified",
         "worker_profile.services": request["service_type"],
     }).to_list(50)
     existing = await db.offers.distinct("worker_id", {"request_id": request["_id"]})
@@ -58,6 +59,22 @@ async def match_workers(request: dict) -> int:
                 "offer", "/app/worker/opportunities",
             )
     return len(offers)
+
+
+async def reserve_funds(user_id: str, r: dict):
+    wallet = await get_wallet(user_id)
+    if wallet["available"] < r["estimated_total"]:
+        raise HTTPException(status_code=400, detail={
+            "code": "INSUFFICIENT_FUNDS",
+            "message": "لا يمكن إرسال الطلب، يرجى شحن المحفظة أولاً.",
+            "required": r["estimated_total"],
+            "available": wallet["available"],
+        })
+    await db.wallets.update_one({"user_id": user_id},
+                                {"$inc": {"available": -r["estimated_total"], "reserved": r["estimated_total"]}})
+    await add_txn(user_id, "reserve", r["estimated_total"], "debit",
+                  f"حجز تكلفة الطلب: {r['title']}", r["_id"])
+    await db.requests.update_one({"_id": r["_id"]}, {"$set": {"escrow_reserved": True}})
 
 
 class EstimateIn(BaseModel):
@@ -159,17 +176,22 @@ async def create_request(body: RequestIn, user: dict = biz):
         "estimated_total": total,
         "commission": commission,
         "payout_total": payout,
-        "status": "published" if body.publish else "draft",
+        "status": "draft",
+        "escrow_reserved": False,
         "replacement_count": 0,
         "is_demo": False,
         "created_at": now_iso(),
     }
     await db.requests.insert_one(doc)
     matched = 0
-    if doc["status"] == "published":
+    if body.publish:
+        await reserve_funds(user["_id"], doc)
+        await db.requests.update_one({"_id": doc["_id"]},
+                                     {"$set": {"status": "published", "published_at": now_iso()}})
+        doc["status"] = "published"
         matched = await match_workers(doc)
         await notify(user["_id"], "تم إنشاء طلبك ونشره",
-                     f"طلب: {doc['title']} — أُرسل لـ {matched} مندوب مطابق",
+                     f"طلب: {doc['title']} — حُجز {doc['estimated_total']} ر.س وأُرسل لـ {matched} مندوب مطابق",
                      "request", f"/app/business/requests/{doc['_id']}")
     return {"request": doc, "matched_workers": matched}
 
@@ -179,6 +201,8 @@ async def publish_request(request_id: str, user: dict = biz):
     r = await get_owned_request(request_id, user)
     if r["status"] != "draft":
         raise HTTPException(status_code=400, detail="يمكن نشر المسودات فقط")
+    if not r.get("escrow_reserved"):
+        await reserve_funds(user["_id"], r)
     await db.requests.update_one({"_id": request_id},
                                  {"$set": {"status": "published", "published_at": now_iso()}})
     r["status"] = "published"
@@ -229,14 +253,8 @@ async def confirm_request(request_id: str, user: dict = biz):
     if len(accepted) < r["required_count"]:
         raise HTTPException(status_code=400,
                             detail=f"بانتظار قبول {r['required_count'] - len(accepted)} مندوب إضافي قبل التأكيد")
-    wallet = await get_wallet(user["_id"])
-    if wallet["available"] < r["estimated_total"]:
-        raise HTTPException(status_code=400,
-                            detail=f"رصيدك غير كافٍ. تحتاج {r['estimated_total']} ر.س — اشحن محفظتك أولاً")
-    await db.wallets.update_one({"user_id": user["_id"]},
-                                {"$inc": {"available": -r["estimated_total"], "reserved": r["estimated_total"]}})
-    await add_txn(user["_id"], "reserve", r["estimated_total"], "debit",
-                  f"حجز تكلفة الطلب: {r['title']}", request_id)
+    if not r.get("escrow_reserved"):
+        await reserve_funds(user["_id"], r)
     chosen = accepted[: r["required_count"]]
     for o in chosen:
         await db.offers.update_one({"_id": o["_id"]}, {"$set": {"status": "confirmed"}})
@@ -282,7 +300,7 @@ async def complete_request(request_id: str, user: dict = biz):
     if r["status"] not in ("confirmed", "in_progress"):
         raise HTTPException(status_code=400, detail="لا يمكن إنهاء هذا الطلب في حالته الحالية")
     payable = await db.offers.find(
-        {"request_id": request_id, "status": {"$in": ["attended", "attendance_confirmed"]}}).to_list(500)
+        {"request_id": request_id, "status": {"$in": ["attended", "attendance_confirmed", "driver_completed"]}}).to_list(500)
     if not payable:
         raise HTTPException(status_code=400, detail="لا يوجد حضور مؤكد — سجّل حضور العمال أولاً")
     share = round(r["estimated_total"] / r["required_count"], 2)
@@ -312,6 +330,9 @@ async def complete_request(request_id: str, user: dict = biz):
     await db.requests.update_one({"_id": request_id},
                                  {"$set": {"status": "completed", "completed_at": now_iso(),
                                            "replacement_requested": False}})
+    await notify(user["_id"], "اكتمل الطلب وتمت التسوية",
+                 f"تم صرف {released} ر.س للمندوبين وإرجاع {refund} ر.س لمحفظتك — {r['title']}",
+                 "completed", f"/app/business/requests/{request_id}")
     return {"ok": True, "paid_workers": len(payable), "released": released, "refunded": refund}
 
 
@@ -320,11 +341,12 @@ async def cancel_request(request_id: str, user: dict = biz):
     r = await get_owned_request(request_id, user)
     if r["status"] in ("completed", "cancelled"):
         raise HTTPException(status_code=400, detail="الطلب منتهي بالفعل")
-    if r["status"] in ("confirmed", "in_progress"):
+    if r.get("escrow_reserved"):
         await db.wallets.update_one({"user_id": user["_id"]},
                                     {"$inc": {"reserved": -r["estimated_total"], "available": r["estimated_total"]}})
         await add_txn(user["_id"], "refund", r["estimated_total"], "credit",
                       f"استرداد حجز طلب ملغي: {r['title']}", request_id)
+        await db.requests.update_one({"_id": request_id}, {"$set": {"escrow_reserved": False}})
     await db.offers.update_many(
         {"request_id": request_id, "status": {"$in": ["offered", "accepted", "confirmed", "attendance_confirmed"]}},
         {"$set": {"status": "cancelled"}})
@@ -345,7 +367,8 @@ async def rate_worker(request_id: str, body: RateIn, user: dict = biz):
     await db.ratings.update_one(
         {"request_id": request_id, "offer_id": body.offer_id, "from_user": user["_id"]},
         {"$set": {"to_user": o["worker_id"], "score": body.score, "comment": body.comment,
-                  "created_at": now_iso(), "_id": new_id()}},
+                  "created_at": now_iso()},
+         "$setOnInsert": {"_id": new_id()}},
         upsert=True)
     await recalc_worker_rating(o["worker_id"])
     return {"ok": True}

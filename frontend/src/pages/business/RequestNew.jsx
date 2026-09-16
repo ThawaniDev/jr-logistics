@@ -1,15 +1,16 @@
 import { useMemo, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { ChevronRight, ChevronLeft, Check, Rocket } from "lucide-react";
+import { ChevronRight, ChevronLeft, Check, Rocket, Wallet, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import api, { errMsg } from "@/lib/api";
+import { useI18n } from "@/i18n";
 import { ACTIVE_SERVICES, SERVICE_MAP, DURATIONS, sar, DEFAULT_VEHICLE_TYPES } from "@/lib/constants";
 
-const STEPS = ["نوع الخدمة", "التفاصيل والتسعير", "الموقع والجدولة", "المراجعة والنشر"];
-
 export default function RequestNew() {
+  const { t } = useI18n();
+  const STEPS = [t("wizard.step1"), t("wizard.step2"), t("wizard.step3"), t("wizard.step4")];
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     service_type: "delivery_driver", title: "", required_count: 1, rate: "",
@@ -22,16 +23,17 @@ export default function RequestNew() {
     service_areas: ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة", "المدينة المنورة"],
   });
   const [busy, setBusy] = useState(false);
+  const [insufficient, setInsufficient] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     api.get("/catalog/defaults")
-      .then(({ data }) => setDefaults({
+      .then(({ data }) => setDefaults((prev) => ({
         default_rate: data.default_rate,
         commission_rate: data.commission_rate,
-        vehicle_types: data.vehicle_types?.length ? data.vehicle_types : DEFAULT_VEHICLE_TYPES,
-        service_areas: data.service_areas?.length ? data.service_areas : defaults.service_areas,
-      }))
+        vehicle_types: data.vehicle_types?.length ? data.vehicle_types : prev.vehicle_types,
+        service_areas: data.service_areas?.length ? data.service_areas : prev.service_areas,
+      })))
       .catch(() => {});
   }, []);
 
@@ -54,19 +56,20 @@ export default function RequestNew() {
   }, [svc, form.rate, form.shipments_per_driver, form.required_count, durationDays, defaults]);
 
   const next = () => {
-    if (step === 0 && !form.service_type) return toast.error("اختر نوع الخدمة");
+    if (step === 0 && !form.service_type) return toast.error(t("wizard.step1"));
     if (step === 1) {
-      if (form.rate && Number(form.rate) <= 0) return toast.error("أدخل سعراً صحيحاً");
-      if (form.required_count < 1) return toast.error("أدخل العدد المطلوب");
-      if (svc?.has_shipments && !form.shipments_per_driver) return toast.error("أدخل الشحنات المتوقعة لكل مندوب");
-      if (svc?.needs_vehicle && !form.vehicle_type.trim()) return toast.error("حدد نوع المركبة المطلوبة");
+      if (form.rate && Number(form.rate) <= 0) return toast.error(t("wizard.rate"));
+      if (form.required_count < 1) return toast.error(t("wizard.driversCount"));
+      if (svc?.has_shipments && !form.shipments_per_driver) return toast.error(t("wizard.shipments"));
+      if (svc?.needs_vehicle && !form.vehicle_type.trim()) return toast.error(t("wizard.vehicle"));
     }
-    if (step === 2 && (!form.address.trim() || !form.start_date)) return toast.error("أكمل الموقع والتاريخ");
+    if (step === 2 && (!form.address.trim() || !form.start_date)) return toast.error(t("wizard.area"));
     setStep((s) => s + 1);
   };
 
   const publish = async (asDraft = false) => {
     setBusy(true);
+    setInsufficient(null);
     try {
       const payload = {
         ...form,
@@ -81,14 +84,19 @@ export default function RequestNew() {
       };
       const { data } = await api.post("/business/requests", payload);
       if (asDraft) {
-        toast.success("تم حفظ الطلب كمسودة — انشره من صفحة الطلب عند الجاهزية");
-        navigate(`/app/business/requests/${data.request._id}`);
+        toast.success(t("wizard.draftSaved"));
       } else {
-        toast.success(`تم نشر الطلب — أُرسل لـ ${data.matched_workers} مندوب مطابق`);
-        navigate(`/app/business/requests/${data.request._id}`);
+        toast.success(t("wizard.publishedToast", { n: data.matched_workers }));
       }
+      navigate(`/app/business/requests/${data.request._id}`);
     } catch (err) {
-      toast.error(errMsg(err));
+      const d = err?.response?.data?.detail;
+      if (d?.code === "INSUFFICIENT_FUNDS") {
+        setInsufficient(d);
+        toast.error(t("wizard.insufficientFunds"));
+      } else {
+        toast.error(errMsg(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -97,8 +105,8 @@ export default function RequestNew() {
   return (
     <div className="max-w-3xl mx-auto space-y-6" data-testid="request-new-page">
       <div>
-        <h1 className="heading text-2xl font-extrabold">طلب خدمة جديد</h1>
-        <p className="text-sm text-slate-400 mt-1">حدّد احتياجك بدقة وسيصل للمطابقين المتاحين فوراً</p>
+        <h1 className="heading text-2xl font-extrabold">{t("wizard.title")}</h1>
+        <p className="text-sm text-slate-400 mt-1">{t("wizard.sub")}</p>
       </div>
 
       <div className="flex items-center gap-1" data-testid="wizard-steps">
@@ -121,7 +129,7 @@ export default function RequestNew() {
             {ACTIVE_SERVICES.map((s) => (
               <button key={s.key} type="button" data-testid={`pick-service-${s.key}`}
                 onClick={() => setForm({ ...form, service_type: s.key, rate: s.ref_rate })}
-                className={`p-4 rounded-xl border text-right transition-all flex items-start gap-3 ${
+                className={`p-4 rounded-xl border text-start transition-all flex items-start gap-3 ${
                   form.service_type === s.key
                     ? "border-brand/60 bg-brand/5 shadow-[0_0_20px_rgba(0,229,163,0.08)]"
                     : "border-navy-600 bg-navy-800/40 hover:border-slate-500"
@@ -143,49 +151,51 @@ export default function RequestNew() {
         {step === 1 && svc && (
           <div className="space-y-4" data-testid="step-details">
             <div>
-              <label className="text-xs text-slate-400 block mb-1.5">عنوان الطلب (اختياري)</label>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.reqTitle")}</label>
               <Input data-testid="req-title" value={form.title} onChange={set("title")} placeholder={svc.name} className="bg-navy-800 border-navy-600 h-11" />
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">عدد المندوبين المطلوب *</label>
+                <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.driversCount")} *</label>
                 <Input data-testid="req-count" type="number" min="1" value={form.required_count} onChange={set("required_count")} className="bg-navy-800 border-navy-600 h-11 num" />
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">سعر الشحنة (ر.س) — الافتراضي <span className="num text-brand">{defaults.default_rate}</span> ر.س</label>
+                <label className="text-xs text-slate-400 block mb-1.5">
+                  {t("wizard.rate")} — {t("wizard.rateDefault")} <span className="num text-brand">{defaults.default_rate}</span>
+                </label>
                 <Input data-testid="req-rate" type="number" min="1" value={form.rate} onChange={set("rate")} placeholder={String(defaults.default_rate)} className="bg-navy-800 border-navy-600 h-11 num" />
               </div>
               {svc.has_shipments && (
                 <div>
-                  <label className="text-xs text-slate-400 block mb-1.5">الشحنات المتوقعة لكل مندوب *</label>
+                  <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.shipments")} *</label>
                   <Input data-testid="req-shipments" type="number" min="1" value={form.shipments_per_driver} onChange={set("shipments_per_driver")} className="bg-navy-800 border-navy-600 h-11 num" />
                 </div>
               )}
               {svc.needs_vehicle && (
                 <div>
-                  <label className="text-xs text-slate-400 block mb-1.5">نوع المركبة المطلوبة *</label>
+                  <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.vehicle")} *</label>
                   <select data-testid="req-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
                     className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
-                    <option value="">اختر نوع المركبة…</option>
+                    <option value="">{t("wizard.chooseVehicle")}</option>
                     {defaults.vehicle_types.map((v) => <option key={v}>{v}</option>)}
                   </select>
                 </div>
               )}
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-2">المدة</label>
+              <label className="text-xs text-slate-400 block mb-2">{t("wizard.duration")}</label>
               <div className="flex flex-wrap gap-2" data-testid="req-durations">
                 {DURATIONS.map((d) => (
                   <button key={d.key} type="button" data-testid={`duration-${d.key}`}
                     onClick={() => setForm({ ...form, duration_type: d.key })}
                     className={`chip ${form.duration_type === d.key ? "bg-brand/15 text-brand border-brand/40" : "bg-navy-800 text-slate-400 border-navy-600"}`}>
-                    {d.label}
+                    {t(`wizard.duration_${d.key}`) !== `wizard.duration_${d.key}` ? t(`wizard.duration_${d.key}`) : d.label}
                   </button>
                 ))}
               </div>
               {form.duration_type === "several_days" && (
                 <div className="mt-3 max-w-[200px]">
-                  <label className="text-xs text-slate-400 block mb-1.5">عدد الأيام</label>
+                  <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.days")}</label>
                   <Input data-testid="req-days" type="number" min="1" value={form.days_count} onChange={set("days_count")} className="bg-navy-800 border-navy-600 h-11 num" />
                 </div>
               )}
@@ -197,29 +207,29 @@ export default function RequestNew() {
           <div className="space-y-4" data-testid="step-location">
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">المدينة *</label>
+                <label className="text-xs text-slate-400 block mb-1.5">{t("common.city")} *</label>
                 <select data-testid="req-city" value={form.city} onChange={set("city")}
                   className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
                   {defaults.service_areas.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">منطقة الخدمة (الأحياء / النطاق) *</label>
-                <Input data-testid="req-address" value={form.address} onChange={set("address")} placeholder="مثال: العليا، النرجس، الياسمين" className="bg-navy-800 border-navy-600 h-11" />
+                <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.area")} *</label>
+                <Input data-testid="req-address" value={form.address} onChange={set("address")} placeholder={t("wizard.areaPh")} className="bg-navy-800 border-navy-600 h-11" />
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">تاريخ البدء *</label>
+                <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.startDate")} *</label>
                 <Input data-testid="req-date" type="date" value={form.start_date} onChange={set("start_date")} className="bg-navy-800 border-navy-600 h-11 num" />
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">وقت البدء</label>
+                <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.startTime")}</label>
                 <Input data-testid="req-time" type="time" value={form.start_time} onChange={set("start_time")} className="bg-navy-800 border-navy-600 h-11 num" />
               </div>
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1.5">متطلبات إضافية (اختياري)</label>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.notes")}</label>
               <Textarea data-testid="req-requirements" value={form.requirements} onChange={set("requirements")}
-                placeholder="مثال: خبرة سابقة، لباس معين، معدات…" className="bg-navy-800 border-navy-600 min-h-[90px]" />
+                placeholder={t("wizard.notesPh")} className="bg-navy-800 border-navy-600 min-h-[90px]" />
             </div>
           </div>
         )}
@@ -228,15 +238,18 @@ export default function RequestNew() {
           <div className="space-y-5" data-testid="step-review">
             <div className="grid sm:grid-cols-2 gap-3 text-sm">
               {[
-                ["الخدمة", svc.name],
-                ["العنوان", form.title || svc.name],
-                ["عدد المندوبين", form.required_count],
-                ["المدة", `${DURATIONS.find((d) => d.key === form.duration_type)?.label} (${durationDays} يوم)`],
-                ["سعر الشحنة", form.rate ? sar(form.rate) : `الافتراضي: ${sar(defaults.default_rate)}`],
-                ...(svc.has_shipments ? [["الشحنات لكل مندوب", form.shipments_per_driver], ["إجمالي الشحنات", (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)]] : []),
-                ...(svc.needs_vehicle && form.vehicle_type ? [["نوع السيارة", form.vehicle_type]] : []),
-                ["الموقع", `${form.city} — ${form.address}`],
-                ["البدء", `${form.start_date} · ${form.start_time}`],
+                [t("wizard.rService"), svc.name],
+                [t("wizard.rTitle"), form.title || svc.name],
+                [t("wizard.rDrivers"), form.required_count],
+                [t("wizard.rDuration"), `${DURATIONS.find((d) => d.key === form.duration_type)?.label} (${durationDays})`],
+                [t("wizard.rRate"), form.rate ? sar(form.rate) : `${t("wizard.rateDefault")}: ${sar(defaults.default_rate)}`],
+                ...(svc.has_shipments ? [
+                  [t("wizard.rShipments"), form.shipments_per_driver],
+                  [t("wizard.rTotal"), (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)],
+                ] : []),
+                ...(svc.needs_vehicle && form.vehicle_type ? [[t("wizard.rVehicle"), form.vehicle_type]] : []),
+                [t("wizard.rLocation"), `${form.city} — ${form.address}`],
+                [t("wizard.rStart"), `${form.start_date} · ${form.start_time}`],
               ].map(([k, v]) => (
                 <div key={k} className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40">
                   <p className="text-[11px] text-slate-500">{k}</p>
@@ -245,14 +258,28 @@ export default function RequestNew() {
               ))}
             </div>
             <div className="rounded-2xl border border-brand/30 bg-brand/5 p-5 space-y-2" data-testid="cost-breakdown">
-              <div className="flex justify-between text-xs"><span className="text-slate-500">المبلغ الأساسي (إجمالي الشحنات × سعر الشحنة)</span><span className="num text-slate-300">{sar(estimate.total)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-slate-500">عمولة المنصة (<span className="num">{Math.round(defaults.commission_rate * 100)}%</span>) — إيراد المنصة</span><span className="num text-slate-300">{sar(estimate.commission)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-slate-500">صافي أرباح المندوبين</span><span className="num text-slate-300">{sar(estimate.payout)}</span></div>
-              <div className="flex justify-between text-sm pt-2 border-t border-navy-600/40"><span className="text-slate-300 font-semibold">الإجمالي المحصّل منك (يُحجز في محفظة الضمان)</span><span className="font-heading font-black text-brand text-lg num">{sar(estimate.total)}</span></div>
-              <p className="text-[11px] text-slate-500">
-                لا يُصرف المبلغ إلا بعد إتمام العمل وتأكيدك. العمولة تُحسب بالنسبة المعتمدة حالياً من إدارة المنصة.
-              </p>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">{t("wizard.base")}</span><span className="num text-slate-300">{sar(estimate.total)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">{t("wizard.commission")} (<span className="num">{Math.round(defaults.commission_rate * 100)}%</span>)</span><span className="num text-slate-300">{sar(estimate.commission)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">{t("wizard.driversNet")}</span><span className="num text-slate-300">{sar(estimate.payout)}</span></div>
+              <div className="flex justify-between text-sm pt-2 border-t border-navy-600/40"><span className="text-slate-300 font-semibold">{t("wizard.totalCharged")}</span><span className="font-heading font-black text-brand text-lg num">{sar(estimate.total)}</span></div>
+              <p className="text-[11px] text-slate-500">{t("wizard.breakdownNote")}</p>
             </div>
+            {insufficient && (
+              <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-5 space-y-3" data-testid="insufficient-funds-alert">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+                  <p className="text-sm font-bold text-rose-300">{t("wizard.insufficientFunds")}</p>
+                </div>
+                <div className="flex flex-wrap gap-6 text-xs text-slate-300">
+                  <span>{t("wizard.required")}: <span className="num font-bold text-rose-300">{sar(insufficient.required)}</span></span>
+                  <span>{t("wizard.available")}: <span className="num font-bold">{sar(insufficient.available)}</span></span>
+                </div>
+                <Link to="/app/business/wallet" data-testid="topup-now-btn"
+                  className="inline-flex items-center gap-2 bg-rose-400 text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-rose-300 transition-colors">
+                  <Wallet className="w-4 h-4" /> {t("wizard.topupNow")}
+                </Link>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -261,22 +288,22 @@ export default function RequestNew() {
         <button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}
           data-testid="wizard-back-btn"
           className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 disabled:opacity-30 transition-colors">
-          <ChevronRight className="w-4 h-4" /> السابق
+          <ChevronRight className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" /> {t("common.prev")}
         </button>
         {step < 3 ? (
           <button onClick={next} data-testid="wizard-next-btn"
             className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors">
-            التالي <ChevronLeft className="w-4 h-4" />
+            {t("common.next")} <ChevronLeft className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
           </button>
         ) : (
           <div className="flex gap-3">
             <button onClick={() => publish(false)} disabled={busy} data-testid="wizard-publish-btn"
               className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors disabled:opacity-50 shadow-[0_0_25px_rgba(0,229,163,0.3)]">
-              <Rocket className="w-4 h-4" /> {busy ? "جاري النشر…" : "نشر الطلب وإرسال العروض"}
+              <Rocket className="w-4 h-4" /> {busy ? t("wizard.publishing") : t("wizard.publish")}
             </button>
             <button onClick={() => publish(true)} disabled={busy} data-testid="wizard-draft-btn"
               className="flex items-center gap-2 border border-navy-600 text-slate-300 font-semibold rounded-xl px-5 py-3 text-sm hover:border-brand/40 hover:text-brand transition-colors disabled:opacity-50">
-              حفظ كمسودة
+              {t("wizard.draft")}
             </button>
           </div>
         )}

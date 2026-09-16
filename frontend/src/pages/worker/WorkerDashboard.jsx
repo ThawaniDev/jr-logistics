@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Zap, Briefcase, Wallet, Star, MapPin, Calendar, CheckCircle2, Clock, Banknote } from "lucide-react";
+import { Zap, Briefcase, Wallet, Star, MapPin, Calendar, CheckCircle2, Clock, Banknote, FileCheck, AlertTriangle } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
-import { SERVICE_MAP, sar } from "@/lib/constants";
+import { sar } from "@/lib/constants";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n } from "@/i18n";
 
 export default function WorkerDashboard() {
+  const { t } = useI18n();
   const { user, refresh } = useAuth();
   const [data, setData] = useState(null);
   const wp = user?.worker_profile || {};
@@ -20,7 +22,7 @@ export default function WorkerDashboard() {
   const toggleAvailability = async (status) => {
     try {
       await api.patch("/worker/availability", { status });
-      toast.success(status === "available" ? "أنت متاح الآن — ستصلك الفرص الجديدة" : "تم إيقاف استقبال الفرص");
+      toast.success(status === "available" ? t("drvDash.availOnToast") : t("drvDash.availOffToast"));
       refresh();
       load();
     } catch (e) {
@@ -28,15 +30,16 @@ export default function WorkerDashboard() {
     }
   };
 
-  if (!data) return <p className="text-slate-500 text-sm">جاري التحميل…</p>;
+  if (!data) return <p className="text-slate-500 text-sm">{t("common.loading")}</p>;
   const available = wp.availability === "available";
+  const verified = data.verification_status === "verified";
 
   return (
     <div className="space-y-6" data-testid="worker-dashboard">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="heading text-2xl font-extrabold">أهلاً، {user?.name}</h1>
-          <p className="text-sm text-slate-400 mt-1">مهامك وفرصك الجديدة في مكان واحد</p>
+          <h1 className="heading text-2xl font-extrabold">{t("common.hello")} {user?.name}</h1>
+          <p className="text-sm text-slate-400 mt-1">{t("drvDash.sub")}</p>
         </div>
         <button
           data-testid="availability-toggle"
@@ -48,20 +51,41 @@ export default function WorkerDashboard() {
           }`}
         >
           <span className={`w-2.5 h-2.5 rounded-full ${available ? "bg-emerald-400 animate-pulse-soft" : "bg-slate-600"}`} />
-          {available ? "متاح للعمل الآن" : "غير متاح — فعّل توفرك"}
+          {available ? t("drvDash.availOn") : t("drvDash.availOff")}
         </button>
       </div>
 
+      {!verified && (
+        <Link to="/app/worker/documents" data-testid="doc-warning-banner"
+          className="card-surface border-amber-500/40 bg-amber-500/5 p-4 flex items-center gap-3 hover:bg-amber-500/10 transition-colors">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+          <p className="text-sm text-amber-300 flex-1">{t("drvDash.docWarning")}</p>
+          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5 shrink-0">
+            <FileCheck className="w-4 h-4" /> {t("drvDash.docsNow")}
+          </span>
+        </Link>
+      )}
+      {verified && data.expiring_docs > 0 && (
+        <Link to="/app/worker/documents" data-testid="doc-expiring-banner"
+          className="card-surface border-amber-500/40 bg-amber-500/5 p-4 flex items-center gap-3 hover:bg-amber-500/10 transition-colors">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+          <p className="text-sm text-amber-300 flex-1">{t("drvDash.docWarningExp")}</p>
+          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5 shrink-0">
+            <FileCheck className="w-4 h-4" /> {t("drvDash.docsNow")}
+          </span>
+        </Link>
+      )}
+
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard testid="stat-offers" icon={Zap} label="عروض جديدة" value={data.new_offers} sub="بانتظار ردك" tone="gold" />
-        <StatCard testid="stat-active-jobs" icon={Briefcase} label="مهام نشطة وقادمة" value={data.active_jobs} tone="cyan" />
-        <StatCard testid="stat-pending" icon={Clock} label="أرباح قيد الإنجاز" value={sar(data.pending_earnings)} sub="محجوزة لحين تأكيد المنشأة" tone="gold" />
-        <StatCard testid="stat-earnings" icon={Wallet} label="الأرباح المتاحة" value={sar(data.wallet.available)} sub="قابلة للسحب" tone="brand" />
+        <StatCard testid="stat-offers" icon={Zap} label={t("drvDash.newOffers")} value={data.new_offers} sub={t("drvDash.waitingYou")} tone="gold" to="/app/worker/opportunities" />
+        <StatCard testid="stat-active-jobs" icon={Briefcase} label={t("drvDash.activeJobs")} value={data.active_jobs} tone="cyan" to="/app/worker/jobs" />
+        <StatCard testid="stat-pending" icon={Clock} label={t("drvDash.pendingEarnings")} value={sar(data.pending_earnings)} sub={t("drvDash.pendingNote")} tone="gold" to="/app/worker/wallet" />
+        <StatCard testid="stat-earnings" icon={Wallet} label={t("drvDash.availableEarnings")} value={sar(data.wallet.available)} sub={t("drvDash.withdrawable")} tone="brand" to="/app/worker/wallet" />
       </div>
       <div className="grid sm:grid-cols-3 gap-4">
-        <StatCard testid="stat-paid" icon={Banknote} label="إجمالي الأرباح المدفوعة" value={sar(data.paid_earnings)} tone="cyan" />
-        <StatCard testid="stat-rating" icon={Star} label="تقييمك" value={wp.rating ? `${wp.rating} / 5` : "—"} sub={`${data.jobs_completed} مهمة مكتملة`} tone="blue" />
-        <StatCard testid="stat-completed-jobs" icon={CheckCircle2} label="مهام مكتملة" value={data.jobs_completed} tone="brand" />
+        <StatCard testid="stat-paid" icon={Banknote} label={t("drvDash.paidEarnings")} value={sar(data.paid_earnings)} tone="cyan" to="/app/worker/wallet" />
+        <StatCard testid="stat-rating" icon={Star} label={t("drvDash.rating")} value={wp.rating ? `${wp.rating} / 5` : "—"} sub={`${data.jobs_completed} ${t("drvDash.completedJobs")}`} tone="blue" to="/app/worker/profile" />
+        <StatCard testid="stat-completed-jobs" icon={CheckCircle2} label={t("drvDash.completedJobs")} value={data.jobs_completed} tone="brand" to="/app/worker/jobs" />
       </div>
 
       {data.new_offers > 0 && (
@@ -69,31 +93,31 @@ export default function WorkerDashboard() {
           className="card-surface border-brand/40 bg-brand/5 p-4 flex items-center gap-3 hover:bg-brand/10 transition-colors">
           <Zap className="w-5 h-5 text-brand shrink-0" />
           <p className="text-sm">
-            لديك <span className="font-bold text-brand num">{data.new_offers}</span> عرض جديد بانتظارك — راجع التفاصيل قبل انتهاء الفرصة
+            <span className="font-bold text-brand num">{data.new_offers}</span> {t("drvDash.offersBanner")}
           </p>
         </Link>
       )}
 
       {data.jobs.length === 0 ? (
-        <EmptyState icon={Briefcase} title="لا توجد مهام حالياً" desc="اقبل العروض من صفحة الفرص المتاحة لتظهر مهامك هنا" testid="jobs-empty">
+        <EmptyState icon={Briefcase} title={t("drvDash.noJobs")} desc={t("drvDash.noJobsDesc")} testid="jobs-empty">
           <Link to="/app/worker/opportunities" data-testid="empty-browse-btn"
             className="mt-2 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover">
-            تصفح الفرص
+            {t("drvDash.browse")}
           </Link>
         </EmptyState>
       ) : (
         <div className="space-y-8">
           {[
-            { title: "المهمة النشطة الآن", key: "active", items: data.jobs.filter((o) => ["attendance_confirmed", "attended"].includes(o.status)) },
-            { title: "المهام القادمة", key: "upcoming", items: data.jobs.filter((o) => ["accepted", "confirmed"].includes(o.status)) },
+            { title: t("drvDash.activeNow"), key: "active", items: data.jobs.filter((o) => ["attendance_confirmed", "attended"].includes(o.status)) },
+            { title: t("drvDash.upcoming"), key: "upcoming", items: data.jobs.filter((o) => ["accepted", "confirmed"].includes(o.status)) },
           ].map((group) => (
             <div key={group.key} data-testid={`jobs-group-${group.key}`}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="heading text-lg font-bold">{group.title}</h2>
-                <Link to="/app/worker/jobs" className="text-xs text-brand hover:underline" data-testid={`view-all-jobs-${group.key}`}>عرض الكل</Link>
+                <Link to="/app/worker/jobs" className="text-xs text-brand hover:underline" data-testid={`view-all-jobs-${group.key}`}>{t("common.viewAll")}</Link>
               </div>
               {group.items.length === 0 ? (
-                <div className="card-surface p-6 text-center text-sm text-slate-500" data-testid={`jobs-empty-${group.key}`}>لا توجد مهام هنا حالياً</div>
+                <div className="card-surface p-6 text-center text-sm text-slate-500" data-testid={`jobs-empty-${group.key}`}>{t("drvDash.noneHere")}</div>
               ) : (
                 <div className="space-y-3">
                   {group.items.map((o) => (
@@ -113,13 +137,13 @@ export default function WorkerDashboard() {
                           onClick={async () => {
                             try {
                               await api.post(`/worker/offers/${o._id}/checkin`);
-                              toast.success("تم تسجيل حضورك — بانتظار تأكيد المنشأة");
+                              toast.success(t("jobs.checkinDone"));
                               load();
                             } catch (e) { toast.error(errMsg(e)); }
                           }}
                           className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-4 py-2 text-xs hover:bg-brand-hover transition-colors"
                         >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> تسجيل الحضور
+                          <CheckCircle2 className="w-3.5 h-3.5" /> {t("jobs.checkin")}
                         </button>
                       )}
                     </div>

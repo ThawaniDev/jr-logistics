@@ -1,56 +1,68 @@
 import { NavLink, Link, Navigate, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n } from "@/i18n";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import {
   LayoutDashboard, ClipboardList, PlusCircle, Wallet, LifeBuoy, Building2,
-  Zap, Briefcase, User, Users, Banknote, Bell, LogOut, Menu, X, ShieldCheck, Settings,
+  Zap, Briefcase, User, Users, Banknote, Bell, LogOut, Menu, X, ShieldCheck,
+  Settings, FileCheck, AlertTriangle, ScrollText,
 } from "lucide-react";
-import { sar, roleHome } from "@/lib/constants";
+import { sar } from "@/lib/constants";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 const NAVS = {
   business: [
-    { to: "/app/business", label: "لوحة التحكم", icon: LayoutDashboard, end: true },
-    { to: "/app/business/requests", label: "طلباتي", icon: ClipboardList },
-    { to: "/app/business/requests/new", label: "طلب جديد", icon: PlusCircle },
-    { to: "/app/business/wallet", label: "المحفظة", icon: Wallet },
-    { to: "/app/notifications", label: "الإشعارات", icon: Bell },
-    { to: "/app/support", label: "الدعم والمساندة", icon: LifeBuoy },
-    { to: "/app/business/profile", label: "الملف التجاري", icon: Building2 },
+    { to: "/app/business", key: "nav.dashboard", icon: LayoutDashboard, end: true },
+    { to: "/app/business/requests", key: "nav.requests", icon: ClipboardList },
+    { to: "/app/business/requests/new", key: "nav.newRequest", icon: PlusCircle },
+    { to: "/app/business/wallet", key: "nav.wallet", icon: Wallet },
+    { to: "/app/notifications", key: "nav.notifications", icon: Bell },
+    { to: "/app/support", key: "nav.support", icon: LifeBuoy },
+    { to: "/app/business/profile", key: "nav.bizProfile", icon: Building2 },
   ],
   worker: [
-    { to: "/app/worker", label: "لوحة التحكم", icon: LayoutDashboard, end: true },
-    { to: "/app/worker/opportunities", label: "الفرص المتاحة", icon: Zap },
-    { to: "/app/worker/jobs", label: "مهامي", icon: Briefcase },
-    { to: "/app/worker/wallet", label: "المحفظة والأرباح", icon: Wallet },
-    { to: "/app/notifications", label: "الإشعارات", icon: Bell },
-    { to: "/app/support", label: "الدعم والمساندة", icon: LifeBuoy },
-    { to: "/app/worker/profile", label: "ملفي الشخصي", icon: User },
+    { to: "/app/worker", key: "nav.dashboard", icon: LayoutDashboard, end: true },
+    { to: "/app/worker/opportunities", key: "nav.opportunities", icon: Zap },
+    { to: "/app/worker/jobs", key: "nav.myJobs", icon: Briefcase },
+    { to: "/app/worker/wallet", key: "nav.earnings", icon: Wallet },
+    { to: "/app/worker/documents", key: "nav.myDocuments", icon: FileCheck },
+    { to: "/app/notifications", key: "nav.notifications", icon: Bell },
+    { to: "/app/support", key: "nav.support", icon: LifeBuoy },
+    { to: "/app/worker/profile", key: "nav.myProfile", icon: User },
   ],
   admin: [
-    { to: "/app/admin", label: "لوحة التحكم", icon: LayoutDashboard, end: true },
-    { to: "/app/admin/users", label: "المستخدمون", icon: Users },
-    { to: "/app/admin/requests", label: "الطلبات والمطابقة", icon: ClipboardList },
-    { to: "/app/admin/withdrawals", label: "طلبات السحب", icon: Banknote },
-    { to: "/app/admin/settings", label: "التسعير والإعدادات", icon: Settings },
-    { to: "/app/notifications", label: "الإشعارات", icon: Bell },
-    { to: "/app/admin/support", label: "الدعم والشكاوى", icon: LifeBuoy },
+    { to: "/app/admin", key: "nav.dashboard", icon: LayoutDashboard, end: true, perm: "stats" },
+    { to: "/app/admin/users", key: "nav.users", icon: Users, perm: "users_view" },
+    { to: "/app/admin/requests", key: "nav.adminRequests", icon: ClipboardList, perm: "requests_view" },
+    { to: "/app/admin/documents", key: "nav.documents", icon: FileCheck, perm: "documents" },
+    { to: "/app/admin/cases", key: "nav.cases", icon: AlertTriangle, perm: "cases" },
+    { to: "/app/admin/withdrawals", key: "nav.withdrawals", icon: Banknote, perm: "withdrawals" },
+    { to: "/app/admin/settings", key: "nav.pricing", icon: Settings, perm: "*" },
+    { to: "/app/admin/staff", key: "nav.staff", icon: ShieldCheck, perm: "*" },
+    { to: "/app/admin/audit", key: "nav.audit", icon: ScrollText, perm: "audit" },
+    { to: "/app/notifications", key: "nav.notifications", icon: Bell },
+    { to: "/app/admin/support", key: "nav.supportCenter", icon: LifeBuoy, perm: "tickets" },
   ],
 };
 
 export default function DashboardLayout() {
   const { user, wallet, loading, logout, refresh } = useAuth();
+  const { t, syncFromUser } = useI18n();
   const [unread, setUnread] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (user?.language) syncFromUser(user.language);
+  }, [user?.language, syncFromUser]);
+
+  useEffect(() => {
     if (!user) return;
-    api.get("/notifications").then(({ data }) => setUnread(data.unread)).catch(() => {});
-    const t = setInterval(() => {
-      api.get("/notifications").then(({ data }) => setUnread(data.unread)).catch(() => {});
-    }, 30000);
-    return () => clearInterval(t);
+    const load = () => api.get("/notifications").then(({ data }) => setUnread(data.unread)).catch(() => {});
+    load();
+    const timer = setInterval(load, 30000);
+    return () => clearInterval(timer);
   }, [user]);
 
   if (loading)
@@ -58,13 +70,21 @@ export default function DashboardLayout() {
       <div className="min-h-screen flex items-center justify-center bg-navy-900">
         <div className="flex flex-col items-center gap-4">
           <ShieldCheck className="w-10 h-10 text-brand animate-pulse-soft" />
-          <p className="text-slate-400 text-sm">جاري تحميل منصة إسناد…</p>
+          <p className="text-slate-400 text-sm">{t("common.loading")}</p>
         </div>
       </div>
     );
   if (!user) return <Navigate to="/login" replace />;
 
-  const nav = NAVS[user.role] || [];
+  const isStaffArea = user.role === "admin" || user.role === "staff";
+  const perms = user.role === "admin" ? ["*"] : (user.staff_profile?.permissions || []);
+  const rawNav = isStaffArea ? NAVS.admin : NAVS[user.role] || [];
+  const nav = rawNav.filter((item) => {
+    if (!item.perm) return true;
+    if (user.role === "admin") return true;
+    if (item.perm === "*") return false;
+    return perms.includes(item.perm);
+  });
 
   const sidebar = (
     <div className="flex flex-col h-full">
@@ -74,7 +94,7 @@ export default function DashboardLayout() {
         </div>
         <div>
           <p className="font-heading font-extrabold text-lg leading-none">إسناد</p>
-          <p className="text-[11px] text-slate-500 mt-1">الموارد اللوجستية والتشغيلية</p>
+          <p className="text-[11px] text-slate-500 mt-1">{t("landing.footerTag")}</p>
         </div>
       </Link>
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
@@ -93,9 +113,9 @@ export default function DashboardLayout() {
               }`
             }
           >
-            <item.icon className="w-4.5 h-4.5 w-[18px] h-[18px]" />
-            {item.label}
-            {item.label === "الإشعارات" && unread > 0 && (
+            <item.icon className="w-[18px] h-[18px] shrink-0" />
+            {t(item.key)}
+            {item.key === "nav.notifications" && unread > 0 && (
               <span className="ms-auto bg-brand text-navy-900 text-[10px] font-bold rounded-full px-2 py-0.5 num" data-testid="nav-unread-badge">
                 {unread}
               </span>
@@ -103,7 +123,8 @@ export default function DashboardLayout() {
           </NavLink>
         ))}
       </nav>
-      <div className="p-4 border-t border-navy-600/50">
+      <div className="p-4 border-t border-navy-600/50 space-y-3">
+        <LanguageSwitcher />
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-navy-700 border border-navy-600 flex items-center justify-center font-heading font-bold text-brand">
             {user.name?.[0] || "؟"}
@@ -116,7 +137,7 @@ export default function DashboardLayout() {
             data-testid="logout-btn"
             onClick={async () => { await logout(); navigate("/"); }}
             className="text-slate-500 hover:text-rose-400 transition-colors"
-            title="تسجيل الخروج"
+            title={t("common.logout")}
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -133,8 +154,8 @@ export default function DashboardLayout() {
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-navy-950/80 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute top-0 right-0 h-full w-72 bg-navy-850 border-s border-navy-600/50 shadow-2xl">
-            <button className="absolute top-5 left-4 text-slate-400" onClick={() => setMobileOpen(false)} data-testid="mobile-menu-close">
+          <aside className="absolute top-0 end-0 h-full w-72 bg-navy-850 border-s border-navy-600/50 shadow-2xl">
+            <button className="absolute top-5 start-auto end-4 text-slate-400" style={{ insetInlineStart: "1rem" }} onClick={() => setMobileOpen(false)} data-testid="mobile-menu-close">
               <X className="w-5 h-5" />
             </button>
             {sidebar}
@@ -147,7 +168,8 @@ export default function DashboardLayout() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex-1" />
-          {user.role !== "admin" && wallet && (
+          <LanguageSwitcher compact />
+          {["business", "worker"].includes(user.role) && wallet && (
             <Link
               to={user.role === "business" ? "/app/business/wallet" : "/app/worker/wallet"}
               data-testid="header-wallet-chip"
@@ -160,7 +182,7 @@ export default function DashboardLayout() {
           <Link to="/app/notifications" className="relative text-slate-300 hover:text-brand transition-colors" data-testid="header-bell">
             <Bell className="w-5 h-5" />
             {unread > 0 && (
-              <span className="absolute -top-1.5 -left-1.5 bg-rose-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 num">
+              <span className="absolute -top-1.5 -start-1.5 bg-rose-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 num">
                 {unread}
               </span>
             )}
