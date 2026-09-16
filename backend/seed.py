@@ -188,9 +188,26 @@ NOTIFICATIONS = [
 
 
 async def seed_admin():
-    existing = await db.users.find_one({"_id": ADMIN["_id"]})
+    import os
+    from security import hash_password, verify_password
+    email = os.environ.get("SUPER_ADMIN_EMAIL")
+    password = os.environ.get("SUPER_ADMIN_PASSWORD")
+    if not email or not password:
+        raise RuntimeError("SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD must be set to initialize the Super Admin")
+    email = email.lower()
+    base = {**ADMIN, "email": email}
+    existing = await db.users.find_one({"role": "admin", "email": email})
     if not existing:
-        await db.users.insert_one({**ADMIN, "created_at": now_iso()})
+        await db.users.insert_one({**base, "password_hash": hash_password(password),
+                                   "must_change_password": False, "created_at": now_iso()})
+    else:
+        updates = {}
+        if not verify_password(password, existing.get("password_hash") or ""):
+            updates["password_hash"] = hash_password(password)
+        if existing.get("phone") != base["phone"]:
+            updates["phone"] = base["phone"]
+        if updates:
+            await db.users.update_one({"_id": existing["_id"]}, {"$set": updates})
 
 
 def worker_doc(w):
@@ -322,3 +339,16 @@ async def seed_all():
             await db.settings.update_one({"key": "platform"},
                                          {"$set": {"no_work_compensation_pct": 100}})
         await db.settings.update_one({"key": "seed_v5"}, {"$set": {"key": "seed_v5", "at": now_iso()}}, upsert=True)
+
+    if not await db.settings.find_one({"key": "seed_v6"}):
+        # password hashes for staff accounts (development-only initial passwords —
+        # must be rotated before production; staff are flagged must_change_password)
+        import os
+        from security import hash_password
+        staff_pw = os.environ.get("STAFF_DEV_PASSWORD")
+        if staff_pw:
+            async for s in db.users.find({"role": "staff", "password_hash": {"$exists": False}}):
+                await db.users.update_one({"_id": s["_id"]},
+                                          {"$set": {"password_hash": hash_password(staff_pw),
+                                                    "must_change_password": True}})
+        await db.settings.update_one({"key": "seed_v6"}, {"$set": {"key": "seed_v6", "at": now_iso()}}, upsert=True)

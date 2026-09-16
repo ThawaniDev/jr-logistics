@@ -12,6 +12,13 @@ BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://tawazon.preview.emergent
 API = f"{BASE}/api"
 
 
+def _admin_pwd_login() -> dict:
+    r = requests.post(f"{API}/auth/admin/login",
+                      json={"email": "emadabuharb1993@gmail.com", "password": "Isnad-Dev-Admin-2026!"})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 def _otp_login(phone: str) -> dict:
     import time
     last = None
@@ -37,7 +44,7 @@ def _h(t):
 # ------------- Fixtures -------------
 @pytest.fixture(scope="module")
 def adm_token():
-    return _otp_login("+966500000001")["token"]
+    return _admin_pwd_login()["token"]
 
 
 @pytest.fixture(scope="module")
@@ -58,10 +65,16 @@ class TestHealth:
         assert r.json().get("status") == "ok"
 
     def test_otp_login_all_roles(self):
-        for phone in ("+966500000001", "+966500000101", "+966500000201"):
+        # business + worker login via phone OTP
+        for phone, role in (("+966500000101", "business"), ("+966500000201", "worker")):
             u = _otp_login(phone)
             assert "token" in u and "user" in u
-            assert u["user"]["role"] in ("admin", "business", "worker")
+            assert u["user"]["role"] == role
+        # admin OTP is blocked by design — must use the password portal
+        r = requests.post(f"{API}/auth/otp/send", json={"phone": "+966500000001"})
+        code = r.json()["demo_otp"]
+        v = requests.post(f"{API}/auth/otp/verify", json={"phone": "+966500000001", "code": code})
+        assert v.status_code == 403
 
 
 # ============= Insufficient funds =============
@@ -189,7 +202,7 @@ class TestTicketsFlow:
 class TestStaff:
     def test_create_staff_and_login(self, adm_token):
         payload = {"name": "TEST_iter4 Staff", "phone": "+966500000901",
-                   "staff_role": "support"}
+                   "staff_role": "support", "password": "Staff-Test-2026!"}
         r = requests.post(f"{API}/admin/staff", headers=_h(adm_token), json=payload)
         # 400 if already exists — acceptable
         if r.status_code == 400 and "مسجل" in r.text:
@@ -198,7 +211,15 @@ class TestStaff:
             assert r.status_code == 200, r.text
             pytest.iter4_staff_created = True
         # login as staff
-        t = _otp_login("+966500000901")
+        # login as staff (password portal; OTP is blocked for admin/staff)
+        r = requests.post(f"{API}/auth/admin/login",
+                          json={"email": "+966500000901", "password": "Staff-Test-2026!"})
+        if r.status_code != 200:
+            # fallback: staff created before password requirement — dev backfill password
+            r = requests.post(f"{API}/auth/admin/login",
+                              json={"email": "+966500000901", "password": "Isnad-Dev-Staff-2026!"})
+        assert r.status_code == 200, r.text
+        t = r.json()
         assert t["user"]["role"] == "staff"
         pytest.iter4_staff_token = t["token"]
 
@@ -219,7 +240,7 @@ class TestStaff:
     def test_duplicate_phone_rejected(self, adm_token):
         r = requests.post(f"{API}/admin/staff", headers=_h(adm_token),
                           json={"name": "dup", "phone": "+966500000901",
-                                "staff_role": "support"})
+                                "staff_role": "support", "password": "Staff-Test-2026!"})
         assert r.status_code == 400
 
 

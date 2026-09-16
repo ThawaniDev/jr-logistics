@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Literal, List
 from datetime import date
 
@@ -303,12 +303,14 @@ class StaffIn(BaseModel):
     name: str
     phone: str
     staff_role: str
+    password: str = Field(min_length=8)
     permissions: Optional[List[str]] = None
 
 
 @router.post("/staff")
 async def create_staff(body: StaffIn, user: dict = adm):
     from routers.auth import normalize_phone
+    from security import hash_password
     phone = normalize_phone(body.phone)
     if body.staff_role not in STAFF_ROLE_PRESETS:
         raise HTTPException(status_code=400, detail="الدور الوظيفي غير صالح")
@@ -319,6 +321,8 @@ async def create_staff(body: StaffIn, user: dict = adm):
         "_id": new_id(), "phone": phone, "email": None, "name": body.name.strip(),
         "role": "staff", "status": "active", "city": None, "is_demo": False,
         "staff_profile": {"staff_role": body.staff_role, "permissions": perms},
+        "password_hash": hash_password(body.password),
+        "must_change_password": True,
         "created_at": now_iso(),
     }
     await db.users.insert_one(doc)
@@ -332,6 +336,7 @@ class StaffUpdateIn(BaseModel):
     staff_role: Optional[str] = None
     permissions: Optional[List[str]] = None
     status: Optional[Literal["active", "suspended"]] = None
+    password: Optional[str] = Field(default=None, min_length=8)
 
 
 @router.patch("/staff/{sid}")
@@ -352,6 +357,10 @@ async def update_staff(sid: str, body: StaffUpdateIn, user: dict = adm):
         updates["staff_profile.permissions"] = body.permissions
     if body.status:
         updates["status"] = body.status
+    if body.password:
+        from security import hash_password
+        updates["password_hash"] = hash_password(body.password)
+        updates["must_change_password"] = True
     if not updates:
         raise HTTPException(status_code=400, detail="لا توجد تغييرات")
     await db.users.update_one({"_id": sid}, {"$set": updates})

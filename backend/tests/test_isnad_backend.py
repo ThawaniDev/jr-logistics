@@ -23,6 +23,13 @@ BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://tawazon.preview.emergent
 API = f"{BASE}/api"
 
 
+def _admin_pwd_login() -> dict:
+    r = requests.post(f"{API}/auth/admin/login",
+                      json={"email": "emadabuharb1993@gmail.com", "password": "Isnad-Dev-Admin-2026!"})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 def _otp_login(phone: str) -> dict:
     r = requests.post(f"{API}/auth/otp/send", json={"phone": phone}, timeout=15)
     assert r.status_code == 200, r.text
@@ -223,7 +230,7 @@ class TestWorker:
 class TestAdmin:
     @pytest.fixture(scope="class")
     def adm_token(self):
-        return _otp_login("+966500000001")["token"]
+        return _admin_pwd_login()["token"]
 
     def test_admin_stats(self, adm_token):
         r = requests.get(f"{API}/admin/stats", headers=_h(adm_token))
@@ -290,7 +297,7 @@ class TestCommon:
         })
         assert r.status_code == 200
         tid = r.json()["ticket"]["_id"]
-        adm = _otp_login("+966500000001")["token"]
+        adm = _admin_pwd_login()["token"]
         rep = requests.post(f"{API}/tickets/{tid}/reply", headers=_h(adm),
                             json={"message": "TEST_admin_reply_v2"})
         assert rep.status_code == 200

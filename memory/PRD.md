@@ -38,6 +38,17 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Demo seed through seed_v4 (delivery-only dataset, Sedan/Van normalized, platform settings inserted)
 - Testing: iter3 — 14/14 new tests + 20 passed/3 idempotent skips existing; 100% frontend flows
 
+## Implemented (2026-09-16) — Secure Super Admin authentication
+- Dedicated password-based admin portal at /admin/login (email or phone + password), separate from business/driver OTP flow
+- bcrypt password hashing; JWT (cookie + bearer); brute-force lockout (5 attempts → 15 min); admin logins audit-logged
+- OTP verify now REJECTS admin/staff phones (403) — privileged accounts must use the password portal
+- Super Admin bootstrap via env only (SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD in backend/.env, re-synced on restart); owner email emadabuharb1993@gmail.com; DEV password flagged development-only
+- Staff accounts: initial password required at creation (min 8 chars), must_change_password flag, Super Admin can reset passwords, role change, suspend/activate — all from /app/admin/staff
+- Change-password card in Admin Settings (admin only); backend /api/auth/change-password (admin/staff only)
+- Backend authorization enforced via require_roles("admin") and require_staff(*perms) — verified 401/403 for unauthenticated and business tokens
+- Docs: /app/auth_testing.md playbook; test_credentials.md updated with all dev credentials
+- Tests: 61 passed / 4 skipped (pytest, includes admin portal, OTP-block, RBAC, staff CRUD, lockout)
+
 ## Implemented (2026-09-16) — i18n + Operations batch
 - Full 3-language support (Arabic RTL, English LTR, Urdu RTL): every page migrated to `useI18n()` + `translations.js` (ar/en/ur parity verified programmatically); LanguageSwitcher persists to profile (`language` field) and flips `document.dir`
 - Wallet balance enforcement at request publish (backend INSUFFICIENT_FUNDS 400 + frontend alert card with required/available + top-up link)

@@ -22,9 +22,16 @@ def _otp_login(phone: str) -> dict:
 def _h(t): return {"Authorization": f"Bearer {t}", "Content-Type": "application/json"}
 
 
+def _admin_pwd_login() -> dict:
+    r = requests.post(f"{API}/auth/admin/login",
+                      json={"email": "emadabuharb1993@gmail.com", "password": "Isnad-Dev-Admin-2026!"})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 @pytest.fixture(scope="module")
 def adm_token():
-    return _otp_login("+966500000001")["token"]
+    return _admin_pwd_login()["token"]
 
 
 @pytest.fixture(scope="module")

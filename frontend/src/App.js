@@ -1,4 +1,5 @@
 import "@/App.css";
+import AdminLogin from "@/pages/AdminLogin";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { I18nProvider } from "@/i18n";
@@ -51,6 +52,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/register" element={<Register />} />
             <Route path="/app" element={<DashboardLayout />}>
               <Route index element={<RoleIndex />} />

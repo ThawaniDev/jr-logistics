@@ -149,6 +149,11 @@ export default function Login() {
           </AnimatePresence>
         </div>
         <p className="text-center text-xs text-slate-500 mt-6">{t("auth.noAccount")}</p>
+        <p className="text-center text-xs mt-3">
+          <Link to="/admin/login" data-testid="admin-portal-link" className="text-slate-600 hover:text-brand transition-colors">
+            {t("adminAuth.portalLink")}
+          </Link>
+        </p>
       </motion.div>
     </div>
   );

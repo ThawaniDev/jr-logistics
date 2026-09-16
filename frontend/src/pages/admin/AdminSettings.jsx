@@ -1,17 +1,36 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Settings, Save, Percent, Banknote, Car, MapPin, AlertTriangle } from "lucide-react";
+import { Settings, Save, Percent, Banknote, Car, MapPin, AlertTriangle, KeyRound } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import api, { errMsg } from "@/lib/api";
 import { sar } from "@/lib/constants";
 import { useI18n } from "@/i18n";
+import { useAuth } from "@/context/AuthContext";
 
 export default function AdminSettings() {
   const { t } = useI18n();
+  const { user } = useAuth();
   const [settings, setSettings] = useState(null);
   const [form, setForm] = useState({ default_rate: "", commission_pct: "", compensation_pct: "", vehicle_types: "", service_areas: "" });
   const [busy, setBusy] = useState(false);
+  const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
+  const [pwBusy, setPwBusy] = useState(false);
+
+  const changePassword = async (e) => {
+    e.preventDefault();
+    if (pw.new_password !== pw.confirm) return toast.error(t("admin.pwMismatch"));
+    setPwBusy(true);
+    try {
+      await api.post("/auth/change-password", { current_password: pw.current_password, new_password: pw.new_password });
+      toast.success(t("admin.pwChanged"));
+      setPw({ current_password: "", new_password: "", confirm: "" });
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setPwBusy(false);
+    }
+  };
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => {
@@ -123,6 +142,38 @@ export default function AdminSettings() {
           <Save className="w-4 h-4" /> {busy ? t("common.saving") : t("common.save")}
         </button>
       </form>
+
+      {user?.role === "admin" && (
+        <form onSubmit={changePassword} className="card-surface p-6 space-y-4" data-testid="change-password-form">
+          <p className="font-heading font-bold flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-brand" /> {t("admin.pwSection")}
+          </p>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("admin.pwCurrent")}</label>
+              <Input data-testid="pw-current" dir="ltr" type="password" value={pw.current_password}
+                onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
+                className="bg-navy-800 border-navy-600 h-11 text-left" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("admin.pwNew")}</label>
+              <Input data-testid="pw-new" dir="ltr" type="password" value={pw.new_password}
+                onChange={(e) => setPw({ ...pw, new_password: e.target.value })}
+                className="bg-navy-800 border-navy-600 h-11 text-left" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("admin.pwConfirm")}</label>
+              <Input data-testid="pw-confirm" dir="ltr" type="password" value={pw.confirm}
+                onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
+                className="bg-navy-800 border-navy-600 h-11 text-left" />
+            </div>
+          </div>
+          <button data-testid="pw-save-btn" disabled={pwBusy}
+            className="bg-brand text-navy-900 font-bold rounded-xl px-6 py-2.5 text-sm hover:bg-brand-hover disabled:opacity-50 transition-colors">
+            {pwBusy ? t("common.saving") : t("admin.pwSave")}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
