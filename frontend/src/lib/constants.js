@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 
 export const SERVICES = [
-  { key: "delivery_driver", name: "سائقو التوصيل والمندوبون", short: "سائقي توصيل", icon: Bike, unit: "shipment", unit_label: "لكل شحنة", desc: "مندوبو توصيل بمركباتهم لتوصيل الشحنات داخل المدينة", has_shipments: true, needs_vehicle: false, ref_rate: 7 },
+  { key: "delivery_driver", name: "سائقو التوصيل والمندوبون", short: "سائقي توصيل", icon: Bike, unit: "shipment", unit_label: "لكل شحنة", desc: "مندوبو توصيل بمركباتهم لتوصيل الشحنات داخل المدينة", has_shipments: true, needs_vehicle: true, ref_rate: 7 },
   { key: "warehouse_worker", name: "عمال مستودعات", short: "عمال مستودعات", icon: Warehouse, unit: "worker_day", unit_label: "للعامل / اليوم", desc: "عمالة تشغيلية لدعم عمليات المستودعات اليومية", has_shipments: false, needs_vehicle: false, ref_rate: 250 },
   { key: "loading_unloading", name: "عمال تحميل وتنزيل", short: "تحميل وتنزيل", icon: PackageOpen, unit: "worker_day", unit_label: "للعامل / اليوم", desc: "طواقم تحميل وتنزيل للشاحنات والحاويات", has_shipments: false, needs_vehicle: false, ref_rate: 220 },
   { key: "sorting_packing", name: "عمال فرز وتغليف", short: "فرز وتغليف", icon: PackageCheck, unit: "worker_day", unit_label: "للعامل / اليوم", desc: "فرز الشحنات وتغليفها وتجهيزها للشحن", has_shipments: false, needs_vehicle: false, ref_rate: 230 },

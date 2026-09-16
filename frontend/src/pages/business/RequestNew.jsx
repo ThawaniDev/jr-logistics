@@ -140,7 +140,11 @@ export default function RequestNew() {
               {svc.needs_vehicle && (
                 <div>
                   <label className="text-xs text-slate-400 block mb-1.5">نوع المركبة المطلوبة *</label>
-                  <Input data-testid="req-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")} placeholder="مثال: دراجة نارية، سيارة، فان صغير" className="bg-navy-800 border-navy-600 h-11" />
+                  <select data-testid="req-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
+                    className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                    <option value="">اختر نوع المركبة…</option>
+                    {["دراجة نارية", "سيارة", "فان صغير"].map((v) => <option key={v}>{v}</option>)}
+                  </select>
                 </div>
               )}
             </div>

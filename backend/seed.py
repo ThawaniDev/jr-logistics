@@ -212,52 +212,58 @@ def worker_doc(w):
 
 async def seed_all():
     await seed_admin()
-    if await db.settings.find_one({"key": "seed_v2"}):
-        return
-    fresh = not await db.settings.find_one({"key": "seed_v1"})
+    if not await db.settings.find_one({"key": "seed_v2"}):
+        fresh = not await db.settings.find_one({"key": "seed_v1"})
 
-    if fresh:
-        for b in BUSINESSES:
-            await db.users.insert_one({**b, "created_at": now_iso()})
+        if fresh:
+            for b in BUSINESSES:
+                await db.users.insert_one({**b, "created_at": now_iso()})
+            for w in WORKERS:
+                await db.users.insert_one(worker_doc(w))
+            for w in WALLETS:
+                await db.wallets.insert_one(w)
+        else:
+            # Migrate v1 (multi-service demo) -> v2 (delivery-only MVP)
+            old = await db.requests.find({"service_type": {"$ne": "delivery_driver"}}, {"_id": 1}).to_list(100)
+            old_ids = [r["_id"] for r in old]
+            if old_ids:
+                await db.requests.delete_many({"_id": {"$in": old_ids}})
+                await db.offers.delete_many({"request_id": {"$in": old_ids}})
+            await db.users.update_many(
+                {"role": "worker", "is_demo": True},
+                {"$set": {"worker_profile.services": ["delivery_driver"]}})
+            for w in WALLETS:
+                await db.wallets.replace_one({"user_id": w["user_id"]}, w, upsert=True)
+
+        await db.transactions.delete_many({"is_demo": True})
+        await db.notifications.delete_many({})
+        await db.withdrawals.delete_many({})
+        await db.tickets.delete_many({})
+        await db.ratings.delete_many({})
+
+        for r in REQUESTS:
+            await db.requests.replace_one({"_id": r["_id"]}, {**r, "created_at": now_iso()}, upsert=True)
+        for o in OFFERS:
+            await db.offers.replace_one({"_id": o["_id"]},
+                                        {**o, "created_at": now_iso(), "responded_at": now_iso()}, upsert=True)
+        for t in TRANSACTIONS:
+            doc = {"_id": new_id(), "status": "completed", "is_demo": True, "created_at": now_iso(),
+                   "request_id": t.get("request_id"), **{k: v for k, v in t.items() if k != "request_id"}}
+            await db.transactions.insert_one(doc)
+        for w in WITHDRAWALS:
+            await db.withdrawals.insert_one({**w, "created_at": now_iso()})
+        for r in RATINGS:
+            await db.ratings.insert_one({**r, "created_at": now_iso()})
+        for t in TICKETS:
+            await db.tickets.insert_one({**t, "created_at": now_iso()})
+        for n in NOTIFICATIONS:
+            await db.notifications.insert_one({**n, "_id": new_id(), "created_at": now_iso()})
+
+        await db.settings.update_one({"key": "seed_v2"}, {"$set": {"key": "seed_v2", "at": now_iso()}}, upsert=True)
+
+    if not await db.settings.find_one({"key": "seed_v3"}):
+        # backfill vehicle_type for demo drivers (migration path added after v2)
         for w in WORKERS:
-            await db.users.insert_one(worker_doc(w))
-        for w in WALLETS:
-            await db.wallets.insert_one(w)
-    else:
-        # Migrate v1 (multi-service demo) -> v2 (delivery-only MVP)
-        old = await db.requests.find({"service_type": {"$ne": "delivery_driver"}}, {"_id": 1}).to_list(100)
-        old_ids = [r["_id"] for r in old]
-        if old_ids:
-            await db.requests.delete_many({"_id": {"$in": old_ids}})
-            await db.offers.delete_many({"request_id": {"$in": old_ids}})
-        await db.users.update_many(
-            {"role": "worker", "is_demo": True},
-            {"$set": {"worker_profile.services": ["delivery_driver"]}})
-        for w in WALLETS:
-            await db.wallets.replace_one({"user_id": w["user_id"]}, w, upsert=True)
-
-    await db.transactions.delete_many({"is_demo": True})
-    await db.notifications.delete_many({})
-    await db.withdrawals.delete_many({})
-    await db.tickets.delete_many({})
-    await db.ratings.delete_many({})
-
-    for r in REQUESTS:
-        await db.requests.replace_one({"_id": r["_id"]}, {**r, "created_at": now_iso()}, upsert=True)
-    for o in OFFERS:
-        await db.offers.replace_one({"_id": o["_id"]},
-                                    {**o, "created_at": now_iso(), "responded_at": now_iso()}, upsert=True)
-    for t in TRANSACTIONS:
-        doc = {"_id": new_id(), "status": "completed", "is_demo": True, "created_at": now_iso(),
-               "request_id": t.get("request_id"), **{k: v for k, v in t.items() if k != "request_id"}}
-        await db.transactions.insert_one(doc)
-    for w in WITHDRAWALS:
-        await db.withdrawals.insert_one({**w, "created_at": now_iso()})
-    for r in RATINGS:
-        await db.ratings.insert_one({**r, "created_at": now_iso()})
-    for t in TICKETS:
-        await db.tickets.insert_one({**t, "created_at": now_iso()})
-    for n in NOTIFICATIONS:
-        await db.notifications.insert_one({**n, "_id": new_id(), "created_at": now_iso()})
-
-    await db.settings.update_one({"key": "seed_v2"}, {"$set": {"key": "seed_v2", "at": now_iso()}}, upsert=True)
+            await db.users.update_one({"_id": w["_id"]},
+                                      {"$set": {"worker_profile.vehicle_type": w.get("vehicle_type")}})
+        await db.settings.update_one({"key": "seed_v3"}, {"$set": {"key": "seed_v3", "at": now_iso()}}, upsert=True)

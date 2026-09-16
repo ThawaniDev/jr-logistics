@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 2 — delivery-driver-only scope (seed_v2) validated end-to-end. Rewrote /app/backend/tests/test_isnad_backend.py to match new seed (req_1/req_d1/req_d2/req_d3, off_d3a, wd_1). Ran serial pytest: 23/23 backend tests pass. Frontend flows verified with Playwright: landing shows only delivery card + coming-soon chips, business login/wallet/requests/wizard render correctly, driver opportunities show vehicle+shipments+earnings, driver wallet reflects post-completion 52 SAR (252-200 approved wd_1), admin dashboard/users/withdrawals reachable. Wizard vehicle-type validation exists in code (toast on empty) and backend rejects with 400. Overall: MVP scope is correctly enforced across all layers.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "seed.py worker_profile",
+        "issue": "Seeded drivers (u_w1..u_w8) do NOT have vehicle_type persisted in worker_profile (returns null via /api/admin/users). test_credentials.md and problem statement claim each demo driver has a vehicle_type. This means the review request bullet 'admin users page shows drivers and their vehicle-relevant services label' cannot fully render vehicle. Suggest: extend seed to include worker_profile.vehicle_type per driver ('دراجة نارية' / 'سيارة' / 'فان صغير')."
+      },
+      {
+        "endpoint": "admin /api/admin/withdrawals default filter",
+        "issue": "Admin UI defaults to 'pending' filter; after wd_1 was approved by backend regression the list appeared empty on first visit. Cosmetic — clicking 'الكل' shows wd_1 status=approved. Consider a subtle empty-state hint pointing to the filter."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Business RequestNew wizard - step 2",
+        "issues": [
+          "req-vehicle is a free-text <Input> with placeholder 'مثال: دراجة نارية، سيارة، فان صغير' instead of a Select/dropdown as the review-request wording implied ('نوع المركبة'). Not a blocker — validation & backend both work — but a dropdown would prevent typos and align with the 3 canonical values.",
+          "When the user clicks Next without vehicle_type the validation fires via a sonner toast only; there is no inline red error under the field, so automated test harnesses (and users who miss the toast) may not realise why they cannot advance."
+        ]
+      },
+      {
+        "screen": "Login OTP entry",
+        "issues": [
+          "The [data-testid='otp-input'] wraps an InputOTP component composed of 4 <input> slots inside a container div. The testid is on the wrapper, so page.fill('[data-testid=otp-input]', ...) fails ('Element is not an <input>'). Consider moving data-testid to the first slot or exposing a hidden aggregated input for testing."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_isnad_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Seed each demo driver with a worker_profile.vehicle_type value so the admin users page and driver profile show it out-of-the-box.",
+    "Prefer a Select for req-vehicle (or at least inline red text under the input on empty submit).",
+    "Move data-testid='otp-input' onto the first OTP slot (or add a testid to each slot) to make the login flow easier to automate."
+  ],
+  "critical_code_review_comments": [
+    "backend/routers/business.py compute_estimate falls back on shipment_count when shipments_per_driver is falsy — OK, but the two paths inside create_request compute shipment_count differently than compute_estimate expects (compute_estimate branches on `shipments_per_driver or shipment_count`; create_request pre-multiplies then passes shipment_count only). Minor duplication, but currently correct.",
+    "Seed workers uniformly missing worker_profile.vehicle_type — this contradicts test_credentials.md and the problem statement.",
+    "OTP is returned unconditionally in the send-otp response — flagged in iteration 1 and remains for demo mode; acceptable for MVP.",
+    "Frontend validation for wizard fields uses sonner toasts only; adding inline errors would improve accessibility & testability.",
+    "No rate limiting on /api/auth/otp/send or /api/auth/otp/verify — pre-prod concern."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_isnad_backend.py"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "100% of tested flows"},
+  "test_credentials": "Loaded from /app/memory/test_credentials.md — admin +966500000001, businesses +966500000101/102/103, drivers +966500000201..208. OTP mocked (returned in send-otp API response and shown in login banner data-testid='demo-otp-code').",
+  "seed_data_creation": "Backend regression created: a new delivery request (u_b1, 2 drivers × 30 shipments × 8 SAR = 480, vehicle 'دراجة نارية'), ticket 'TEST_ticket_delivery_only' with admin reply 'TEST_admin_reply_v2', 1000 SAR wallet topup on u_b1. State mutations from the run: req_d2 → completed (سعد +252, فهد +252 net); wd_1 → approved (محمد wallet 252→52); req_d3 → filling (ناصر accepted off_d3a). New phone +966512345678 sent OTP (registered as new user by first run then existing on re-run).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "seed_v2 dataset is now mutated: req_d2 completed, wd_1 approved (محمد wallet=52), req_d3 filling (ناصر accepted). req_1 still published with off_1 offered to محمد. u_b1 wallet ≈ 19,880 SAR available / 0 reserved after req_d2 release. Backend tests are idempotent — will skip mutations that already ran. If you need pristine state, call the seed endpoint or restart with reseed. Note the wizard vehicle field is an Input (text), not a Select; test by fill() rather than select_option. The [data-testid='otp-input'] wrapper is a div; click the first inner <input> then keyboard.type the 4-digit OTP.",
+  "rca of the issue": "N/A — no critical bugs discovered this iteration. Minor: seed missing vehicle_type per driver; UI validation uses toast-only; OTP testid on wrapper div."
+}

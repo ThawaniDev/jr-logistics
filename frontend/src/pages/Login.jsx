@@ -119,10 +119,10 @@ export default function Login() {
                   </div>
                 )}
                 <div dir="ltr" className="flex justify-center" data-testid="otp-input">
-                  <InputOTP maxLength={4} value={code} onChange={setCode}>
+                  <InputOTP maxLength={4} value={code} onChange={setCode} data-testid="otp-code-input">
                     <InputOTPGroup>
                       {[0, 1, 2, 3].map((i) => (
-                        <InputOTPSlot key={i} index={i} className="w-14 h-14 text-xl border-navy-600 bg-navy-800" />
+                        <InputOTPSlot key={i} index={i} data-testid={`otp-slot-${i}`} className="w-14 h-14 text-xl border-navy-600 bg-navy-800" />
                       ))}
                     </InputOTPGroup>
                   </InputOTP>
