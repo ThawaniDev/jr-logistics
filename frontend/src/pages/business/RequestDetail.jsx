@@ -137,7 +137,7 @@ export default function RequestDetail() {
             <button
               data-testid="publish-request-btn"
               disabled={busy === "publish"}
-              onClick={() => act("publish", () => api.post(`/business/requests/${id}/publish`), t("reqDetail.publishDone"))}
+              onClick={() => act("publish", () => api.post(`/business/requests/${id}/publish`, { terms: true }), t("reqDetail.publishDone"))}
               className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover disabled:opacity-40 transition-colors"
             >
               {busy === "publish" ? t("reqDetail.publishing") : t("reqDetail.publish")}
@@ -174,7 +174,7 @@ export default function RequestDetail() {
             <button
               data-testid="cancel-request-btn"
               disabled={busy === "cancel"}
-              onClick={() => act("cancel", () => api.post(`/business/requests/${id}/cancel`), t("reqDetail.cancelToast"))}
+              onClick={() => act("cancel", () => api.post(`/business/requests/${id}/cancel`, {}), t("reqDetail.cancelToast"))}
               className="flex items-center gap-2 border border-rose-500/40 text-rose-400 font-semibold rounded-xl px-5 py-2.5 text-sm hover:bg-rose-500/10 disabled:opacity-40 transition-colors"
             >
               <XCircle className="w-4 h-4" /> {t("reqDetail.cancelRequest")}
@@ -206,7 +206,7 @@ export default function RequestDetail() {
                     </div>
                     <div>
                       <p className="font-semibold text-sm">{o.worker?.name}</p>
-                      <p className="text-[11px] text-slate-500 num">{o.worker?.phone}</p>
+                      <p className="text-[11px] text-slate-500 num">{o.worker?.phone || t("reqDetail.phoneAfterAccept")}</p>
                     </div>
                   </div>
                   <StatusBadge kind="offer" status={o.status} />

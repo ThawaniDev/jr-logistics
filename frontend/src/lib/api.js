@@ -17,7 +17,7 @@ export function errMsg(e) {
   if (typeof d === "string") return d;
   if (Array.isArray(d))
     return d.map((x) => (x && typeof x.msg === "string" ? x.msg : JSON.stringify(x))).join(" ");
-  return String(d?.msg || d);
+  return String(d?.msg || d?.message || d);
 }
 
 export default api;

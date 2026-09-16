@@ -103,6 +103,7 @@ class RequestIn(BaseModel):
     vehicle_type: Optional[str] = None
     requirements: Optional[str] = None
     publish: bool = True
+    terms: bool = False
 
 
 class TopupIn(BaseModel):
@@ -111,6 +112,11 @@ class TopupIn(BaseModel):
 
 class AttendanceIn(BaseModel):
     result: Literal["attended", "no_show"]
+    reason: Optional[str] = None
+
+
+class PublishIn(BaseModel):
+    terms: bool = False
 
 
 class RateIn(BaseModel):
@@ -186,8 +192,10 @@ async def create_request(body: RequestIn, user: dict = biz):
     matched = 0
     if body.publish:
         await reserve_funds(user["_id"], doc)
-        await db.requests.update_one({"_id": doc["_id"]},
-                                     {"$set": {"status": "published", "published_at": now_iso()}})
+        updates = {"status": "published", "published_at": now_iso()}
+        if body.terms:
+            updates["biz_terms_accepted_at"] = now_iso()
+        await db.requests.update_one({"_id": doc["_id"]}, {"$set": updates})
         doc["status"] = "published"
         matched = await match_workers(doc)
         await notify(user["_id"], "تم إنشاء طلبك ونشره",
@@ -197,14 +205,17 @@ async def create_request(body: RequestIn, user: dict = biz):
 
 
 @router.post("/requests/{request_id}/publish")
-async def publish_request(request_id: str, user: dict = biz):
+async def publish_request(request_id: str, body: PublishIn = None, user: dict = biz):
+    body = body or PublishIn()
     r = await get_owned_request(request_id, user)
     if r["status"] != "draft":
         raise HTTPException(status_code=400, detail="يمكن نشر المسودات فقط")
     if not r.get("escrow_reserved"):
         await reserve_funds(user["_id"], r)
-    await db.requests.update_one({"_id": request_id},
-                                 {"$set": {"status": "published", "published_at": now_iso()}})
+    updates = {"status": "published", "published_at": now_iso()}
+    if body.terms:
+        updates["biz_terms_accepted_at"] = now_iso()
+    await db.requests.update_one({"_id": request_id}, {"$set": updates})
     r["status"] = "published"
     matched = await match_workers(r)
     await notify(user["_id"], "تم نشر طلبك",
@@ -230,6 +241,10 @@ async def get_owned_request(request_id: str, user: dict) -> dict:
     return r
 
 
+VISIBLE_AFTER_ACCEPT = ("accepted", "confirmed", "attendance_confirmed", "attended",
+                        "driver_completed", "paid", "no_show")
+
+
 @router.get("/requests/{request_id}")
 async def request_detail(request_id: str, user: dict = biz):
     r = await get_owned_request(request_id, user)
@@ -238,6 +253,9 @@ async def request_detail(request_id: str, user: dict = biz):
         w = await db.users.find_one({"_id": o["worker_id"]},
                                     {"name": 1, "phone": 1, "city": 1, "worker_profile.rating": 1,
                                      "worker_profile.rating_count": 1, "worker_profile.jobs_completed": 1})
+        # privacy: contact details revealed only after the driver accepts
+        if o["status"] not in VISIBLE_AFTER_ACCEPT and w:
+            w.pop("phone", None)
         o["worker"] = pub(w)
     rated = await db.ratings.distinct("offer_id", {"request_id": request_id, "from_user": user["_id"]})
     return {"request": pub(r), "offers": pub_list(offers), "rated_offer_ids": rated,
@@ -280,7 +298,12 @@ async def mark_attendance(request_id: str, offer_id: str, body: AttendanceIn, us
         if r["status"] == "confirmed":
             await db.requests.update_one({"_id": request_id}, {"$set": {"status": "in_progress"}})
         return {"ok": True, "status": "attended"}
-    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "no_show"}})
+    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "no_show", "no_show_reason": body.reason}})
+    await db.cancellations.insert_one({
+        "_id": new_id(), "party": "worker", "kind": "no_show",
+        "request_id": request_id, "offer_id": offer_id, "worker_id": o["worker_id"],
+        "business_id": user["_id"], "reason": body.reason or "لم يحضر في الموعد المحدد",
+        "created_at": now_iso()})
     await db.requests.update_one({"_id": request_id},
                                  {"$inc": {"replacement_count": 1}, "$set": {"replacement_requested": True}})
     w = await db.users.find_one({"_id": o["worker_id"]}, {"name": 1})
@@ -336,8 +359,13 @@ async def complete_request(request_id: str, user: dict = biz):
     return {"ok": True, "paid_workers": len(payable), "released": released, "refunded": refund}
 
 
+class CancelRequestIn(BaseModel):
+    reason: Optional[str] = None
+
+
 @router.post("/requests/{request_id}/cancel")
-async def cancel_request(request_id: str, user: dict = biz):
+async def cancel_request(request_id: str, body: CancelRequestIn = None, user: dict = biz):
+    body = body or CancelRequestIn()
     r = await get_owned_request(request_id, user)
     if r["status"] in ("completed", "cancelled"):
         raise HTTPException(status_code=400, detail="الطلب منتهي بالفعل")
@@ -350,6 +378,11 @@ async def cancel_request(request_id: str, user: dict = biz):
     await db.offers.update_many(
         {"request_id": request_id, "status": {"$in": ["offered", "accepted", "confirmed", "attendance_confirmed"]}},
         {"$set": {"status": "cancelled"}})
+    await db.cancellations.insert_one({
+        "_id": new_id(), "party": "business", "kind": "cancellation",
+        "request_id": request_id, "offer_id": None, "worker_id": None,
+        "business_id": user["_id"], "reason": (body.reason or "إلغاء من المنشأة").strip(),
+        "created_at": now_iso()})
     await db.requests.update_one({"_id": request_id}, {"$set": {"status": "cancelled"}})
     return {"ok": True}
 

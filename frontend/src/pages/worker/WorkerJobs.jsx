@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Briefcase, MapPin, Calendar, CheckCircle2, Star, Flag, AlertTriangle } from "lucide-react";
+import { Briefcase, MapPin, Calendar, CheckCircle2, Star, Flag, AlertTriangle, XCircle } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
@@ -58,6 +58,22 @@ export default function WorkerJobs() {
     try {
       await api.post(`/worker/offers/${offerId}/no-work`, {});
       toast.success(t("jobs.noWorkDone"));
+      load();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const [cancelFor, setCancelFor] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+
+  const cancelJob = async (offerId) => {
+    if (!cancelReason.trim()) return toast.error(t("jobs.cancelReason"));
+    try {
+      await api.post(`/worker/offers/${offerId}/cancel`, { reason: cancelReason });
+      toast.success(t("jobs.cancelDone"));
+      setCancelFor(null);
+      setCancelReason("");
       load();
     } catch (e) {
       toast.error(errMsg(e));
@@ -136,6 +152,24 @@ export default function WorkerJobs() {
                       className="flex items-center gap-2 border border-rose-500/40 text-rose-400 rounded-xl px-4 py-2.5 text-xs hover:bg-rose-500/10 transition-colors">
                       <AlertTriangle className="w-3.5 h-3.5" /> {t("jobs.noWork")}
                     </button>
+                  )}
+                  {["accepted", "confirmed"].includes(o.status) && (
+                    cancelFor === o._id ? (
+                      <div className="flex items-center gap-2" data-testid={`cancel-form-${o._id}`}>
+                        <input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}
+                          placeholder={t("jobs.cancelReason")} data-testid={`cancel-reason-${o._id}`}
+                          className="flex-1 bg-navy-800 border border-navy-600 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
+                        <button onClick={() => cancelJob(o._id)} data-testid={`cancel-confirm-${o._id}`}
+                          className="bg-rose-500 text-white font-bold rounded-xl px-4 py-2.5 text-xs hover:bg-rose-400">
+                          {t("jobs.cancelConfirm")}
+                        </button>
+                      </div>
+                    ) : (
+                      <button data-testid={`cancel-${o._id}`} onClick={() => { setCancelFor(o._id); setCancelReason(""); }}
+                        className="flex items-center gap-2 border border-rose-500/40 text-rose-400 rounded-xl px-4 py-2.5 text-xs hover:bg-rose-500/10 transition-colors">
+                        <XCircle className="w-3.5 h-3.5" /> {t("jobs.cancel")}
+                      </button>
+                    )
                   )}
                   <Link to="/app/support" data-testid={`report-${o._id}`}
                     className="flex items-center gap-2 border border-navy-600 text-slate-300 rounded-xl px-4 py-2.5 text-xs hover:border-amber-500/40 hover:text-amber-400 transition-colors">

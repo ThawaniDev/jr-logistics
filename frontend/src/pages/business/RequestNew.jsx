@@ -24,6 +24,7 @@ export default function RequestNew() {
   });
   const [busy, setBusy] = useState(false);
   const [insufficient, setInsufficient] = useState(null);
+  const [termsAgreed, setTermsAgreed] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export default function RequestNew() {
   };
 
   const publish = async (asDraft = false) => {
+    if (!asDraft && !termsAgreed) return toast.error(t("wizard.termsBizError"));
     setBusy(true);
     setInsufficient(null);
     try {
@@ -81,6 +83,7 @@ export default function RequestNew() {
         vehicle_type: form.vehicle_type || null,
         requirements: form.requirements || null,
         publish: !asDraft,
+        terms: !asDraft ? termsAgreed : false,
       };
       const { data } = await api.post("/business/requests", payload);
       if (asDraft) {
@@ -280,6 +283,23 @@ export default function RequestNew() {
                 </Link>
               </div>
             )}
+            <div className="rounded-2xl border border-navy-600/50 bg-navy-800/40 p-5 space-y-3" data-testid="biz-terms-block">
+              <p className="font-heading font-bold text-sm">{t("wizard.termsBizTitle")}</p>
+              <ul className="space-y-1.5 text-xs text-slate-400">
+                {[1, 2, 3, 4].map((i) => (
+                  <li key={i} className="flex gap-2">
+                    <Check className="w-3.5 h-3.5 text-brand shrink-0 mt-0.5" />
+                    <span>{t(`wizard.termsBizI${i}`)}</span>
+                  </li>
+                ))}
+              </ul>
+              <label className="flex items-start gap-3 cursor-pointer text-sm pt-1" data-testid="biz-terms-wrap">
+                <input type="checkbox" checked={termsAgreed} onChange={(e) => setTermsAgreed(e.target.checked)}
+                  data-testid="biz-terms-checkbox"
+                  className="mt-1 w-4 h-4 accent-emerald-400" />
+                <span>{t("wizard.termsBizAgree")}</span>
+              </label>
+            </div>
           </div>
         )}
       </div>
@@ -297,7 +317,7 @@ export default function RequestNew() {
           </button>
         ) : (
           <div className="flex gap-3">
-            <button onClick={() => publish(false)} disabled={busy} data-testid="wizard-publish-btn"
+            <button onClick={() => publish(false)} disabled={busy || !termsAgreed} data-testid="wizard-publish-btn"
               className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors disabled:opacity-50 shadow-[0_0_25px_rgba(0,229,163,0.3)]">
               <Rocket className="w-4 h-4" /> {busy ? t("wizard.publishing") : t("wizard.publish")}
             </button>

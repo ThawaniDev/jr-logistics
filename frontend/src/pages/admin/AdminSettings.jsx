@@ -12,7 +12,7 @@ export default function AdminSettings() {
   const { t } = useI18n();
   const { user } = useAuth();
   const [settings, setSettings] = useState(null);
-  const [form, setForm] = useState({ default_rate: "", commission_pct: "", compensation_pct: "", vehicle_types: "", service_areas: "" });
+  const [form, setForm] = useState({ default_rate: "", commission_pct: "", compensation_pct: "", vehicle_types: "", service_areas: "", cancel_warn: "", cancel_suspend: "", cancel_days: "" });
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
@@ -40,6 +40,9 @@ export default function AdminSettings() {
         default_rate: String(s.default_rate),
         commission_pct: String(Math.round(s.commission_rate * 100)),
         compensation_pct: String(s.no_work_compensation_pct ?? 100),
+        cancel_warn: String(s.cancel_warning_threshold ?? 2),
+        cancel_suspend: String(s.cancel_suspend_threshold ?? 4),
+        cancel_days: String(s.cancel_suspend_days ?? 3),
         vehicle_types: (s.vehicle_types || []).join("\n"),
         service_areas: (s.service_areas || []).join("\n"),
       });
@@ -54,6 +57,9 @@ export default function AdminSettings() {
         default_rate: Number(form.default_rate),
         commission_rate: Number(form.commission_pct) / 100,
         no_work_compensation_pct: Number(form.compensation_pct),
+        cancel_warning_threshold: Number(form.cancel_warn),
+        cancel_suspend_threshold: Number(form.cancel_suspend),
+        cancel_suspend_days: Number(form.cancel_days),
         vehicle_types: form.vehicle_types.split("\n").map((v) => v.trim()).filter(Boolean),
         service_areas: form.service_areas.split("\n").map((v) => v.trim()).filter(Boolean),
       };
@@ -115,6 +121,33 @@ export default function AdminSettings() {
               className="bg-navy-800 border-navy-600 h-11 num max-w-xs" />
             <p className="text-[11px] text-slate-500 mt-1">{t("admin.compensationNote")}</p>
           </div>
+        </div>
+
+        <div className="card-surface p-6 space-y-4" data-testid="cancel-policy-section">
+          <p className="font-heading font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400" /> {t("admin.cancelSection")}
+          </p>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("admin.cancelWarn")}</label>
+              <Input data-testid="settings-cancel-warn" type="number" min="1" max="20" value={form.cancel_warn}
+                onChange={(e) => setForm({ ...form, cancel_warn: e.target.value })}
+                className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("admin.cancelSuspend")}</label>
+              <Input data-testid="settings-cancel-suspend" type="number" min="1" max="20" value={form.cancel_suspend}
+                onChange={(e) => setForm({ ...form, cancel_suspend: e.target.value })}
+                className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("admin.cancelDays")}</label>
+              <Input data-testid="settings-cancel-days" type="number" min="1" max="30" value={form.cancel_days}
+                onChange={(e) => setForm({ ...form, cancel_days: e.target.value })}
+                className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-500">{t("admin.cancelNote")}</p>
         </div>
 
         <div className="card-surface p-6 space-y-4">

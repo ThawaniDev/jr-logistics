@@ -1,15 +1,17 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Literal, List
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP
-from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 wrk = Depends(require_roles("worker"))
+
+ACTIVE_JOB_STATUSES = ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed"]
 
 
 async def enrich_offer(o: dict) -> dict:
@@ -21,6 +23,49 @@ async def enrich_offer(o: dict) -> dict:
                                      "business_profile.rating": 1})
         o["business"] = pub(b)
     return o
+
+
+def ranges_overlap(a_start: str, a_days: int, b_start: str, b_days: int) -> bool:
+    a0 = date.fromisoformat(a_start)
+    a1 = a0 + timedelta(days=max(1, a_days) - 1)
+    b0 = date.fromisoformat(b_start)
+    b1 = b0 + timedelta(days=max(1, b_days) - 1)
+    return a0 <= b1 and b0 <= a1
+
+
+async def find_overlapping_job(worker_id: str, req: dict) -> Optional[dict]:
+    """A driver may hold only one active job per overlapping time window."""
+    offers = await db.offers.find(
+        {"worker_id": worker_id, "request_id": {"$ne": req["_id"]},
+         "status": {"$in": ACTIVE_JOB_STATUSES}}).to_list(50)
+    if not offers:
+        return None
+    reqs = {r["_id"]: r async for r in db.requests.find(
+        {"_id": {"$in": [o["request_id"] for o in offers]}})}
+    for o in offers:
+        er = reqs.get(o["request_id"])
+        if er and ranges_overlap(req["start_date"], req.get("duration_days", 1),
+                                 er["start_date"], er.get("duration_days", 1)):
+            return er
+    return None
+
+
+async def ensure_acceptable(user: dict, req: dict):
+    wp = user.get("worker_profile", {})
+    if wp.get("verification_status") != "verified":
+        raise HTTPException(status_code=403, detail="حسابك غير موثّق — أكمل رفع وتوثيق مستنداتك لقبول الفرص")
+    until = wp.get("suspended_until")
+    if until and until > now_iso():
+        raise HTTPException(status_code=403,
+                            detail=f"حسابك موقوف مؤقتاً حتى {until[:10]} وفق سياسة الإلغاء — تواصل مع الدعم")
+    overlap = await find_overlapping_job(user["_id"], req)
+    if overlap:
+        raise HTTPException(status_code=400, detail={
+            "code": "OVERLAPPING_JOB",
+            "message": "لديك مهمة نشطة في نفس الفترة — أكملها أو ألغِها وفق السياسة قبل قبول فرصة أخرى",
+            "conflict_title": overlap.get("title"),
+            "conflict_date": overlap.get("start_date"),
+        })
 
 
 class AvailabilityIn(BaseModel):
@@ -35,6 +80,10 @@ class RespondIn(BaseModel):
 class ApplyIn(BaseModel):
     request_id: str
     terms: bool = False
+
+
+class CancelJobIn(BaseModel):
+    reason: str
 
 
 class WithdrawalIn(BaseModel):
@@ -55,12 +104,10 @@ async def overview(user: dict = wrk):
     wp = user.get("worker_profile", {})
     new_offers = await db.offers.count_documents({"worker_id": user["_id"], "status": "offered"})
     active = await db.offers.count_documents(
-        {"worker_id": user["_id"],
-         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed"]}})
+        {"worker_id": user["_id"], "status": {"$in": ACTIVE_JOB_STATUSES}})
     completed = wp.get("jobs_completed", 0)
     jobs = await db.offers.find(
-        {"worker_id": user["_id"],
-         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed"]}}
+        {"worker_id": user["_id"], "status": {"$in": ACTIVE_JOB_STATUSES}}
     ).sort("created_at", -1).to_list(10)
     pending = 0.0
     for o in jobs:
@@ -90,6 +137,8 @@ async def overview(user: dict = wrk):
             "pending_earnings": round(pending, 2), "paid_earnings": paid_total,
             "verification_status": wp.get("verification_status", "pending"),
             "expiring_docs": len(expiring),
+            "cancel_count": wp.get("cancel_count", 0),
+            "suspended_until": wp.get("suspended_until"),
             "availability": wp.get("availability", "available")}
 
 
@@ -109,13 +158,15 @@ async def my_offers(user: dict = wrk):
 
 @router.get("/available")
 async def available_jobs(user: dict = wrk):
-    services = user.get("worker_profile", {}).get("services", [])
+    wp = user.get("worker_profile", {})
+    services = wp.get("services", [])
     if not services:
         return {"jobs": []}
     reqs = await db.requests.find(
         {"service_type": {"$in": services}, "status": {"$in": ["published", "filling"]}}
     ).sort("created_at", -1).to_list(100)
     mine = await db.offers.distinct("request_id", {"worker_id": user["_id"]})
+    suspended = bool(wp.get("suspended_until") and wp["suspended_until"] > now_iso())
     jobs = []
     for r in reqs:
         if r["_id"] in mine:
@@ -124,6 +175,8 @@ async def available_jobs(user: dict = wrk):
         confirmed = await db.offers.count_documents(
             {"request_id": r["_id"], "status": {"$in": ["confirmed", "attendance_confirmed", "attended", "paid"]}})
         if accepted + confirmed >= r["required_count"]:
+            continue
+        if suspended or await find_overlapping_job(user["_id"], r):
             continue
         b = await db.users.find_one({"_id": r["business_id"]}, {"business_profile.company_name": 1, "name": 1})
         r["business"] = pub(b)
@@ -140,10 +193,9 @@ async def respond(offer_id: str, body: RespondIn, user: dict = wrk):
     if body.action == "reject":
         await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "rejected", "responded_at": now_iso()}})
         return {"ok": True, "status": "rejected"}
-    if user.get("worker_profile", {}).get("verification_status") != "verified":
-        raise HTTPException(status_code=403, detail="حسابك غير موثّق — أكمل رفع وتوثيق مستنداتك لقبول الفرص")
     if not body.terms:
         raise HTTPException(status_code=400, detail="يجب الموافقة على الشروط والأحكام قبل قبول الفرصة")
+    await ensure_acceptable(user, r)
     if r["status"] not in ("published", "filling"):
         raise HTTPException(status_code=400, detail="انتهت صلاحية هذه الفرصة")
     await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "accepted", "responded_at": now_iso(),
@@ -171,10 +223,9 @@ async def apply(body: ApplyIn, user: dict = wrk):
         raise HTTPException(status_code=404, detail="الفرصة غير متاحة")
     if r["service_type"] not in user.get("worker_profile", {}).get("services", []):
         raise HTTPException(status_code=400, detail="هذه الخدمة غير موجودة في ملفك")
-    if user.get("worker_profile", {}).get("verification_status") != "verified":
-        raise HTTPException(status_code=403, detail="حسابك غير موثّق — أكمل رفع وتوثيق مستنداتك لقبول الفرص")
     if not body.terms:
         raise HTTPException(status_code=400, detail="يجب الموافقة على الشروط والأحكام قبل قبول الفرصة")
+    await ensure_acceptable(user, r)
     if await db.offers.find_one({"request_id": body.request_id, "worker_id": user["_id"]}):
         raise HTTPException(status_code=400, detail="لديك عرض مسبق على هذا الطلب")
     o = {
@@ -189,6 +240,57 @@ async def apply(body: ApplyIn, user: dict = wrk):
     await notify(r["business_id"], "تقديم جديد على طلبك",
                  f"{user['name']} قبل فرصة: {r['title']}", "accepted", f"/app/business/requests/{r['_id']}")
     return {"ok": True, "status": "accepted"}
+
+
+@router.post("/offers/{offer_id}/cancel")
+async def cancel_job(offer_id: str, body: CancelJobIn, user: dict = wrk):
+    o = await db.offers.find_one({"_id": offer_id, "worker_id": user["_id"]})
+    if not o or o["status"] not in ("accepted", "confirmed"):
+        raise HTTPException(status_code=400, detail="لا يمكن إلغاء هذه المهمة في حالتها الحالية")
+    reason = (body.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="أدخل سبب الإلغاء")
+    r = await db.requests.find_one({"_id": o["request_id"]})
+    settings = await get_settings()
+    was_confirmed = o["status"] == "confirmed"
+    await db.offers.update_one({"_id": offer_id},
+                               {"$set": {"status": "cancelled", "cancelled_at": now_iso(),
+                                         "cancelled_by": "worker", "cancel_reason": reason}})
+    await db.cancellations.insert_one({
+        "_id": new_id(), "party": "worker", "kind": "cancellation",
+        "request_id": r["_id"], "offer_id": offer_id, "worker_id": user["_id"],
+        "business_id": r["business_id"], "reason": reason, "created_at": now_iso()})
+    count = user.get("worker_profile", {}).get("cancel_count", 0) + 1
+    upd = {"worker_profile.cancel_count": count}
+    if count >= settings["cancel_suspend_threshold"]:
+        until = (datetime.now(timezone.utc) + timedelta(days=settings["cancel_suspend_days"])).isoformat()
+        upd["worker_profile.suspended_until"] = until
+        await notify(user["_id"], "إيقاف مؤقت للحساب",
+                     f"وصل عدد الإلغاءات إلى {count} — تم إيقاف حسابك مؤقتاً حتى {until[:10]} وفق سياسة المنصة",
+                     "general", "/app/support")
+        await notify_admins("إيقاف مؤقت لمندوب",
+                            f"{user['name']} أُوقف مؤقتاً حتى {until[:10]} ({count} إلغاءات)",
+                            "general", "/app/admin/users")
+    elif count >= settings["cancel_warning_threshold"]:
+        await notify(user["_id"], "تنبيه بشأن الإلغاءات",
+                     f"عدد إلغاءاتك وصل {count} — الإلغاءات المتكررة قد تؤدي لإيقاف مؤقت وتقييد الفرص وفق سياسة المنصة",
+                     "general", "/app/worker/jobs")
+    await db.users.update_one({"_id": user["_id"]}, {"$set": upd})
+    req_updates = {"replacement_requested": True}
+    if was_confirmed and r["status"] in ("confirmed", "in_progress"):
+        req_updates["status"] = "filling"
+    await db.requests.update_one({"_id": r["_id"]},
+                                 {"$set": req_updates, "$inc": {"replacement_count": 1}})
+    matched = 0
+    if r["status"] in ("published", "filling", "confirmed", "in_progress"):
+        from routers.business import match_workers
+        matched = await match_workers({**r, **req_updates})
+    await notify(r["business_id"], "المندوب اعتذر عن المهمة",
+                 f"{user['name']} ألغى مشاركته في: {r['title']} — السبب: {reason}. أُرسلت {matched} عروض بديلة",
+                 "replacement", f"/app/business/requests/{r['_id']}")
+    await notify_admins("إلغاء مندوب", f"{user['name']} ألغى مهمة: {r['title']} — السبب: {reason}",
+                        "replacement", "/app/admin/requests")
+    return {"ok": True, "replacement_offers": matched}
 
 
 @router.post("/offers/{offer_id}/checkin")
@@ -252,8 +354,7 @@ async def report_no_work(offer_id: str, body: NoWorkIn, user: dict = wrk):
 @router.get("/jobs")
 async def my_jobs(user: dict = wrk):
     active = await db.offers.find(
-        {"worker_id": user["_id"],
-         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed"]}}
+        {"worker_id": user["_id"], "status": {"$in": ACTIVE_JOB_STATUSES}}
     ).sort("created_at", -1).to_list(100)
     for o in active:
         await enrich_offer(o)

@@ -38,6 +38,9 @@ class SettingsIn(BaseModel):
     vehicle_types: Optional[List[str]] = None
     service_areas: Optional[List[str]] = None
     no_work_compensation_pct: Optional[float] = None
+    cancel_warning_threshold: Optional[int] = None
+    cancel_suspend_threshold: Optional[int] = None
+    cancel_suspend_days: Optional[int] = None
 
 
 @router.patch("/settings")
@@ -56,6 +59,14 @@ async def update_platform_settings(body: SettingsIn, user: dict = adm):
         if not 0 <= body.no_work_compensation_pct <= 100:
             raise HTTPException(status_code=400, detail="نسبة التعويض بين 0% و 100%")
         updates["no_work_compensation_pct"] = body.no_work_compensation_pct
+    for field, lo, hi in (("cancel_warning_threshold", 1, 20),
+                          ("cancel_suspend_threshold", 1, 20),
+                          ("cancel_suspend_days", 1, 30)):
+        v = getattr(body, field)
+        if v is not None:
+            if not lo <= v <= hi:
+                raise HTTPException(status_code=400, detail="قيمة سياسة الإلغاء خارج النطاق المسموح")
+            updates[field] = v
     if body.vehicle_types is not None:
         cleaned = [v.strip() for v in body.vehicle_types if v.strip()]
         if not cleaned:
