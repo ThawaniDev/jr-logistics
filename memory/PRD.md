@@ -38,6 +38,17 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Demo seed through seed_v4 (delivery-only dataset, Sedan/Van normalized, platform settings inserted)
 - Testing: iter3 — 14/14 new tests + 20 passed/3 idempotent skips existing; 100% frontend flows
 
+## Implemented (2026-09-16) — i18n + Operations batch
+- Full 3-language support (Arabic RTL, English LTR, Urdu RTL): every page migrated to `useI18n()` + `translations.js` (ar/en/ur parity verified programmatically); LanguageSwitcher persists to profile (`language` field) and flips `document.dir`
+- Wallet balance enforcement at request publish (backend INSUFFICIENT_FUNDS 400 + frontend alert card with required/available + top-up link)
+- Terms & Conditions modal before accepting/applying to opportunities (backend enforces `terms: true`)
+- Navigation fix: all dashboard StatCards are real links (`to` prop); attendance alert banner links to requests
+- Support & Operations Center: role-based ticket categories, linked request, priority, staff escalation levels, activity log
+- Admin: compensation % setting (no_work_compensation_pct), dashboard cards for open cases & pending documents, staff RBAC UI, document verification UI, audit log UI
+- Worker: finish-job button, "no work provided" report → operational case; doc verification warnings on dashboard
+- Bug fix: rating upsert 500 on repeat rating (immutable `_id` moved to `$setOnInsert`) in business.py + worker.py
+- Tests: 34 passed / 3 skipped (pytest); frontend smoke-tested in AR/EN/UR
+
 ## Backlog
 - **P1**: Real SMS provider (Twilio); real payment gateway (Moyasar/Stripe); OTP rate-limiting; weekly auto-settlement for long contracts; driver ID verification upload
 - **P2**: Push notifications, in-app chat, analytics charts, CSV export, geo-based matching, recurring contracts

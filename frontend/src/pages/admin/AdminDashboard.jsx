@@ -52,37 +52,37 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Link to="/app/admin/requests" data-testid="admin-active-requests"
+        <Link to="/app/admin/requests" data-testid="stat-active-requests"
           className="card-surface card-surface-hover p-5 block">
           <p className="text-xs text-slate-400">{t("admin.activeReqs")}</p>
           <p className="heading text-3xl font-black text-brand num mt-1">{s.published + s.filling + s.confirmed + s.in_progress}</p>
           <p className="text-[11px] text-slate-500 mt-1">{t("admin.published")} {s.published} · {t("admin.filling")} {s.filling} · {t("admin.confirmed")} {s.confirmed} · {t("admin.inProgress")} {s.in_progress}</p>
         </Link>
-        <Link to="/app/admin/withdrawals" data-testid="admin-pending-withdrawals"
+        <Link to="/app/admin/withdrawals" data-testid="stat-pending-withdrawals"
           className="card-surface card-surface-hover p-5 block">
           <p className="text-xs text-slate-400">{t("admin.pendingWd")}</p>
           <p className="heading text-3xl font-black text-amber-400 num mt-1">{data.pending_withdrawals}</p>
           <p className="text-[11px] text-slate-500 mt-1">{t("admin.pendingWdNote")}</p>
         </Link>
-        <Link to="/app/admin/support" data-testid="admin-open-tickets"
+        <Link to="/app/admin/support" data-testid="stat-open-tickets"
           className="card-surface card-surface-hover p-5 block">
           <p className="text-xs text-slate-400">{t("admin.openTickets")}</p>
           <p className="heading text-3xl font-black text-blue-400 num mt-1">{data.open_tickets}</p>
           <p className="text-[11px] text-slate-500 mt-1">{t("admin.openTicketsNote")}</p>
         </Link>
-        <Link to="/app/admin/requests" data-testid="admin-noshows"
+        <Link to="/app/admin/requests" data-testid="stat-noshows"
           className="card-surface card-surface-hover p-5 block">
           <p className="text-xs text-slate-400">{t("admin.noShows")}</p>
           <p className="heading text-3xl font-black text-rose-400 num mt-1">{data.no_shows}</p>
           <p className="text-[11px] text-slate-500 mt-1">{t("admin.noShowsNote")}</p>
         </Link>
-        <Link to="/app/admin/cases" data-testid="admin-open-cases"
+        <Link to="/app/admin/cases" data-testid="stat-open-cases"
           className="card-surface card-surface-hover p-5 block">
           <p className="text-xs text-slate-400">{t("admin.openCases")}</p>
           <p className="heading text-3xl font-black text-rose-400 num mt-1">{data.open_cases}</p>
           <p className="text-[11px] text-slate-500 mt-1">{t("support.cat_not_put_to_work")}</p>
         </Link>
-        <Link to="/app/admin/documents" data-testid="admin-pending-docs"
+        <Link to="/app/admin/documents" data-testid="stat-pending-docs"
           className="card-surface card-surface-hover p-5 block">
           <p className="text-xs text-slate-400">{t("admin.pendingDocs")}</p>
           <p className="heading text-3xl font-black text-cyan-400 num mt-1">{data.pending_documents}</p>

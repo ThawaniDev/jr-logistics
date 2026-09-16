@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 4 end-to-end verification of ISNAD i18n migration, insufficient-funds enforcement, terms modal, support center rewrite, admin staff/documents/settings compensation, and full backend regression. Added /app/backend/tests/test_iteration4.py (28 tests: 27 passed, 1 skipped — no available published request for worker to apply to). Frontend Playwright validated all requested flows on preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "OTP send/verify", "issue": "OTP is per-phone singleton in storage; concurrent xdist workers verifying same phone can race (fix in test file by retry loop). Pre-existing; not iteration-4 code. test_isnad_backend.py::test_notifications still shows this occasional race under -n 2."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Business request wizard — Step 3 (Location & Schedule)", "issues": ["Date field uses native <input type=\"date\"> (`mm/dd/yyyy` placeholder visible) instead of a shadcn/ui Calendar/DatePicker — inconsistent with the rest of the design system and awkward under RTL. Same finding as prior iterations; still not addressed."]},
+      {"screen": "Admin Dashboard (/app/admin)", "issues": ["Only 4 cards expose data-testid=\"stat-*\" (gmv, commission, businesses, workers) and only 2 of them (stat-businesses, stat-workers) are actual <a> Link elements. The remaining tiles rendered on the page (open tickets=13, open cases=0, pending documents=0, pending withdrawals=0, no_shows=0, active requests=26) are visual cards without stat- testids — review request mentioned 'AdminDashboard has 6 clickable cards incl open cases & pending documents' so main agent should double-check that those lower tiles are wrapped in <Link> and expose testids for QA/analytics."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/iter4_results.xml"
+  ],
+  "action_items": [
+    "(Design) Replace native <input type=\"date\"> in RequestNew.jsx step 3 with shadcn Calendar/Popover — matches design system and RTL better.",
+    "(QA testability) Add data-testid=\"stat-*\" and wrap remaining AdminDashboard tiles (tickets/cases/documents/withdrawals/no_shows/requests) in <Link> so all 6+ cards are clickable and testable, per review-request spec.",
+    "(Backend robustness, low priority) Make OTP send idempotent per (phone, code) or scope by session_id so parallel test workers don't invalidate each other's OTP (not a production bug, but improves CI stability)."
+  ],
+  "critical_code_review_comments": [
+    "INSUFFICIENT_FUNDS handling: routers/business.py raises 400 with structured detail {code, required, available}, and RequestNew.jsx step 4 correctly parses detail.code and shows data-testid='insufficient-funds-alert' with amounts + top-up link — verified end-to-end (200,000 required vs 19,840 available). Clean.",
+    "Terms enforcement: worker.py rejects respond/apply without terms:true (400); WorkerOpportunities.jsx opens data-testid='terms-modal' with disabled confirm until checkbox ticked — verified. Also correctly sets terms_accepted_at server-side.",
+    "Support: common.py tickets support category/priority/escalation with activity log; admin can reply → in_review, escalate operations/account_manager, resolve. Non-admin escalate correctly blocked by require_staff('tickets').",
+    "Staff RBAC: staff without 'settings' permission gets 403 on /api/admin/settings and /api/admin/staff — verified via newly-created +966500000901 staff token.",
+    "Settings compensation: no_work_compensation_pct patch validates 0-100 and persists; admin.py:436 defaults to 100 when unset. Good.",
+    "OTP is unconditionally returned in send-otp response — acceptable for demo per prior iterations (would need to be removed for production).",
+    "No rate limiting on /api/auth/otp/* — carried over from prior iterations."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py"
+  ],
+  "success_rate": {"backend": "96% (27/28 passed, 1 skipped — no available request for worker's apply-terms test)", "frontend": "100% of requested flows passed"},
+  "test_credentials": "Loaded from /app/memory/test_credentials.md. Additionally verified: newly-created staff +966500000901 (TEST_iter4 Staff, staff_role=support) — logs in via OTP, sees tickets nav, blocked from admin/settings and admin/staff (403 as expected).",
+  "seed_data_creation": "Backend (from test_iteration4.py): (a) TEST_iter4 ticket linked to a business request (created by biz, replied+escalated to operations+resolved by admin), (b) staff TEST_iter4 Staff (+966500000901) — will fail 400 on re-run (duplicate-phone branch handled). Frontend Playwright: draft-only 'TEST_iter4_insufficient_ui' request stayed at step 4 (publish blocked by insufficient funds — nothing persisted to DB). One offer for driver +966500000201 was accepted via terms modal (status change offered→accepted) — this consumes one of the pending offers.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration-4 tests live in /app/backend/tests/test_iteration4.py — run with `pytest backend/tests/test_iteration4.py` (xdist active; _otp_login has 5x retry for OTP races). Business +966500000101 wallet is now 19,840 available (down from ~21,860 due to prior iterations reserving funds; publish attempts in iter4 did NOT reserve because they 400'd). Worker +966500000201 had 27 offered offers at start; ONE was accepted during frontend testing (offer-e16295b614eb42f9a2043481d6436d2... or first in list — check first offer in that list; the rest remain 'offered'). Admin no_work_compensation_pct restored to 100. Staff +966500000901 remains active in DB — will make StaffCreate return 400 if re-created. Design issues carried forward: native date input, and admin dashboard's non-clickable stat tiles (main agent should wrap them in <Link>).",
+  "rca of the issue": "N/A — no functional bugs found. All iteration-4 features are correctly wired at both API and UI levels. Only follow-ups are (a) native date picker replacement, (b) additional data-testid + <Link> wrappers on remaining admin dashboard cards."
+}
