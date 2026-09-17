@@ -85,6 +85,11 @@ def _mk_req(biz_token, start, title, count=1, shipments=10, rate=8, publish=True
         "publish": publish, "terms": True,
     }
     r = requests.post(f"{API}/business/requests", json=payload, headers=_h(biz_token))
+    if r.status_code == 400 and r.json().get("detail", {}).get("code") == "INSUFFICIENT_FUNDS":
+        d = r.json()["detail"]
+        requests.post(f"{API}/business/wallet/topup", headers=_h(biz_token),
+                      json={"amount": d["required"] - d["available"] + 500})
+        r = requests.post(f"{API}/business/requests", json=payload, headers=_h(biz_token))
     assert r.status_code == 200, r.text
     return r.json()["request"]
 
@@ -172,11 +177,13 @@ class TestDriverPrivacy:
         if r.status_code != 200:
             pytest.skip("seeded req_1 not available")
         offers = r.json()["offers"]
+        VISIBLE = ("accepted", "confirmed", "attendance_confirmed", "attended",
+                   "driver_completed", "paid", "no_show")
         for o in offers:
-            if o["status"] == "offered":
-                assert not o["worker"].get("phone"), "phone leaked before acceptance"
-            else:
+            if o["status"] in VISIBLE:
                 assert o["worker"].get("phone"), "phone must be visible after acceptance"
+            else:
+                assert not o["worker"].get("phone"), "phone leaked before acceptance"
 
 
 class TestBusinessTerms:

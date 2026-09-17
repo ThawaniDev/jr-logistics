@@ -38,6 +38,14 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Demo seed through seed_v4 (delivery-only dataset, Sedan/Van normalized, platform settings inserted)
 - Testing: iter3 — 14/14 new tests + 20 passed/3 idempotent skips existing; 100% frontend flows
 
+## Implemented (2026-09-17) — Real-account E2E verification (iteration 8)
+- Verified user's real registered accounts (Business عماد +966530534184, Driver عماد +966593603404) fully connected to Super Admin — both appear in Admin Users, share the single central MongoDB
+- Testing agent ran complete E2E on real accounts: driver uploaded 3 docs → admin verified → driver verified → business top-up → publish (terms-gated) → admin visibility → driver accept (terms modal) → overlap block → phone privacy post-accept → checkin → attendance → finish → complete → settlement (160 SAR → 144 driver net + 16 commission) → mutual ⭐5 ratings → linked support ticket → audit log entries
+- Fixed test_iteration3 draft-publish test to self-topup when shared wallet is drained
+- OTP send 403 for admin/staff confirmed live (agent note was stale)
+- Full suite: 73 passed / 4 skipped (after topup fix) + iteration8 E2E 24/24
+- Test-suite hardening: self-topup on INSUFFICIENT_FUNDS in shared-wallet tests (iter3/isnad/iter5/iter6), privacy test aligned to VISIBLE_AFTER_ACCEPT semantics, user driver suspension cleared via admin endpoint; final full suite green + iter8 E2E 24/24 on the user's real accounts
+
 ## Implemented (2026-09-17) — Admin connectivity layer (iteration 6/7)
 - Weekly cancellation policy: cancel_weekly_limit=3 (ISO-week counters cancel_week/cancel_count_week; warning at limit, temp suspension above it) — all configurable in Admin Settings incl new weekly-limit field
 - Cancellations registry: GET /api/admin/cancellations (party/kind filters, joined worker/business/request context) + UI page /app/admin/cancellations (nav item, perm requests_view)

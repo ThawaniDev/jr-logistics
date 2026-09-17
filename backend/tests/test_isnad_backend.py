@@ -159,6 +159,11 @@ class TestBusiness:
             "shipments_per_driver": 30, "vehicle_type": "دراجة نارية",
         }
         r = requests.post(f"{API}/business/requests", headers=_h(biz_token), json=payload)
+        if r.status_code == 400 and r.json().get("detail", {}).get("code") == "INSUFFICIENT_FUNDS":
+            d0 = r.json()["detail"]
+            requests.post(f"{API}/business/wallet/topup", headers=_h(biz_token),
+                          json={"amount": d0["required"] - d0["available"] + 500})
+            r = requests.post(f"{API}/business/requests", headers=_h(biz_token), json=payload)
         assert r.status_code == 200, r.text
         j = r.json()
         req = j["request"]

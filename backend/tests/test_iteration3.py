@@ -174,8 +174,12 @@ class TestDraftAndPublish:
         assert j["matched_workers"] == 0
         rid = j["request"]["_id"]
 
-        # Publish it
+        # Publish it (ensure wallet can cover — shared demo wallet may be drained by other suites)
         p = requests.post(f"{API}/business/requests/{rid}/publish", headers=_h(biz_token))
+        if p.status_code == 400 and p.json().get("detail", {}).get("code") == "INSUFFICIENT_FUNDS":
+            topup = p.json()["detail"]["required"] - p.json()["detail"]["available"] + 100
+            requests.post(f"{API}/business/wallet/topup", headers=_h(biz_token), json={"amount": topup})
+            p = requests.post(f"{API}/business/requests/{rid}/publish", headers=_h(biz_token))
         assert p.status_code == 200, p.text
         pj = p.json()
         assert pj["ok"] is True
