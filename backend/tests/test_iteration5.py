@@ -17,11 +17,14 @@ def _h(t): return {"Authorization": f"Bearer {t}", "Content-Type": "application/
 
 
 def _otp_login(phone: str) -> dict:
-    s = requests.post(f"{API}/auth/otp/send", json={"phone": phone})
-    code = s.json().get("demo_otp", "8325")
-    r = requests.post(f"{API}/auth/otp/verify", json={"phone": phone, "code": code})
-    assert r.status_code == 200, r.text
-    return r.json()
+    # retry: parallel xdist workers may re-send OTP for the same phone mid-verify
+    for _ in range(4):
+        s = requests.post(f"{API}/auth/otp/send", json={"phone": phone})
+        code = s.json().get("demo_otp", "8325")
+        r = requests.post(f"{API}/auth/otp/verify", json={"phone": phone, "code": code})
+        if r.status_code == 200:
+            return r.json()
+    assert False, f"OTP login failed for {phone}: {r.text}"
 
 
 def _admin_pwd_login() -> dict:
@@ -36,8 +39,34 @@ def biz_token():
     return _otp_login("+966500000101")["token"]
 
 
+def _ensure_w1_active(adm_token: str):
+    """Clear any policy suspension on the shared demo driver (self-healing under xdist)."""
+    users = requests.get(f"{API}/admin/users?role=worker&q=محمد", headers=_h(adm_token)).json()["users"]
+    w1 = next(u for u in users if u["phone"] == "+966500000201")
+    if (w1.get("worker_profile") or {}).get("suspended_until"):
+        requests.post(f"{API}/admin/users/{w1['_id']}/clear-suspension", headers=_h(adm_token))
+
+
+def _w1_accept(adm_token: str, w1_token: str, request_id: str):
+    """Accept via direct offer or open apply; clears suspension once and retries on 403."""
+    offers = requests.get(f"{API}/worker/offers", headers=_h(w1_token)).json()["offers"]
+    offer = next((o for o in offers if o["request_id"] == request_id), None)
+    def _try():
+        if offer:
+            return requests.post(f"{API}/worker/offers/{offer['_id']}/respond",
+                                 json={"action": "accept", "terms": True}, headers=_h(w1_token))
+        return requests.post(f"{API}/worker/apply",
+                             json={"request_id": request_id, "terms": True}, headers=_h(w1_token))
+    rr = _try()
+    if rr.status_code == 403 and "موقوف" in rr.text:
+        _ensure_w1_active(adm_token)
+        rr = _try()
+    return rr
+
+
 @pytest.fixture(scope="module")
-def w1_token():
+def w1_token(adm_token):
+    _ensure_w1_active(adm_token)
     return _otp_login("+966500000201")["token"]
 
 
@@ -111,17 +140,8 @@ class TestDriverCancellation:
         day = (date.today() + timedelta(days=45 + random.randint(0, 30))).isoformat()
         uid = uuid.uuid4().hex[:6]
         r = _mk_req(biz_token, day, f"TEST_cancel_{uid}")
-        offers = requests.get(f"{API}/worker/offers", headers=_h(w1_token)).json()["offers"]
-        offer = next((o for o in offers if o["request_id"] == r["_id"]), None)
-        if offer:
-            rr = requests.post(f"{API}/worker/offers/{offer['_id']}/respond",
-                               json={"action": "accept", "terms": True}, headers=_h(w1_token))
-            assert rr.status_code == 200, rr.text
-        else:
-            rr = requests.post(f"{API}/worker/apply",
-                               json={"request_id": r["_id"], "terms": True}, headers=_h(w1_token))
-            assert rr.status_code == 200, rr.text
-            offer = {"request_id": r["_id"]}
+        rr = _w1_accept(adm_token, w1_token, r["_id"])
+        assert rr.status_code == 200, rr.text
 
         jobs = requests.get(f"{API}/worker/jobs", headers=_h(w1_token)).json()["jobs"]
         job = next(j for j in jobs if j["request_id"] == r["_id"])

@@ -11,12 +11,15 @@ API = f"{BASE}/api"
 
 
 def _otp_login(phone: str) -> dict:
-    r = requests.post(f"{API}/auth/otp/send", json={"phone": phone}, timeout=15)
-    assert r.status_code == 200, r.text
-    code = r.json()["demo_otp"]
-    r2 = requests.post(f"{API}/auth/otp/verify", json={"phone": phone, "code": code}, timeout=15)
-    assert r2.status_code == 200, r2.text
-    return r2.json()
+    # retry: parallel xdist workers may re-send OTP for the same phone mid-verify
+    for _ in range(4):
+        r = requests.post(f"{API}/auth/otp/send", json={"phone": phone}, timeout=15)
+        assert r.status_code == 200, r.text
+        code = r.json()["demo_otp"]
+        r2 = requests.post(f"{API}/auth/otp/verify", json={"phone": phone, "code": code}, timeout=15)
+        if r2.status_code == 200:
+            return r2.json()
+    assert False, f"OTP login failed for {phone}: {r2.text}"
 
 
 def _h(t): return {"Authorization": f"Bearer {t}", "Content-Type": "application/json"}

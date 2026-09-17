@@ -31,12 +31,15 @@ def _admin_pwd_login() -> dict:
 
 
 def _otp_login(phone: str) -> dict:
-    r = requests.post(f"{API}/auth/otp/send", json={"phone": phone}, timeout=15)
-    assert r.status_code == 200, r.text
-    code = r.json()["demo_otp"]
-    r2 = requests.post(f"{API}/auth/otp/verify", json={"phone": phone, "code": code}, timeout=15)
-    assert r2.status_code == 200, r2.text
-    return r2.json()
+    # retry: parallel xdist workers may re-send OTP for the same phone mid-verify
+    for _ in range(4):
+        r = requests.post(f"{API}/auth/otp/send", json={"phone": phone}, timeout=15)
+        assert r.status_code == 200, r.text
+        code = r.json()["demo_otp"]
+        r2 = requests.post(f"{API}/auth/otp/verify", json={"phone": phone, "code": code}, timeout=15)
+        if r2.status_code == 200:
+            return r2.json()
+    assert False, f"OTP login failed for {phone}: {r2.text}"
 
 
 def _h(token: str) -> dict:
@@ -111,8 +114,25 @@ class TestBusiness:
         assert j["unit"] == "shipment"
 
     def test_topup(self, biz_token):
-        before = requests.get(f"{API}/business/overview", headers=_h(biz_token)).json()["wallet"]["available"]
-        r = requests.post(f"{API}/business/wallet/topup", headers=_h(biz_token), json={"amount": 1000})
+        # use a freshly registered business so parallel xdist runs can't pollute the shared wallet
+        import random
+        phone = f"+96659{random.randint(1000000, 9999999)}"
+        # retry: parallel xdist workers may re-send OTP for the same phone mid-verify
+        for _ in range(4):
+            s = requests.post(f"{API}/auth/otp/send", json={"phone": phone})
+            code = s.json()["demo_otp"]
+            v = requests.post(f"{API}/auth/otp/verify", json={"phone": phone, "code": code})
+            if v.status_code == 200:
+                break
+        assert v.status_code == 200, v.text
+        reg = requests.post(f"{API}/auth/register", json={
+            "registration_token": v.json()["registration_token"], "role": "business",
+            "name": "TEST Topup", "company_name": "TEST Topup Co", "city": "الرياض",
+        })
+        assert reg.status_code == 200, reg.text
+        tok = reg.json()["token"]
+        before = requests.get(f"{API}/business/overview", headers=_h(tok)).json()["wallet"]["available"]
+        r = requests.post(f"{API}/business/wallet/topup", headers=_h(tok), json={"amount": 1000})
         assert r.status_code == 200
         after = r.json()["wallet"]["available"]
         assert round(after - before, 2) == 1000.0

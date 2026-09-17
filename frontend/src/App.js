@@ -36,6 +36,7 @@ import AdminStaff from "@/pages/admin/AdminStaff";
 import AdminDocuments from "@/pages/admin/AdminDocuments";
 import AdminCases from "@/pages/admin/AdminCases";
 import AdminAudit from "@/pages/admin/AdminAudit";
+import AdminCancellations from "@/pages/admin/AdminCancellations";
 
 function RoleIndex() {
   const { user, loading } = useAuth();
@@ -77,6 +78,7 @@ function App() {
               <Route path="admin/documents" element={<AdminDocuments />} />
               <Route path="admin/cases" element={<AdminCases />} />
               <Route path="admin/audit" element={<AdminAudit />} />
+              <Route path="admin/cancellations" element={<AdminCancellations />} />
               <Route path="admin/support" element={<Support />} />
               <Route path="support" element={<Support />} />
               <Route path="notifications" element={<Notifications />} />

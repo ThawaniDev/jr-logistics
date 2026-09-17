@@ -12,7 +12,8 @@ DEFAULT_SETTINGS = {"key": "platform", "default_rate": DEFAULT_RATE,
                     "no_work_compensation_pct": 100,
                     "cancel_warning_threshold": 2,
                     "cancel_suspend_threshold": 4,
-                    "cancel_suspend_days": 3}
+                    "cancel_suspend_days": 3,
+                    "cancel_weekly_limit": 3}
 
 
 async def get_settings() -> dict:

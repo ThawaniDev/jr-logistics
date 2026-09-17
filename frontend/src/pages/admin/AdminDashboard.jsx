@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Building2, Users, Banknote, LifeBuoy, RefreshCcw, Wallet, ClipboardList, Send, Settings, ChevronLeft, FileCheck, AlertTriangle } from "lucide-react";
+import { Building2, Users, Banknote, LifeBuoy, RefreshCcw, Wallet, ClipboardList, Send, Settings, ChevronLeft, FileCheck, AlertTriangle, Lock, XCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
@@ -49,6 +49,12 @@ export default function AdminDashboard() {
         <StatCard testid="stat-commission" icon={Banknote} label={t("admin.commission")} value={sar(data.commission)} tone="gold" />
         <StatCard testid="stat-businesses" icon={Building2} label={t("admin.businesses")} value={data.businesses} tone="cyan" to="/app/admin/users" />
         <StatCard testid="stat-workers" icon={Users} label={t("admin.drivers")} value={data.workers} tone="blue" to="/app/admin/users" />
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard testid="stat-wallet-balances" icon={Wallet} label={t("admin.totalBalances")} value={sar(data.wallet_balances)} tone="cyan" to="/app/admin/users" />
+        <StatCard testid="stat-reserved-total" icon={Lock} label={t("admin.totalReserved")} value={sar(data.reserved_total)} tone="gold" to="/app/admin/requests" />
+        <StatCard testid="stat-driver-earnings" icon={Banknote} label={t("admin.driverEarnings")} value={sar(data.driver_earnings)} tone="brand" to="/app/admin/users" />
+        <StatCard testid="stat-cancellations" icon={XCircle} label={t("admin.cancellations")} value={data.cancellations_total} sub={`${data.replacement_requests} ${t("admin.replacementShort")}`} tone="blue" to="/app/admin/cancellations" />
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -4,21 +4,26 @@ import { ClipboardList, UserPlus, ChevronDown, ChevronUp, X } from "lucide-react
 import api, { errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
-import { REQUEST_STATUS, sar } from "@/lib/constants";
+import { REQUEST_STATUS, sar, CITIES } from "@/lib/constants";
 import { useI18n } from "@/i18n";
 
 export default function AdminRequests() {
   const { t } = useI18n();
   const [requests, setRequests] = useState(null);
   const [filter, setFilter] = useState("");
+  const [city, setCity] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [detail, setDetail] = useState(null);
   const [matchWorker, setMatchWorker] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = () =>
-    api.get("/admin/requests", { params: { status: filter || undefined } })
-      .then(({ data }) => setRequests(data.requests)).catch(() => {});
-  useEffect(() => { load(); }, [filter]);
+    api.get("/admin/requests", { params: {
+      status: filter || undefined, city: city || undefined,
+      date_from: dateFrom || undefined, date_to: dateTo || undefined,
+    } }).then(({ data }) => setRequests(data.requests)).catch(() => {});
+  useEffect(() => { load(); }, [filter, city, dateFrom, dateTo]);
 
   const openDetail = async (id) => {
     if (detail?.request._id === id) return setDetail(null);
@@ -54,7 +59,7 @@ export default function AdminRequests() {
         <p className="text-sm text-slate-400 mt-1">{t("admin.reqSub")}</p>
       </div>
 
-      <div className="flex gap-2 flex-wrap" data-testid="admin-request-filters">
+      <div className="flex gap-2 flex-wrap items-center" data-testid="admin-request-filters">
         <button onClick={() => setFilter("")} data-testid="afilter-all"
           className={`chip ${!filter ? "bg-brand/15 text-brand border-brand/40" : "bg-navy-800 text-slate-400 border-navy-600"}`}>
           {t("common.all")}
@@ -65,6 +70,18 @@ export default function AdminRequests() {
             {t(`status.${k}`)}
           </button>
         ))}
+      </div>
+      <div className="flex gap-3 flex-wrap items-center" data-testid="admin-request-cf-filters">
+        <select value={city} onChange={(e) => setCity(e.target.value)} data-testid="afilter-city"
+          className="bg-navy-800 border border-navy-600 rounded-md px-3 h-10 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+          <option value="">{t("admin.allCities")}</option>
+          {CITIES.map((c) => <option key={c}>{c}</option>)}
+        </select>
+        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="afilter-date-from"
+          className="bg-navy-800 border border-navy-600 rounded-md px-3 h-10 text-sm num focus:outline-none focus:ring-1 focus:ring-brand" />
+        <span className="text-slate-500 text-xs">{t("admin.dateTo")}</span>
+        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="afilter-date-to"
+          className="bg-navy-800 border border-navy-600 rounded-md px-3 h-10 text-sm num focus:outline-none focus:ring-1 focus:ring-brand" />
       </div>
 
       {!requests ? (

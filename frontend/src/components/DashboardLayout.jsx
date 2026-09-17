@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import {
   LayoutDashboard, ClipboardList, PlusCircle, Wallet, LifeBuoy, Building2,
   Zap, Briefcase, User, Users, Banknote, Bell, LogOut, Menu, X, ShieldCheck,
-  Settings, FileCheck, AlertTriangle, ScrollText,
+  Settings, FileCheck, AlertTriangle, ScrollText, XCircle,
 } from "lucide-react";
 import { sar } from "@/lib/constants";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -35,6 +35,7 @@ const NAVS = {
     { to: "/app/admin", key: "nav.dashboard", icon: LayoutDashboard, end: true, perm: "stats" },
     { to: "/app/admin/users", key: "nav.users", icon: Users, perm: "users_view" },
     { to: "/app/admin/requests", key: "nav.adminRequests", icon: ClipboardList, perm: "requests_view" },
+    { to: "/app/admin/cancellations", key: "nav.cancellations", icon: XCircle, perm: "requests_view" },
     { to: "/app/admin/documents", key: "nav.documents", icon: FileCheck, perm: "documents" },
     { to: "/app/admin/cases", key: "nav.cases", icon: AlertTriangle, perm: "cases" },
     { to: "/app/admin/withdrawals", key: "nav.withdrawals", icon: Banknote, perm: "withdrawals" },

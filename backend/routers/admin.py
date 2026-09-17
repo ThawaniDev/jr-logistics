@@ -41,6 +41,7 @@ class SettingsIn(BaseModel):
     cancel_warning_threshold: Optional[int] = None
     cancel_suspend_threshold: Optional[int] = None
     cancel_suspend_days: Optional[int] = None
+    cancel_weekly_limit: Optional[int] = None
 
 
 @router.patch("/settings")
@@ -61,7 +62,8 @@ async def update_platform_settings(body: SettingsIn, user: dict = adm):
         updates["no_work_compensation_pct"] = body.no_work_compensation_pct
     for field, lo, hi in (("cancel_warning_threshold", 1, 20),
                           ("cancel_suspend_threshold", 1, 20),
-                          ("cancel_suspend_days", 1, 30)):
+                          ("cancel_suspend_days", 1, 30),
+                          ("cancel_weekly_limit", 1, 20)):
         v = getattr(body, field)
         if v is not None:
             if not lo <= v <= hi:
@@ -111,7 +113,38 @@ async def stats(user: dict = p_stats):
         "pending_documents": await db.driver_documents.count_documents({"status": "pending"}),
         "no_shows": await db.offers.count_documents({"status": "no_show"}),
         "recent_requests": pub_list(await db.requests.find().sort("created_at", -1).to_list(6)),
+        "wallet_balances": round(sum((w.get("available") or 0) for w in
+                                     await db.wallets.find({}, {"available": 1}).to_list(2000)), 2),
+        "reserved_total": round(sum((w.get("reserved") or 0) for w in
+                                    await db.wallets.find({}, {"reserved": 1}).to_list(2000)), 2),
+        "driver_earnings": round(sum((t.get("amount") or 0) for t in
+                                     await db.transactions.find({"type": "earning"}, {"amount": 1}).to_list(5000)), 2),
+        "cancellations_total": await db.cancellations.count_documents({"kind": "cancellation"}),
+        "replacement_requests": await db.requests.count_documents({"replacement_count": {"$gt": 0}}),
     }
+
+
+@router.get("/cancellations")
+async def list_cancellations(party: Optional[str] = None, kind: Optional[str] = None,
+                             user: dict = p_req_view):
+    query = {}
+    if party in ("worker", "business"):
+        query["party"] = party
+    if kind in ("cancellation", "no_show"):
+        query["kind"] = kind
+    items = await db.cancellations.find(query).sort("created_at", -1).to_list(300)
+    for c in items:
+        if c.get("worker_id"):
+            w = await db.users.find_one({"_id": c["worker_id"]}, {"name": 1, "phone": 1})
+            c["worker"] = pub(w)
+        if c.get("business_id"):
+            b = await db.users.find_one({"_id": c["business_id"]},
+                                        {"name": 1, "business_profile.company_name": 1})
+            c["business"] = pub(b)
+        if c.get("request_id"):
+            r = await db.requests.find_one({"_id": c["request_id"]}, {"title": 1, "start_date": 1, "city": 1})
+            c["request"] = pub(r)
+    return {"cancellations": pub_list(items)}
 
 
 # ---------- Users ----------
@@ -150,11 +183,41 @@ async def set_user_status(user_id: str, body: StatusIn, user: dict = p_users):
     return {"ok": True}
 
 
+@router.post("/users/{user_id}/clear-suspension")
+async def clear_cancel_suspension(user_id: str, user: dict = p_users):
+    target = await db.users.find_one({"_id": user_id})
+    if not target or target["role"] != "worker":
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    before = (target.get("worker_profile") or {}).get("suspended_until")
+    await db.users.update_one({"_id": user_id},
+                              {"$unset": {"worker_profile.suspended_until": ""},
+                               "$set": {"worker_profile.cancel_count_week": 0}})
+    await audit(user, "suspension_cleared", "user", user_id,
+                before={"suspended_until": before}, note="رفع الإيقاف المؤقت للإلغاءات")
+    await notify(user_id, "تم رفع الإيقاف المؤقت",
+                 "رفع الإيقاف المؤقت عن حسابك — يمكنك قبول الفرص من جديد",
+                 "account", "/app/worker/opportunities")
+    return {"ok": True}
+
+
 # ---------- Requests ----------
 
 @router.get("/requests")
-async def list_requests(status: Optional[str] = None, user: dict = p_req_view):
-    query = {"status": status} if status else {}
+async def list_requests(status: Optional[str] = None, city: Optional[str] = None,
+                        date_from: Optional[str] = None, date_to: Optional[str] = None,
+                        user: dict = p_req_view):
+    query = {}
+    if status:
+        query["status"] = status
+    if city:
+        query["city"] = city
+    if date_from or date_to:
+        rng = {}
+        if date_from:
+            rng["$gte"] = date_from
+        if date_to:
+            rng["$lte"] = date_to
+        query["start_date"] = rng
     reqs = await db.requests.find(query).sort("created_at", -1).to_list(300)
     for r in reqs:
         b = await db.users.find_one({"_id": r["business_id"]}, {"business_profile.company_name": 1, "name": 1})

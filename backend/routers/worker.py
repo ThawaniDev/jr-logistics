@@ -6,7 +6,7 @@ from datetime import date, timedelta, datetime, timezone
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP
-from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings, audit
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 wrk = Depends(require_roles("worker"))
@@ -261,19 +261,26 @@ async def cancel_job(offer_id: str, body: CancelJobIn, user: dict = wrk):
         "request_id": r["_id"], "offer_id": offer_id, "worker_id": user["_id"],
         "business_id": r["business_id"], "reason": reason, "created_at": now_iso()})
     count = user.get("worker_profile", {}).get("cancel_count", 0) + 1
-    upd = {"worker_profile.cancel_count": count}
-    if count >= settings["cancel_suspend_threshold"]:
+    week_key = date.today().isocalendar()  # (year, week, weekday)
+    week_id = f"{week_key[0]}-W{week_key[1]:02d}"
+    wp_now = user.get("worker_profile", {})
+    week_count = (wp_now.get("cancel_count_week", 0) if wp_now.get("cancel_week") == week_id else 0) + 1
+    weekly_limit = settings.get("cancel_weekly_limit", 3)
+    upd = {"worker_profile.cancel_count": count,
+           "worker_profile.cancel_week": week_id,
+           "worker_profile.cancel_count_week": week_count}
+    if week_count > weekly_limit:
         until = (datetime.now(timezone.utc) + timedelta(days=settings["cancel_suspend_days"])).isoformat()
         upd["worker_profile.suspended_until"] = until
         await notify(user["_id"], "إيقاف مؤقت للحساب",
-                     f"وصل عدد الإلغاءات إلى {count} — تم إيقاف حسابك مؤقتاً حتى {until[:10]} وفق سياسة المنصة",
+                     f"تجاوزت حد الإلغاءات الأسبوعي ({weekly_limit}) — تم إيقاف حسابك مؤقتاً حتى {until[:10]} وفق سياسة المنصة",
                      "general", "/app/support")
         await notify_admins("إيقاف مؤقت لمندوب",
-                            f"{user['name']} أُوقف مؤقتاً حتى {until[:10]} ({count} إلغاءات)",
+                            f"{user['name']} تجاوز حد الإلغاءات الأسبوعي ({week_count}/{weekly_limit}) — موقوف حتى {until[:10]}",
                             "general", "/app/admin/users")
-    elif count >= settings["cancel_warning_threshold"]:
+    elif week_count >= weekly_limit or count >= settings["cancel_warning_threshold"]:
         await notify(user["_id"], "تنبيه بشأن الإلغاءات",
-                     f"عدد إلغاءاتك وصل {count} — الإلغاءات المتكررة قد تؤدي لإيقاف مؤقت وتقييد الفرص وفق سياسة المنصة",
+                     f"إلغاءاتك هذا الأسبوع: {week_count} من {weekly_limit} — تجاوز الحد يؤدي لإيقاف مؤقت وفق سياسة المنصة",
                      "general", "/app/worker/jobs")
     await db.users.update_one({"_id": user["_id"]}, {"$set": upd})
     req_updates = {"replacement_requested": True}
@@ -290,6 +297,8 @@ async def cancel_job(offer_id: str, body: CancelJobIn, user: dict = wrk):
                  "replacement", f"/app/business/requests/{r['_id']}")
     await notify_admins("إلغاء مندوب", f"{user['name']} ألغى مهمة: {r['title']} — السبب: {reason}",
                         "replacement", "/app/admin/requests")
+    await audit(user, "driver_cancelled", "offer", offer_id,
+                after={"reason": reason, "request_id": r["_id"], "week_count": week_count})
     return {"ok": True, "replacement_offers": matched}
 
 

@@ -97,6 +97,24 @@ export default function AdminUsers() {
                               : u.worker_profile?.verification_status === "not_eligible" ? t("admin.notEligible") : t("admin.pendingVer")}
                           </span>
                         )}
+                        {role === "worker" && (u.worker_profile?.cancel_count > 0) && (
+                          <span className="block mt-1 text-[10px] text-rose-400" data-testid={`cancels-${u._id}`}>
+                            {u.worker_profile.cancel_count} {t("admin.cancCount")} · {u.worker_profile.cancel_count_week || 0} {t("admin.cancWeek")}
+                          </span>
+                        )}
+                        {role === "worker" && u.worker_profile?.suspended_until && u.worker_profile.suspended_until > new Date().toISOString() && (
+                          <button data-testid={`clear-suspension-${u._id}`}
+                            onClick={async () => {
+                              try {
+                                await api.post(`/admin/users/${u._id}/clear-suspension`);
+                                toast.success(t("admin.suspCleared"));
+                                load();
+                              } catch (e) { toast.error(errMsg(e)); }
+                            }}
+                            className="block mt-1.5 text-[10px] font-bold text-amber-400 border border-amber-500/30 rounded-lg px-2 py-1 hover:bg-amber-500/10 transition-colors">
+                            {t("admin.suspLift")} {u.worker_profile.suspended_until.slice(0, 10)}
+                          </button>
+                        )}
                       </td>
                       <td className="p-4 num text-brand font-semibold">{sar(u.wallet?.available)}</td>
                       <td className="p-4">

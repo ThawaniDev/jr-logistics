@@ -12,7 +12,7 @@ export default function AdminSettings() {
   const { t } = useI18n();
   const { user } = useAuth();
   const [settings, setSettings] = useState(null);
-  const [form, setForm] = useState({ default_rate: "", commission_pct: "", compensation_pct: "", vehicle_types: "", service_areas: "", cancel_warn: "", cancel_suspend: "", cancel_days: "" });
+  const [form, setForm] = useState({ default_rate: "", commission_pct: "", compensation_pct: "", vehicle_types: "", service_areas: "", cancel_warn: "", cancel_suspend: "", cancel_days: "", cancel_weekly: "" });
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
@@ -43,6 +43,7 @@ export default function AdminSettings() {
         cancel_warn: String(s.cancel_warning_threshold ?? 2),
         cancel_suspend: String(s.cancel_suspend_threshold ?? 4),
         cancel_days: String(s.cancel_suspend_days ?? 3),
+        cancel_weekly: String(s.cancel_weekly_limit ?? 3),
         vehicle_types: (s.vehicle_types || []).join("\n"),
         service_areas: (s.service_areas || []).join("\n"),
       });
@@ -60,6 +61,7 @@ export default function AdminSettings() {
         cancel_warning_threshold: Number(form.cancel_warn),
         cancel_suspend_threshold: Number(form.cancel_suspend),
         cancel_suspend_days: Number(form.cancel_days),
+        cancel_weekly_limit: Number(form.cancel_weekly),
         vehicle_types: form.vehicle_types.split("\n").map((v) => v.trim()).filter(Boolean),
         service_areas: form.service_areas.split("\n").map((v) => v.trim()).filter(Boolean),
       };
@@ -141,9 +143,15 @@ export default function AdminSettings() {
                 className="bg-navy-800 border-navy-600 h-11 num" />
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1.5">{t("admin.cancelDays")}</label>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("admin.cancelDays")}</label>
               <Input data-testid="settings-cancel-days" type="number" min="1" max="30" value={form.cancel_days}
                 onChange={(e) => setForm({ ...form, cancel_days: e.target.value })}
+                className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("admin.cancelWeekly")}</label>
+              <Input data-testid="settings-cancel-weekly" type="number" min="1" max="20" value={form.cancel_weekly}
+                onChange={(e) => setForm({ ...form, cancel_weekly: e.target.value })}
                 className="bg-navy-800 border-navy-600 h-11 num" />
             </div>
           </div>

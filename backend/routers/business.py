@@ -5,7 +5,7 @@ from typing import Optional, Literal, List
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP, DEFAULT_COMMISSION_RATE, DURATION_DAYS
-from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings
+from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings, audit
 
 router = APIRouter(prefix="/api/business", tags=["business"])
 biz = Depends(require_roles("business"))
@@ -383,6 +383,8 @@ async def cancel_request(request_id: str, body: CancelRequestIn = None, user: di
         "request_id": request_id, "offer_id": None, "worker_id": None,
         "business_id": user["_id"], "reason": (body.reason or "إلغاء من المنشأة").strip(),
         "created_at": now_iso()})
+    await audit(user, "business_cancelled", "request", request_id,
+                after={"reason": body.reason})
     await db.requests.update_one({"_id": request_id}, {"$set": {"status": "cancelled"}})
     return {"ok": True}
 
