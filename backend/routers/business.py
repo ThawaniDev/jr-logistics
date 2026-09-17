@@ -5,7 +5,7 @@ from typing import Optional, Literal, List
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP, DEFAULT_COMMISSION_RATE, DURATION_DAYS
-from utils import new_id, now_iso, notify, notify_admins, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings, audit
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings, audit, get_client_pricing, ledger_entry
 
 router = APIRouter(prefix="/api/business", tags=["business"])
 biz = Depends(require_roles("business"))
@@ -115,6 +115,11 @@ class AttendanceIn(BaseModel):
     reason: Optional[str] = None
 
 
+class LoadingIn(BaseModel):
+    offer_id: str
+    qty: int
+
+
 class PublishIn(BaseModel):
     terms: bool = False
 
@@ -131,13 +136,16 @@ async def estimate(body: EstimateIn, user: dict = biz):
         raise HTTPException(status_code=400, detail="نوع الخدمة غير صالح")
     days = DURATION_DAYS.get(body.duration_type) or max(1, body.days_count)
     settings = await get_settings()
-    rate = body.rate if body.rate and body.rate > 0 else settings["default_rate"]
+    pricing = await get_client_pricing(user["_id"])
+    rate = pricing["rate"] if pricing else (body.rate if body.rate and body.rate > 0 else settings["default_rate"])
+    comm_rate = pricing["commission_rate"] if pricing else settings["commission_rate"]
     total, commission, payout = compute_estimate(
         body.service_type, body.required_count, days, rate, body.shipment_count,
-        body.shipments_per_driver, commission_rate=settings["commission_rate"])
+        body.shipments_per_driver, commission_rate=comm_rate)
     return {"duration_days": days, "rate": rate, "estimated_total": total,
             "commission": commission, "payout_total": payout,
-            "commission_rate": settings["commission_rate"],
+            "commission_rate": comm_rate,
+            "pricing_source": "client_pricing" if pricing else "platform_default",
             "unit": SERVICE_MAP[body.service_type]["unit"]}
 
 
@@ -153,8 +161,9 @@ async def create_request(body: RequestIn, user: dict = biz):
     if svc["needs_vehicle"] and not body.vehicle_type:
         raise HTTPException(status_code=400, detail="حدد نوع المركبة المطلوبة")
     settings = await get_settings()
-    rate = body.rate if body.rate and body.rate > 0 else settings["default_rate"]
-    commission_rate = settings["commission_rate"]
+    pricing = await get_client_pricing(user["_id"])
+    rate = pricing["rate"] if pricing else (body.rate if body.rate and body.rate > 0 else settings["default_rate"])
+    commission_rate = pricing["commission_rate"] if pricing else settings["commission_rate"]
     shipment_count = (body.shipments_per_driver * body.required_count
                       if body.shipments_per_driver else body.shipment_count)
     days = DURATION_DAYS.get(body.duration_type) or max(1, body.days_count)
@@ -182,6 +191,13 @@ async def create_request(body: RequestIn, user: dict = biz):
         "estimated_total": total,
         "commission": commission,
         "payout_total": payout,
+        "pricing_version": (pricing or {}).get("version"),
+        "pricing_snapshot": {
+            "rate": rate, "commission_rate": commission_rate,
+            "source": "client_pricing" if pricing else "platform_default",
+            "pricing_id": (pricing or {}).get("_id"),
+            "at": now_iso(),
+        },
         "status": "draft",
         "escrow_reserved": False,
         "replacement_count": 0,
@@ -317,6 +333,26 @@ async def mark_attendance(request_id: str, offer_id: str, body: AttendanceIn, us
     return {"ok": True, "status": "no_show", "replacement_offers": matched}
 
 
+@router.post("/requests/{request_id}/loading")
+async def record_loading(request_id: str, body: LoadingIn, user: dict = biz):
+    r = await get_owned_request(request_id, user)
+    o = await db.offers.find_one({"_id": body.offer_id, "request_id": request_id})
+    if not o or o["status"] not in ("attended", "attendance_confirmed", "driver_completed"):
+        raise HTTPException(status_code=400, detail="يمكن تسجيل التحميل بعد تأكيد حضور المندوب")
+    if body.qty < 0:
+        raise HTTPException(status_code=400, detail="كمية غير صالحة")
+    await db.offers.update_one({"_id": body.offer_id},
+                               {"$set": {"loaded_qty": body.qty, "loaded_at": now_iso(),
+                                         "loaded_by": user["_id"], "loading_disputed": False,
+                                         "loading_confirmed": False}})
+    await notify(o["worker_id"], "تم تسجيل الشحنات المحملة",
+                 f"المنشأة سجلت {body.qty} شحنة محملة لمهمة: {r['title']} — أكّد أو اعترض من صفحة مهامك",
+                 "attendance", "/app/worker/jobs")
+    await audit(user, "loading_recorded", "offer", body.offer_id,
+                after={"qty": body.qty, "request_id": request_id})
+    return {"ok": True, "loaded_qty": body.qty}
+
+
 @router.post("/requests/{request_id}/complete")
 async def complete_request(request_id: str, user: dict = biz):
     r = await get_owned_request(request_id, user)
@@ -326,37 +362,49 @@ async def complete_request(request_id: str, user: dict = biz):
         {"request_id": request_id, "status": {"$in": ["attended", "attendance_confirmed", "driver_completed"]}}).to_list(500)
     if not payable:
         raise HTTPException(status_code=400, detail="لا يوجد حضور مؤكد — سجّل حضور العمال أولاً")
+    disputed = [o for o in payable if o.get("loading_disputed")]
+    if disputed:
+        raise HTTPException(status_code=400, detail="يوجد نزاع على عدد الشحنات — يجب حلّه عبر الدعم قبل الإنهاء")
+    settings = await get_settings()
+    vat_pct = settings.get("vat_pct", 15)
     share = round(r["estimated_total"] / r["required_count"], 2)
-    released = 0.0
+    rate = r["rate"]
+    commission_rate = r.get("commission_rate", DEFAULT_COMMISSION_RATE)
     for o in payable:
-        earning = share
-        commission = round(earning * r.get("commission_rate", DEFAULT_COMMISSION_RATE), 2)
-        net = round(earning - commission, 2)
-        released += earning
-        await db.wallets.update_one({"user_id": o["worker_id"]}, {"$inc": {"available": net}})
-        await db.offers.update_one({"_id": o["_id"]}, {"$set": {"status": "paid", "earning": net}})
-        await db.users.update_one({"_id": o["worker_id"]}, {"$inc": {"worker_profile.jobs_completed": 1}})
-        await add_txn(o["worker_id"], "earning", net, "credit",
-                      f"أرباح مهمة: {r['title']} (بعد عمولة المنصة {commission} ر.س)", request_id)
-        await add_txn("platform", "commission", commission, "credit",
-                      f"عمولة المنصة — طلب: {r['title']}", request_id)
-        await notify(o["worker_id"], "تم إيداع أرباحك",
-                     f"تم إيداع {net} ر.س في محفظتك عن مهمة: {r['title']}", "earning", "/app/worker/wallet")
-    refund = round(r["estimated_total"] - released, 2)
-    await db.wallets.update_one({"user_id": user["_id"]},
-                                {"$inc": {"reserved": -r["estimated_total"], "available": refund}})
-    await add_txn(user["_id"], "release", released, "debit",
-                  f"تسوية طلب مكتمل: {r['title']} (صُرف للمندوبين {released} ر.س)", request_id)
-    if refund > 0:
-        await add_txn(user["_id"], "refund", refund, "credit",
-                      f"استرداد مقاعد غير مشغولة — {r['title']}", request_id)
+        expected_qty = r.get("shipments_per_driver") or 0
+        final_qty = o.get("loaded_qty") if o.get("loaded_qty") is not None else expected_qty
+        gross = round(rate * final_qty, 2) if expected_qty else share
+        commission = round(gross * commission_rate, 2)
+        vat = round(commission * vat_pct / 100, 2)
+        net = round(gross - commission, 2)
+        settlement = {
+            "_id": new_id(), "request_id": request_id, "offer_id": o["_id"],
+            "driver_id": o["worker_id"], "business_id": user["_id"],
+            "expected_qty": expected_qty, "loaded_qty": o.get("loaded_qty"),
+            "final_qty": final_qty, "rate": rate, "commission_rate": commission_rate,
+            "gross": gross, "commission": commission, "vat": vat, "vat_pct": vat_pct,
+            "net": net, "reserved_share": share,
+            "pricing_version": r.get("pricing_version"),
+            "status": "pending_review",
+            "is_demo": r.get("is_demo", False), "created_at": now_iso(),
+        }
+        await db.settlements.insert_one(settlement)
+        await db.offers.update_one({"_id": o["_id"]}, {"$set": {"settlement_id": settlement["_id"]}})
+        await ledger_entry("settlement_created", gross, "debit", user, user_id=user["_id"],
+                           request_id=request_id, settlement_id=settlement["_id"],
+                           note=f"تصفية مهمة {r['title']} — بانتظار مراجعة المحاسب")
     await db.requests.update_one({"_id": request_id},
                                  {"$set": {"status": "completed", "completed_at": now_iso(),
-                                           "replacement_requested": False}})
-    await notify(user["_id"], "اكتمل الطلب وتمت التسوية",
-                 f"تم صرف {released} ر.س للمندوبين وإرجاع {refund} ر.س لمحفظتك — {r['title']}",
+                                           "replacement_requested": False,
+                                           "settlement_status": "pending_review"}})
+    await notify(user["_id"], "اكتمل الطلب — التصفية قيد المراجعة",
+                 f"اكتمل طلب: {r['title']} — سيراجع المحاسب التصفية ثم يصرف مستحقات المندوبين",
                  "completed", f"/app/business/requests/{request_id}")
-    return {"ok": True, "paid_workers": len(payable), "released": released, "refunded": refund}
+    await notify_staff("settlement_review", "تصفيات جديدة بانتظار المراجعة",
+                       f"طلب {r['title']} — {len(payable)} تصفية", "general", "/app/admin/finance")
+    await notify_admins("طلب مكتمل بانتظار التسوية", f"{r['title']} — {len(payable)} تصفية معلقة",
+                        "completed", "/app/admin/finance")
+    return {"ok": True, "settlements_created": len(payable)}
 
 
 class CancelRequestIn(BaseModel):

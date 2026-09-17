@@ -192,16 +192,31 @@ class TestBusiness:
                                 headers=_h(biz_token), json={"result": "attended"})
             assert att.status_code == 200, att.text
 
-        # Complete
+        # Complete → creates settlements (no instant payout; accountant approves & pays)
         c = requests.post(f"{API}/business/requests/req_d2/complete", headers=_h(biz_token))
         assert c.status_code == 200, c.text
         j = c.json()
         assert j["ok"] is True
-        assert j["paid_workers"] == 2
+        assert j["settlements_created"] == 2
 
         # Verify status
         r2 = requests.get(f"{API}/business/requests/req_d2", headers=_h(biz_token))
         assert r2.json()["request"]["status"] == "completed"
+
+        # Accountant flow: review → approve → payout each settlement
+        adm = _h(_admin_pwd_login()["token"])
+        sts = requests.get(f"{API}/admin/finance/settlements?status=pending_review", headers=adm).json()["settlements"]
+        mine = [s for s in sts if s["request_id"] == "req_d2"]
+        assert len(mine) == 2, f"expected 2 settlements, got {len(mine)}"
+        for s in mine:
+            rv = requests.post(f"{API}/admin/finance/settlements/{s['_id']}/review", headers=adm, json={"note": "ok"})
+            assert rv.status_code == 200, rv.text
+            ap = requests.post(f"{API}/admin/finance/settlements/{s['_id']}/approve", headers=adm, json={"note": "ok"})
+            assert ap.status_code == 200, ap.text
+            po = requests.post(f"{API}/admin/finance/settlements/{s['_id']}/payout", headers=adm,
+                               json={"method": "bank_transfer"})
+            assert po.status_code == 200, po.text
+            assert po.json().get("invoice_no")
 
     def test_wallets_after_req_d2_completion(self, biz_token):
         """سعد (+966500000204) and فهد (+966500000205) should now each have 252 SAR available."""

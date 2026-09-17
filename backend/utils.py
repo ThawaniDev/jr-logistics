@@ -13,7 +13,11 @@ DEFAULT_SETTINGS = {"key": "platform", "default_rate": DEFAULT_RATE,
                     "cancel_warning_threshold": 2,
                     "cancel_suspend_threshold": 4,
                     "cancel_suspend_days": 3,
-                    "cancel_weekly_limit": 3}
+                    "cancel_weekly_limit": 3,
+                    "vat_pct": 15,
+                    "alert_no_checkin_grace_min": 30,
+                    "alert_unfilled_hours": 6,
+                    "urgent_unfilled_hours": 24}
 
 
 async def get_settings() -> dict:
@@ -56,7 +60,8 @@ async def notify_admins(title: str, body: str, ntype: str = "admin", link: str =
 
 
 async def add_txn(user_id: str, type_: str, amount: float, direction: str, note: str,
-                  request_id: str = None, status: str = "completed"):
+                  request_id: str = None, status: str = "completed", actor: dict | str = "system",
+                  settlement_id: str = None):
     doc = {
         "_id": new_id(),
         "user_id": user_id,
@@ -65,12 +70,39 @@ async def add_txn(user_id: str, type_: str, amount: float, direction: str, note:
         "direction": direction,
         "status": status,
         "request_id": request_id,
+        "settlement_id": settlement_id,
         "note": note,
         "is_demo": True,
         "created_at": now_iso(),
     }
     await db.transactions.insert_one(doc)
+    await ledger_entry(type_, doc["amount"], direction, actor, user_id=user_id,
+                       request_id=request_id, settlement_id=settlement_id,
+                       ref=doc["_id"], note=note)
     return doc
+
+
+async def ledger_entry(type_: str, amount: float, direction: str, actor: dict | str,
+                       user_id: str = None, request_id: str = None,
+                       settlement_id: str = None, ref: str = None,
+                       status: str = "posted", note: str = None):
+    actor_desc = actor if isinstance(actor, str) else f"{actor.get('name')} ({actor.get('_id')})"
+    doc = {"_id": new_id(), "type": type_, "amount": round(amount, 2), "direction": direction,
+           "actor": actor_desc, "user_id": user_id, "request_id": request_id,
+           "settlement_id": settlement_id, "ref": ref, "status": status,
+           "note": note, "created_at": now_iso()}
+    await db.ledger.insert_one(doc)
+    return doc
+
+
+async def get_client_pricing(business_id: str) -> dict | None:
+    return await db.client_pricing.find_one({"business_id": business_id, "status": "active"})
+
+
+async def next_invoice_no() -> str:
+    c = await db.counters.find_one_and_update(
+        {"_id": "invoice"}, {"$inc": {"seq": 1}}, upsert=True, return_document=True)
+    return f"JR-INV-{c['seq']:05d}"
 
 
 async def get_wallet(user_id: str) -> dict:

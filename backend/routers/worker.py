@@ -17,6 +17,13 @@ ACTIVE_JOB_STATUSES = ["accepted", "confirmed", "attendance_confirmed", "attende
 async def enrich_offer(o: dict) -> dict:
     r = await db.requests.find_one({"_id": o["request_id"]})
     o["request"] = pub(r)
+    if o["request"]:
+        # driver financial privacy: never expose client price / commission / internal math
+        share = r["estimated_total"] / max(1, r["required_count"])
+        o["request"]["expected_earning"] = round(share * (1 - r.get("commission_rate", 0.10)), 2)
+        for f in ("rate", "estimated_total", "commission", "commission_rate",
+                  "payout_total", "pricing_snapshot", "pricing_version"):
+            o["request"].pop(f, None)
     if r:
         b = await db.users.find_one({"_id": r["business_id"]},
                                     {"name": 1, "business_profile.company_name": 1,
@@ -113,9 +120,10 @@ async def overview(user: dict = wrk):
     for o in jobs:
         await enrich_offer(o)
         if o.get("request") and o["status"] in ("confirmed", "attendance_confirmed", "attended", "driver_completed"):
-            req = o["request"]
-            share = req["estimated_total"] / req["required_count"]
-            pending += share * (1 - req.get("commission_rate", 0.10))
+            pending += o["request"].get("expected_earning", 0)
+    pend_settlements = await db.settlements.find(
+        {"driver_id": user["_id"], "status": {"$in": ["pending_review", "under_review", "approved"]}}).to_list(500)
+    pending += sum(s["net"] for s in pend_settlements)
     earned = [t for t in await db.transactions.find(
         {"user_id": user["_id"], "type": "earning"}).to_list(500)]
     paid_total = round(sum(t["amount"] for t in earned), 2)
@@ -180,6 +188,12 @@ async def available_jobs(user: dict = wrk):
             continue
         b = await db.users.find_one({"_id": r["business_id"]}, {"business_profile.company_name": 1, "name": 1})
         r["business"] = pub(b)
+        # driver financial privacy — expose expected net earning only
+        share = r["estimated_total"] / max(1, r["required_count"])
+        r["expected_earning"] = round(share * (1 - r.get("commission_rate", 0.10)), 2)
+        for f in ("rate", "estimated_total", "commission", "commission_rate",
+                  "payout_total", "pricing_snapshot", "pricing_version"):
+            r.pop(f, None)
         jobs.append(r)
     return {"jobs": pub_list(jobs)}
 
@@ -357,6 +371,54 @@ async def report_no_work(offer_id: str, body: NoWorkIn, user: dict = wrk):
     await notify_admins("حالة عدم توفير عمل", f"{user['name']} أبلغ عن عدم توفير العمل — {r['title']}",
                         "case", "/app/admin/cases")
     await notify_staff("cases", "حالة عدم توفير عمل", f"{user['name']} — {r['title']}", "case", "/app/admin/cases")
+    return {"ok": True, "ticket_id": ticket["_id"]}
+
+
+@router.post("/offers/{offer_id}/confirm-loading")
+async def confirm_loading(offer_id: str, user: dict = wrk):
+    o = await db.offers.find_one({"_id": offer_id, "worker_id": user["_id"]})
+    if not o or o.get("loaded_qty") is None:
+        raise HTTPException(status_code=400, detail="لم تسجّل المنشأة كمية الشحنات بعد")
+    if o.get("loading_confirmed") or o.get("loading_disputed"):
+        raise HTTPException(status_code=400, detail="تم التعامل مع هذه الكمية مسبقاً")
+    await db.offers.update_one({"_id": offer_id},
+                               {"$set": {"loading_confirmed": True, "loading_confirmed_at": now_iso()}})
+    r = await db.requests.find_one({"_id": o["request_id"]})
+    await notify(r["business_id"], "المندوب أكّد كمية الشحنات",
+                 f"{user['name']} أكّد تحميل {o['loaded_qty']} شحنة — {r['title']}",
+                 "attendance", f"/app/business/requests/{r['_id']}")
+    return {"ok": True}
+
+
+class LoadingDisputeIn(BaseModel):
+    note: Optional[str] = None
+
+
+@router.post("/offers/{offer_id}/dispute-loading")
+async def dispute_loading(offer_id: str, body: LoadingDisputeIn, user: dict = wrk):
+    o = await db.offers.find_one({"_id": offer_id, "worker_id": user["_id"]})
+    if not o or o.get("loaded_qty") is None:
+        raise HTTPException(status_code=400, detail="لم تسجّل المنشأة كمية الشحنات بعد")
+    if o.get("loading_confirmed") or o.get("loading_disputed"):
+        raise HTTPException(status_code=400, detail="تم التعامل مع هذه الكمية مسبقاً")
+    await db.offers.update_one({"_id": offer_id}, {"$set": {"loading_disputed": True}})
+    r = await db.requests.find_one({"_id": o["request_id"]})
+    ticket = {
+        "_id": new_id(), "user_id": user["_id"],
+        "subject": f"اعتراض على عدد الشحنات — {r['title']}",
+        "category": "shipment_count_differs",
+        "message": body.note or f"أعترض على الكمية المسجلة ({o.get('loaded_qty')}) — الكمية المتوقعة {r.get('shipments_per_driver')}",
+        "request_id": r["_id"], "offer_id": offer_id,
+        "priority": "urgent", "escalation": "support", "status": "open",
+        "activity": [{"action": "created", "by": user["name"], "at": now_iso()}],
+        "replies": [], "is_demo": user.get("is_demo", False), "created_at": now_iso(),
+    }
+    await db.tickets.insert_one(ticket)
+    await notify(r["business_id"], "نزاع على عدد الشحنات",
+                 f"{user['name']} اعترض على كمية الشحنات المسجلة — {r['title']}",
+                 "support", f"/app/business/requests/{r['_id']}")
+    await notify_admins("نزاع على كمية الشحنات", f"{user['name']} — {r['title']}",
+                        "case", "/app/admin/cases")
     return {"ok": True, "ticket_id": ticket["_id"]}
 
 

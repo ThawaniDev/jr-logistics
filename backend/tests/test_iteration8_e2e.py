@@ -344,19 +344,41 @@ def test_M5_business_completes(biz_token, drv_token):
     r = requests.post(f"{BASE}/api/business/requests/{rid}/complete", headers=h(biz_token), timeout=15)
     assert r.status_code == 200, f"complete: {r.status_code} {r.text}"
     body = r.json()
-    STATE["released"] = body.get("released")
-    print(f"complete: released={body.get('released')} refunded={body.get('refunded')}")
+    STATE["settlements_created"] = body.get("settlements_created")
+    print(f"complete: settlements_created={body.get('settlements_created')}")
 
 
 # =========================================================================
-# N. Settlement — driver wallet credited
+# N. Settlement — accountant reviews, approves, payout; driver wallet credited
 # =========================================================================
-def test_N_driver_wallet_credited(drv_token):
+def test_N_settlement_accountant_flow(drv_token, admin_token):
+    rid = STATE["req_id"]
+    ah = h(admin_token)
+    sts = requests.get(f"{BASE}/api/admin/finance/settlements", headers=ah, timeout=15).json()["settlements"]
+    mine = [s for s in sts if s["request_id"] == rid]
+    assert mine, "no settlements created for request"
+    s = mine[0]
+    # privacy: driver token must NOT access finance endpoints
+    forbidden = requests.get(f"{BASE}/api/admin/finance/settlements", headers=h(drv_token), timeout=15)
+    assert forbidden.status_code == 403
+    rv = requests.post(f"{BASE}/api/admin/finance/settlements/{s['_id']}/review", headers=ah, json={}, timeout=15)
+    assert rv.status_code == 200, rv.text
+    ap = requests.post(f"{BASE}/api/admin/finance/settlements/{s['_id']}/approve", headers=ah, json={"note": "E2E"}, timeout=15)
+    assert ap.status_code == 200, ap.text
+    po = requests.post(f"{BASE}/api/admin/finance/settlements/{s['_id']}/payout", headers=ah,
+                       json={"method": "bank_transfer"}, timeout=15)
+    assert po.status_code == 200, po.text
+    STATE["invoice_no"] = po.json().get("invoice_no")
+    # approval identity permanently recorded
+    det = requests.get(f"{BASE}/api/admin/finance/settlements", headers=ah, timeout=15).json()["settlements"]
+    paid = next(x for x in det if x["_id"] == s["_id"])
+    assert paid["status"] == "paid"
+    assert paid["approved"]["accountant_name"]
+    assert paid["payout"]["executed_by"]["name"]
+    # driver wallet credited
     r = requests.get(f"{BASE}/api/worker/overview", headers=h(drv_token), timeout=15)
-    assert r.status_code == 200
     wallet = r.json().get("wallet") or {}
-    print(f"driver wallet available={wallet.get('available')} paid_earnings={r.json().get('paid_earnings')}")
-    assert (wallet.get("available") or 0) > 0, "driver wallet not credited after settlement"
+    assert (wallet.get("available") or 0) > 0, "driver wallet not credited after payout"
 
 
 # =========================================================================

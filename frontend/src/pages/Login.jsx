@@ -69,10 +69,8 @@ export default function Login() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
         className="w-full max-w-md">
         <Link to="/" className="flex items-center justify-center gap-3 mb-8" data-testid="login-logo">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-cyan-500 flex items-center justify-center shadow-[0_0_25px_rgba(0,229,163,0.4)]">
-            <span className="font-heading font-black text-navy-900 text-xl">إ</span>
-          </div>
-          <span className="font-heading font-extrabold text-2xl">إسناد</span>
+          <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-11 h-11 rounded-xl object-contain bg-white/95 p-1 shadow-[0_0_25px_rgba(0,229,163,0.4)]" />
+          <span className="font-heading font-extrabold text-2xl">JR Logistics</span>
         </Link>
         <div className="glass rounded-3xl p-8">
           <div className="flex items-center gap-3 mb-6">

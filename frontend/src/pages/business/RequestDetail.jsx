@@ -31,6 +31,7 @@ export default function RequestDetail() {
   const [ratingFor, setRatingFor] = useState(null);
   const [score, setScore] = useState(5);
   const [comment, setComment] = useState("");
+  const [loadQty, setLoadQty] = useState({});
 
   const load = () => api.get(`/business/requests/${id}`).then(({ data }) => setData(data)).catch((e) => toast.error(errMsg(e)));
   useEffect(() => { load(); }, [id]);
@@ -240,6 +241,38 @@ export default function RequestDetail() {
                     >
                       <XCircle className="w-3.5 h-3.5" /> {t("reqDetail.noShow")}
                     </button>
+                  </div>
+                )}
+
+                {["attended", "attendance_confirmed", "driver_completed"].includes(o.status) && (
+                  <div className="pt-1">
+                    {o.loaded_qty == null ? (
+                      <div className="flex items-center gap-2" data-testid={`loading-form-${o._id}`}>
+                        <input type="number" min="0" value={loadQty[o._id] ?? ""}
+                          onChange={(e) => setLoadQty({ ...loadQty, [o._id]: e.target.value })}
+                          placeholder={t("reqDetail.loadingQtyPh")} data-testid={`loading-qty-${o._id}`}
+                          className="w-32 bg-navy-800 border border-navy-600 rounded-xl px-3 py-2 text-xs num focus:outline-none focus:ring-1 focus:ring-brand" />
+                        <button
+                          data-testid={`loading-save-${o._id}`}
+                          disabled={busy === `load-${o._id}` || !loadQty[o._id]}
+                          onClick={() => act(`load-${o._id}`,
+                            () => api.post(`/business/requests/${id}/loading`, { offer_id: o._id, qty: Number(loadQty[o._id]) }),
+                            t("reqDetail.loadingSaved"))}
+                          className="bg-brand text-navy-900 font-bold rounded-xl px-4 py-2 text-xs hover:bg-brand-hover disabled:opacity-40 transition-colors"
+                        >
+                          {t("reqDetail.recordLoading")}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className={`text-[11px] flex items-center gap-1.5 ${o.loading_disputed ? "text-rose-400" : "text-emerald-400"}`}>
+                        {o.loading_disputed
+                          ? t("reqDetail.loadDisputedByDriver")
+                          : o.loading_confirmed
+                            ? t("reqDetail.loadConfirmedByDriver")
+                            : t("reqDetail.awaitingLoadConfirm")}
+                        — <span className="num font-bold">{o.loaded_qty}</span>
+                      </p>
+                    )}
                   </div>
                 )}
 

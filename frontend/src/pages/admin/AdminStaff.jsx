@@ -6,8 +6,8 @@ import api, { errMsg } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { EmptyState } from "@/components/EmptyState";
 
-const ROLE_KEYS = ["support", "operations", "finance", "supervisor"];
-const ROLE_LABEL = { support: "admin.roleSupport", operations: "admin.roleOperations", finance: "admin.roleFinance", supervisor: "admin.roleSupervisor" };
+const ROLE_KEYS = ["support", "operations", "operations_supervisor", "finance", "hr", "account_manager", "reports", "supervisor"];
+const ROLE_LABEL = { support: "admin.roleSupport", operations: "admin.roleOperations", operations_supervisor: "admin.roleOpsSupervisor", finance: "admin.roleFinance", hr: "admin.roleHR", account_manager: "admin.roleAccountManager", reports: "admin.roleReports", supervisor: "admin.roleSupervisor" };
 
 export default function AdminStaff() {
   const { t } = useI18n();

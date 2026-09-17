@@ -206,6 +206,7 @@ async def admin_login(body: AdminLoginIn, request: Request, response: Response):
     if user.get("status") == "suspended":
         raise HTTPException(status_code=403, detail="الحساب موقوف — تواصل مع مدير المنصة")
     await db.login_attempts.delete_one({"_id": ident})
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {"last_login": now_iso()}})
     token = create_access_token(user)
     set_auth_cookie(response, token)
     await audit(user, "admin_login", "user", user["_id"])

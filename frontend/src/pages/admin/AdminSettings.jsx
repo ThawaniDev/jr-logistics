@@ -12,7 +12,7 @@ export default function AdminSettings() {
   const { t } = useI18n();
   const { user } = useAuth();
   const [settings, setSettings] = useState(null);
-  const [form, setForm] = useState({ default_rate: "", commission_pct: "", compensation_pct: "", vehicle_types: "", service_areas: "", cancel_warn: "", cancel_suspend: "", cancel_days: "", cancel_weekly: "" });
+  const [form, setForm] = useState({ default_rate: "", commission_pct: "", compensation_pct: "", vehicle_types: "", service_areas: "", cancel_warn: "", cancel_suspend: "", cancel_days: "", cancel_weekly: "", vat_pct: "" });
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
@@ -44,6 +44,7 @@ export default function AdminSettings() {
         cancel_suspend: String(s.cancel_suspend_threshold ?? 4),
         cancel_days: String(s.cancel_suspend_days ?? 3),
         cancel_weekly: String(s.cancel_weekly_limit ?? 3),
+        vat_pct: String(s.vat_pct ?? 15),
         vehicle_types: (s.vehicle_types || []).join("\n"),
         service_areas: (s.service_areas || []).join("\n"),
       });
@@ -62,6 +63,7 @@ export default function AdminSettings() {
         cancel_suspend_threshold: Number(form.cancel_suspend),
         cancel_suspend_days: Number(form.cancel_days),
         cancel_weekly_limit: Number(form.cancel_weekly),
+        vat_pct: Number(form.vat_pct),
         vehicle_types: form.vehicle_types.split("\n").map((v) => v.trim()).filter(Boolean),
         service_areas: form.service_areas.split("\n").map((v) => v.trim()).filter(Boolean),
       };
@@ -122,6 +124,13 @@ export default function AdminSettings() {
               onChange={(e) => setForm({ ...form, compensation_pct: e.target.value })}
               className="bg-navy-800 border-navy-600 h-11 num max-w-xs" />
             <p className="text-[11px] text-slate-500 mt-1">{t("admin.compensationNote")}</p>
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("admin.vat")}</label>
+            <Input data-testid="settings-vat" type="number" min="0" max="30" value={form.vat_pct}
+              onChange={(e) => setForm({ ...form, vat_pct: e.target.value })}
+              className="bg-navy-800 border-navy-600 h-11 num max-w-xs" />
+            <p className="text-[11px] text-slate-500 mt-1">{t("admin.vatNote")}</p>
           </div>
         </div>
 

@@ -22,6 +22,12 @@ export default function WorkerDashboard() {
   const toggleAvailability = async (status) => {
     try {
       await api.patch("/worker/availability", { status });
+      if (status !== "available") {
+        await api.delete("/worker/location").catch(() => {});
+        stopLocationWatch();
+      } else {
+        startLocationWatch();
+      }
       toast.success(status === "available" ? t("drvDash.availOnToast") : t("drvDash.availOffToast"));
       refresh();
       load();
@@ -29,6 +35,24 @@ export default function WorkerDashboard() {
       toast.error(errMsg(e));
     }
   };
+
+  const startLocationWatch = () => {
+    if (!navigator.geolocation) return;
+    const send = (pos) =>
+      api.post("/worker/location", { lat: pos.coords.latitude, lng: pos.coords.longitude }).catch(() => {});
+    navigator.geolocation.getCurrentPosition(send, () => {});
+    const id = setInterval(() => navigator.geolocation.getCurrentPosition(send, () => {}), 60000);
+    window.__jrLocWatch = id;
+  };
+  const stopLocationWatch = () => {
+    if (window.__jrLocWatch) { clearInterval(window.__jrLocWatch); window.__jrLocWatch = null; }
+  };
+
+  useEffect(() => {
+    if (wp.availability === "available") startLocationWatch();
+    return stopLocationWatch;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wp.availability]);
 
   if (!data) return <p className="text-slate-500 text-sm">{t("common.loading")}</p>;
   const available = wp.availability === "available";

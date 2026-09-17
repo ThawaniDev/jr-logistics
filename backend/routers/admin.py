@@ -42,6 +42,7 @@ class SettingsIn(BaseModel):
     cancel_suspend_threshold: Optional[int] = None
     cancel_suspend_days: Optional[int] = None
     cancel_weekly_limit: Optional[int] = None
+    vat_pct: Optional[float] = None
 
 
 @router.patch("/settings")
@@ -69,6 +70,10 @@ async def update_platform_settings(body: SettingsIn, user: dict = adm):
             if not lo <= v <= hi:
                 raise HTTPException(status_code=400, detail="قيمة سياسة الإلغاء خارج النطاق المسموح")
             updates[field] = v
+    if body.vat_pct is not None:
+        if not 0 <= body.vat_pct <= 30:
+            raise HTTPException(status_code=400, detail="نسبة الضريبة بين 0% و 30%")
+        updates["vat_pct"] = body.vat_pct
     if body.vehicle_types is not None:
         cleaned = [v.strip() for v in body.vehicle_types if v.strip()]
         if not cleaned:

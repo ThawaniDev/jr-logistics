@@ -10,14 +10,48 @@ DEFAULT_SERVICE_AREAS = ["الرياض", "جدة", "الدمام", "الخبر",
 
 # Staff role presets (Super Admin = role "admin" with all permissions)
 STAFF_ROLE_PRESETS = {
-    "support": ["stats", "tickets", "users_view", "requests_view"],
-    "operations": ["stats", "requests", "requests_view", "drivers", "documents", "attendance",
-                   "replacements", "cases", "tickets", "users_view"],
-    "finance": ["stats", "wallets", "withdrawals", "transactions", "reports", "requests_view"],
+    "support": ["stats", "tickets", "tickets_view", "tickets_manage", "users_view", "requests_view",
+                "attendance_view"],
+    "operations": ["stats", "requests", "requests_view", "requests_edit", "requests_assign",
+                   "drivers", "drivers_view", "documents", "attendance", "attendance_view",
+                   "attendance_edit", "replacements", "replacement_manage", "cases", "tickets",
+                   "tickets_view", "users_view", "live_location_view"],
+    "operations_supervisor": ["stats", "requests", "requests_view", "requests_edit", "requests_assign",
+                              "drivers", "drivers_view", "drivers_sensitive_view", "documents",
+                              "attendance", "attendance_view", "attendance_edit", "replacements",
+                              "replacement_manage", "cases", "tickets", "tickets_view",
+                              "tickets_manage", "users_view", "live_location_view", "reports_view"],
+    "finance": ["stats", "wallets", "wallets_view", "withdrawals", "transactions", "reports",
+                "reports_view", "requests_view", "finance_view", "settlements_view",
+                "settlement_review", "commission_view", "refunds_manage"],
+    "hr": ["users_view", "users_edit", "drivers_view", "drivers_sensitive_view", "staff_view",
+           "documents", "stats"],
+    "account_manager": ["users_view", "users_edit", "requests_view", "tickets_view",
+                        "pricing_view", "reports_view", "stats"],
+    "reports": ["reports_view", "reports_export", "stats", "audit_view"],
     "supervisor": ["stats", "requests", "requests_view", "drivers", "documents", "attendance",
                    "replacements", "cases", "tickets", "users", "users_view",
-                   "withdrawals", "transactions", "reports", "ratings", "audit"],
+                   "withdrawals", "transactions", "reports", "ratings", "audit",
+                   "live_location_view", "audit_view"],
 }
+
+ALL_PERMISSIONS = [
+    "users_view", "users_edit", "drivers_view", "drivers_sensitive_view",
+    "requests_view", "requests_edit", "requests_assign",
+    "attendance_view", "attendance_edit", "replacement_manage", "live_location_view",
+    "tickets_view", "tickets_manage",
+    "finance_view", "wallets_view", "wallet_adjust", "payments_manage",
+    "settlements_view", "settlement_review", "settlement_approve", "payout_execute",
+    "commission_view", "commission_edit", "pricing_view", "pricing_edit", "refunds_manage",
+    "reports_view", "reports_export",
+    "staff_view", "staff_create", "staff_edit", "staff_suspend",
+    "roles_manage", "permissions_manage",
+    "settings_view", "settings_edit", "audit_view",
+    # legacy coarse keys kept for backward compatibility
+    "stats", "users", "requests", "drivers", "documents", "attendance", "replacements",
+    "cases", "tickets", "wallets", "withdrawals", "transactions", "reports",
+    "ratings", "audit", "staff", "settings", "broadcast",
+]
 
 DOC_TYPES = [
     {"key": "national_id", "name": "الهوية / الإقامة", "required": True},

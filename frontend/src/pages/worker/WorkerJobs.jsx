@@ -122,7 +122,7 @@ export default function WorkerJobs() {
                 <div className="flex flex-wrap gap-4 text-xs text-slate-400">
                   <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-brand" /> {o.request?.city} — {o.request?.address}</span>
                   <span className="flex items-center gap-1 num"><Calendar className="w-3.5 h-3.5 text-brand" /> {o.request?.start_date} · {o.request?.start_time}</span>
-                  <span className="text-slate-500">{t("jobs.expectedEarnings")}: <span className="num text-brand font-semibold">{o.request && sar(Math.round((o.request.estimated_total / o.request.required_count) * 0.9))}</span></span>
+                  <span className="text-slate-500">{t("jobs.expectedEarnings")}: <span className="num text-brand font-semibold">{o.request && sar(o.request.expected_earning || 0)}</span></span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {o.status === "confirmed" && (
@@ -136,6 +136,30 @@ export default function WorkerJobs() {
                       className="flex items-center gap-2 bg-green-500 text-navy-900 font-bold rounded-xl px-5 py-2.5 text-xs hover:bg-green-400 transition-colors">
                       <CheckCircle2 className="w-4 h-4" /> {t("jobs.finish")}
                     </button>
+                  )}
+                  {["attended", "driver_completed"].includes(o.status) && o.loaded_qty != null && !o.loading_confirmed && !o.loading_disputed && (
+                    <div className="flex items-center gap-2 flex-wrap bg-navy-800/60 rounded-xl px-4 py-2.5 border border-navy-600/40" data-testid={`loading-confirm-${o._id}`}>
+                      <span className="text-xs text-slate-300">{t("jobs.loadedQty")}: <b className="num text-brand">{o.loaded_qty}</b></span>
+                      <button onClick={async () => {
+                        try { await api.post(`/worker/offers/${o._id}/confirm-loading`); toast.success(t("jobs.loadConfirmed")); load(); }
+                        catch (e) { toast.error(errMsg(e)); }
+                      }} data-testid={`confirm-load-${o._id}`}
+                        className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-semibold rounded-lg px-3 py-1.5 text-xs hover:bg-emerald-500/25 transition-colors">
+                        {t("jobs.confirmLoad")}
+                      </button>
+                      <button onClick={async () => {
+                        try { await api.post(`/worker/offers/${o._id}/dispute-loading`, {}); toast.success(t("jobs.loadDisputed")); load(); }
+                        catch (e) { toast.error(errMsg(e)); }
+                      }} data-testid={`dispute-load-${o._id}`}
+                        className="bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold rounded-lg px-3 py-1.5 text-xs hover:bg-rose-500/20 transition-colors">
+                        {t("jobs.disputeLoad")}
+                      </button>
+                    </div>
+                  )}
+                  {o.loading_confirmed && (
+                    <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> {t("jobs.loadConfirmed")} — <span className="num">{o.loaded_qty}</span>
+                    </p>
                   )}
                   {o.status === "accepted" && (
                     <p className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/25 rounded-xl px-4 py-2.5">

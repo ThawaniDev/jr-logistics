@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import {
   LayoutDashboard, ClipboardList, PlusCircle, Wallet, LifeBuoy, Building2,
   Zap, Briefcase, User, Users, Banknote, Bell, LogOut, Menu, X, ShieldCheck,
-  Settings, FileCheck, AlertTriangle, ScrollText, XCircle,
+  Settings, FileCheck, AlertTriangle, ScrollText, XCircle, Tag, Landmark, MapPin, BarChart3,
 } from "lucide-react";
 import { sar } from "@/lib/constants";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -36,6 +36,10 @@ const NAVS = {
     { to: "/app/admin/users", key: "nav.users", icon: Users, perm: "users_view" },
     { to: "/app/admin/requests", key: "nav.adminRequests", icon: ClipboardList, perm: "requests_view" },
     { to: "/app/admin/cancellations", key: "nav.cancellations", icon: XCircle, perm: "requests_view" },
+    { to: "/app/admin/pricing", key: "nav.pricing", icon: Tag, perm: "pricing_view" },
+    { to: "/app/admin/finance", key: "nav.finance", icon: Landmark, perm: "settlements_view" },
+    { to: "/app/admin/live-map", key: "nav.livemap", icon: MapPin, perm: "live_location_view" },
+    { to: "/app/admin/reports", key: "nav.reports", icon: BarChart3, perm: "reports_view" },
     { to: "/app/admin/documents", key: "nav.documents", icon: FileCheck, perm: "documents" },
     { to: "/app/admin/cases", key: "nav.cases", icon: AlertTriangle, perm: "cases" },
     { to: "/app/admin/withdrawals", key: "nav.withdrawals", icon: Banknote, perm: "withdrawals" },
@@ -90,11 +94,9 @@ export default function DashboardLayout() {
   const sidebar = (
     <div className="flex flex-col h-full">
       <Link to="/" className="flex items-center gap-3 px-5 py-6 border-b border-navy-600/50" data-testid="sidebar-logo">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-cyan-500 flex items-center justify-center shadow-[0_0_20px_rgba(0,229,163,0.35)]">
-          <span className="font-heading font-black text-navy-900 text-lg">إ</span>
-        </div>
+        <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-10 h-10 rounded-xl object-contain bg-white/95 p-1 shadow-[0_0_20px_rgba(0,229,163,0.35)]" />
         <div>
-          <p className="font-heading font-extrabold text-lg leading-none">إسناد</p>
+          <p className="font-heading font-extrabold text-lg leading-none">JR Logistics</p>
           <p className="text-[11px] text-slate-500 mt-1">{t("landing.footerTag")}</p>
         </div>
       </Link>

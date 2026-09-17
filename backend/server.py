@@ -15,6 +15,10 @@ from routers.worker import router as worker_router
 from routers.admin import router as admin_router
 from routers.common import router as common_router
 from routers.documents import router as documents_router
+from routers.pricing import router as pricing_router
+from routers.finance import router as finance_router
+from routers.location import router as location_router
+from routers.reports import router as reports_router
 from seed import seed_all
 from storage import init_storage
 
@@ -26,6 +30,10 @@ app.include_router(worker_router)
 app.include_router(admin_router)
 app.include_router(common_router)
 app.include_router(documents_router)
+app.include_router(pricing_router)
+app.include_router(finance_router)
+app.include_router(location_router)
+app.include_router(reports_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,6 +57,11 @@ async def startup():
     await db.transactions.create_index("user_id")
     await db.audit_logs.create_index("created_at")
     await db.driver_documents.create_index("worker_id")
+    await db.client_pricing.create_index([("business_id", 1), ("status", 1)])
+    await db.settlements.create_index("request_id")
+    await db.settlements.create_index("status")
+    await db.ledger.create_index("created_at")
+    await db.ledger.create_index("user_id")
     try:
         init_storage()
         logger.info("Object storage initialized")

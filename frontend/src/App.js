@@ -37,6 +37,10 @@ import AdminDocuments from "@/pages/admin/AdminDocuments";
 import AdminCases from "@/pages/admin/AdminCases";
 import AdminAudit from "@/pages/admin/AdminAudit";
 import AdminCancellations from "@/pages/admin/AdminCancellations";
+import AdminPricing from "@/pages/admin/AdminPricing";
+import AdminFinance from "@/pages/admin/AdminFinance";
+import AdminReports from "@/pages/admin/AdminReports";
+import AdminLiveMap from "@/pages/admin/AdminLiveMap";
 
 function RoleIndex() {
   const { user, loading } = useAuth();
@@ -79,6 +83,10 @@ function App() {
               <Route path="admin/cases" element={<AdminCases />} />
               <Route path="admin/audit" element={<AdminAudit />} />
               <Route path="admin/cancellations" element={<AdminCancellations />} />
+              <Route path="admin/pricing" element={<AdminPricing />} />
+              <Route path="admin/finance" element={<AdminFinance />} />
+              <Route path="admin/reports" element={<AdminReports />} />
+              <Route path="admin/live-map" element={<AdminLiveMap />} />
               <Route path="admin/support" element={<Support />} />
               <Route path="support" element={<Support />} />
               <Route path="notifications" element={<Notifications />} />
