@@ -38,6 +38,11 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Demo seed through seed_v4 (delivery-only dataset, Sedan/Van normalized, platform settings inserted)
 - Testing: iter3 — 14/14 new tests + 20 passed/3 idempotent skips existing; 100% frontend flows
 
+## Implemented (2026-09-17) — Admin entry-point exposure & list fixes
+- Admin portal route /admin/login confirmed live on preview; entry links on public login page (admin-portal-link) and landing footer (footer-admin-link)
+- Admin /requests list: cap raised 300→1000 and business join now includes phone — user's real business (عماد / +966530534184) shows 23 requests in Admin
+- Regression: 97 passed / 4 skipped; admin portal E2E (footer link → login → dashboard → requests list) verified by screenshot
+
 ## Implemented (2026-09-17) — Real-account E2E verification (iteration 8)
 - Verified user's real registered accounts (Business عماد +966530534184, Driver عماد +966593603404) fully connected to Super Admin — both appear in Admin Users, share the single central MongoDB
 - Testing agent ran complete E2E on real accounts: driver uploaded 3 docs → admin verified → driver verified → business top-up → publish (terms-gated) → admin visibility → driver accept (terms modal) → overlap block → phone privacy post-accept → checkin → attendance → finish → complete → settlement (160 SAR → 144 driver net + 16 commission) → mutual ⭐5 ratings → linked support ticket → audit log entries

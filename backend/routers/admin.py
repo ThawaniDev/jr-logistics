@@ -218,9 +218,10 @@ async def list_requests(status: Optional[str] = None, city: Optional[str] = None
         if date_to:
             rng["$lte"] = date_to
         query["start_date"] = rng
-    reqs = await db.requests.find(query).sort("created_at", -1).to_list(300)
+    reqs = await db.requests.find(query).sort("created_at", -1).to_list(1000)
     for r in reqs:
-        b = await db.users.find_one({"_id": r["business_id"]}, {"business_profile.company_name": 1, "name": 1})
+        b = await db.users.find_one({"_id": r["business_id"]},
+                                    {"business_profile.company_name": 1, "name": 1, "phone": 1})
         r["business"] = pub(b)
         r["counts"] = {}
         for st in ["offered", "accepted", "confirmed", "attended", "paid", "no_show"]:

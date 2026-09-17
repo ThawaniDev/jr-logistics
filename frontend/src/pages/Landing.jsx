@@ -338,6 +338,9 @@ export default function Landing() {
             </div>
           </div>
           <p className="text-xs text-slate-500 text-center">{t("landing.footerNote")}</p>
+          <Link to="/admin/login" data-testid="footer-admin-link" className="text-[11px] text-slate-600 hover:text-brand transition-colors">
+            {t("adminAuth.portalLink")}
+          </Link>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <Users className="w-4 h-4 text-brand" />
             {t("landing.footerVision")}
