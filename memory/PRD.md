@@ -38,6 +38,17 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Demo seed through seed_v4 (delivery-only dataset, Sedan/Van normalized, platform settings inserted)
 - Testing: iter3 — 14/14 new tests + 20 passed/3 idempotent skips existing; 100% frontend flows
 
+## Implemented (2026-09-17) — Admin connectivity layer (iteration 6/7)
+- Weekly cancellation policy: cancel_weekly_limit=3 (ISO-week counters cancel_week/cancel_count_week; warning at limit, temp suspension above it) — all configurable in Admin Settings incl new weekly-limit field
+- Cancellations registry: GET /api/admin/cancellations (party/kind filters, joined worker/business/request context) + UI page /app/admin/cancellations (nav item, perm requests_view)
+- Admin request filters: city + date range on GET /api/admin/requests with UI controls
+- Admin dashboard financial totals: total wallet balances, total reserved, driver earnings, cancellations/replacements cards
+- Suspension management: POST /api/admin/users/{id}/clear-suspension (audit-logged, driver notified) + UI button in Admin Users; cancellation counts visible per driver
+- Audit: driver_cancelled and business_cancelled actions logged
+- Test hygiene: OTP-login retry across suites, self-healing driver fixtures, isolated business for topup test
+- Tests: test_iteration6.py (5 tests) — full suite 73 passed / 4 skipped
+- Iteration 7 testing agent: all iter-6 features verified live (weekly policy, cancellations registry, filters, financial cards, suspension lift, role isolation, fresh-account visibility in admin). Follow-up: /api/business/requests cap raised 200→1000 so seed data stays reachable; OTP-send 403 for admin/staff confirmed live.
+
 ## Implemented (2026-09-16) — Policy & flow completion (iteration 5)
 - Overlapping-job restriction: driver can hold only one active job per time window — 400 OVERLAPPING_JOB on accept/apply; overlapping requests hidden from open opportunities; suspension respected
 - Driver privacy: worker phone masked from business until offer accepted (VISIBLE_AFTER_ACCEPT in request detail)

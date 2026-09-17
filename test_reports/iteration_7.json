@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 7 verification of iter-6 admin connectivity layer (weekly cancel policy, cancellations registry + filters, admin request city/date filters, 4 new financial stat cards, clear-suspension endpoint/button, users cancels-<id> counters, audit-logged cancels, role isolation). Backend pytest: 72 passed / 4 skipped / 1 failed (77 total). The single failure is TEST-STATE POLLUTION only (seed request IDs req_1/req_d1/req_d2 pushed off the 200-row /api/business/requests window by hundreds of TEST_* requests accumulated across prior iterations) — NOT a code bug. All new iteration-6 endpoints and pages verified live on preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/business/requests", "issue": "Response is capped at 200 items with no pagination / no oldest-first ordering guarantee; seed requests req_1/req_d1/req_d2 fall outside the window once >200 TEST_* requests accumulate (causes test_isnad_backend.py::test_list_requests_has_delivery_seeded to fail). Consider adding ?limit/?offset or pinning seeds via sort/order. Same accumulation also inflates other listings."},
+      {"endpoint": "POST /api/auth/otp/send", "issue": "(Carried from iter-5, still open) Send returns 200 + demo_otp even for admin/staff phones; block only happens at /verify. Minor role-leak via response-time / token waste."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Business request wizard step 3", "issues": ["(Carried from iter-3/4/5) native <input type=date/time> instead of shadcn Calendar/TimePicker."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/iter7_results.xml"
+  ],
+  "action_items": [
+    "(Low) Add pagination or explicit seed-preserving order to GET /api/business/requests so seed IDs stay reachable regardless of accumulated TEST_* rows; alternatively bump the 200 cap or add a cleanup task for TEST_* requests older than N days.",
+    "(Low, carried) Block /api/auth/otp/send for admin/staff phones (return 403 immediately) instead of just at /verify.",
+    "(Design, carried) Replace native date/time inputs in RequestNew.jsx step 3 with shadcn Calendar + TimePicker."
+  ],
+  "critical_code_review_comments": [
+    "Weekly cancel policy: worker.py::cancel_job correctly maintains worker_profile.cancel_week=YYYY-Www + cancel_count_week atomically; increments lifetime cancel_count; applies temp suspension when >= cancel_weekly_limit; audit-logs 'driver_cancelled'. Verified via test_iteration6::TestWeeklyCancellationPolicy passing.",
+    "Cancellations registry: GET /api/admin/cancellations returns 86 rows joined with request/worker/business context, party+kind filters work, business token receives 403. Verified live.",
+    "Admin request filters city/date_from/date_to: all three testids present and functional; date filter uses ISO string >= comparison on start_date (works because the field is stored as ISO date string).",
+    "AdminDashboard: 4 new financial cards (stat-wallet-balances=23,988, stat-reserved-total=39,700, stat-driver-earnings=1,008, stat-cancellations=86/22 replacements) render live and are anchored <a> tags for navigation. GET /api/admin/stats returns all 5 new financial keys.",
+    "AdminUsers worker tab exposes cancels-<id> counter chip when cancel_count>0 (verified '18 cancels · 2 this week' on +966500000201) and clear-suspension-<id> button conditionally when suspended_until is in the future.",
+    "Backend clear_cancel_suspension endpoint: audit-logs, unsets suspended_until, resets cancel_count_week=0, sends notification. Test-callable path used by test fixture _ensure_w1_active.",
+    "Business cancel path also writes cancellations row (party='business', kind='cancellation') with reason — visible in registry (rows labelled 'شركة الإمداد السريع...' with 'إلغاء من المنشأة').",
+    "Role isolation: business token → 403 on /api/admin/cancellations (confirmed via test_cancellations_forbidden_for_business).",
+    "Weekly-limit setting bounds: PATCH /api/admin/settings accepts cancel_weekly_limit=3, rejects 99 with 400 (test passes).",
+    "State-pollution risk: /api/business/requests has no pagination and no cleanup for TEST_* rows; over 200 test-created requests now hide the seed IDs. Recommend TTL/cleanup task or explicit pagination."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_7.json"
+  ],
+  "success_rate": {"backend": "94.8% (72/76 non-skipped, 1 fail is test-pollution not code bug — all iter-6 tests pass)", "frontend": "100% of requested iter-6 flows verified"},
+  "test_credentials": "Used /app/memory/test_credentials.md. Super Admin login OK; business +966500000101 OTP OK; driver +966500000201 currently active (not suspended) with cancel_count=18, cancel_count_week=2.",
+  "seed_data_creation": "Backend pytest run created ~1 TEST_weekly_* request during TestWeeklyCancellationPolicy (auto-cancelled). Driver +966500000201 was auto-reset via clear-suspension fixture — cancel_count remains 18 lifetime, 2 this week (below limit 3).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "State: +966500000201 is verified/active, cancel_count=18, cancel_count_week=2 (still under weekly limit 3). If future weekly-policy tests push over 3, the fixture _ensure_w1_active in test_iteration6.py will auto-clear. seed request IDs req_1/req_d1/req_d2 are now BEYOND the 200-row window returned by /api/business/requests due to accumulated TEST_* requests — test_isnad_backend.py::test_list_requests_has_delivery_seeded will keep failing until pagination is added or TEST_* rows are cleaned. Every other suite passes. Preview URL admin login credentials are known to work.",
+  "rca of the issue": "test_isnad_backend.py::test_list_requests_has_delivery_seeded fails because GET /api/business/requests returns exactly 200 rows (no pagination) and 200+ TEST_* requests from iters 3-7 now sit ahead of req_1/req_d1/req_d2. Reproduction: `curl .../api/business/requests` while authenticated as +966500000101 → len=200, seed IDs absent. Mitigation options: (1) add ?limit/?offset pagination and update the test to page through, (2) add a scheduled cleanup for TEST_* requests older than 1 day, (3) sort by created_at ascending so seed rows come first. No code change made — flagged for main agent."
+}

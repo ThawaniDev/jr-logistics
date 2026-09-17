@@ -226,7 +226,7 @@ async def publish_request(request_id: str, body: PublishIn = None, user: dict = 
 
 @router.get("/requests")
 async def list_requests(user: dict = biz):
-    reqs = await db.requests.find({"business_id": user["_id"]}).sort("created_at", -1).to_list(200)
+    reqs = await db.requests.find({"business_id": user["_id"]}).sort("created_at", -1).to_list(1000)
     for r in reqs:
         r["counts"] = {}
         for st in ["offered", "accepted", "confirmed", "attendance_confirmed", "attended", "paid", "no_show"]:
