@@ -11,7 +11,10 @@ export default function AdminLiveMap() {
   const locale = lang === "ar" ? "ar-SA" : lang === "ur" ? "ur-PK" : "en-US";
 
   const load = () =>
-    api.get("/admin/locations").then(({ data }) => setLocations(data.locations)).catch((e) => toast.error(errMsg(e)));
+    api.get("/admin/locations").then(({ data }) => {
+      const seen = new Set();
+      setLocations(data.locations.filter((l) => !seen.has(l.worker_id) && seen.add(l.worker_id)));
+    }).catch((e) => toast.error(errMsg(e)));
   useEffect(() => {
     load();
     const iv = setInterval(load, 30000);

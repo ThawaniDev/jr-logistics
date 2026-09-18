@@ -104,12 +104,23 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - test_iteration3 insufficient-funds test hardened with self-topup
 - Testing agent iteration_9.json: backend 107 passed / 4 skipped / 2 failed (both external storage-key 401); all JR rebrand/privacy/settlement/RBAC/live-location checks PASS; frontend smoke-verified
 
+## Implemented (2026-09-18, iteration 10) — Workflow overhaul + clean state
+- Driver single-active-job rule: offers/available feeds return has_active_job + empty lists; accept/apply blocked (400 ACTIVE_JOB) until job completed/cancelled/paid; WorkerOpportunities shows notice card (active-job-notice)
+- Removed driver direct complete-and-paid flow. New chain: accepted → confirmed(escrow) → وصلت/checkin (arrival recorded, business notified) → warehouse attendance confirm → warehouse records loaded qty → driver confirm/dispute → "إنهاء الفرصة" modal (expected + loaded shown, driver enters delivered qty, no auto-assume) → delivered_reported → warehouse تأكيد العدد (pending_settlement, final_qty) or اعتراض (qty_disputed + urgent operations ticket, payment blocked) → complete creates settlement(final_qty) → accountant review/approve(identity recorded) → payout
+- Worker finish endpoint requires delivered_qty; loading must be confirmed first; complete_request gated on all offers pending_settlement
+- New statuses + badges + AR/EN/UR labels: delivered_reported, pending_settlement, qty_disputed, paid=تم الصرف
+- Document storage FIXED: local persistent fallback (/app/backend/uploads) when object-storage key inactive; uploads verified working, files retrievable by admin, 403 for business; expiry validated (YYYY-MM-DD) and displayed DD/MM/YYYY (fmtDate) on worker + admin screens
+- Full audit chain added: driver_accepted, driver_arrived, attendance_confirmed, loading_confirmed/disputed, driver_finished, delivery_confirmed/disputed, request_completed
+- CLEAN STATE: scripts/clean_state.py wiped all transactional collections + 23 test/demo users; SEED_DEMO=false (no reseed); kept: super admin, 3 staff (support/operations/finance), real business +966530534184, real driver +966593603404 (verified, wallet 0); settings preserved (7 docs)
+- Fixed duplicate-key issues: dedupe in AdminRequests + AdminLiveMap
+- Tests: test_iteration10.py 2/2 PASS (happy path 30 loaded/27 delivered → 194.4 payout; dispute path blocks settlement). Old suites iter3-9 DEPRECATED (depended on wiped demo seed data)
+
 ## Backlog
-- **P0 (EXTERNAL/OWNER ACTION)**: EMERGENT_LLM_KEY rejected by object-storage init ("key is not active") → driver document uploads blocked. Owner: Profile → Manage plan → Universal Key → Add Balance / enable auto top-up. Code side is correct (503 graceful).
-- **P1**: Operational alerts triggering to RBAC roles (late drivers, urgent requests, shipment discrepancies, expiring docs); real payment gateway (Moyasar/Stripe); real SMS (Twilio); OTP rate-limiting
-- **P2**: Tax/VAT readiness config + PDF invoice generation; push notifications; in-app chat; shadcn Calendar/TimePicker in wizard; pagination/ordering for /api/business/requests; TEST_* data cleanup
+- **P0 (EXTERNAL/OWNER ACTION)**: EMERGENT_LLM_KEY rejected by object-storage init ("key is not active") — local fallback active; owner: Profile → Manage plan → Universal Key → Add Balance to re-enable cloud object storage
+- **P1**: Operational alerts wiring to RBAC roles; real payment gateway; real SMS (Twilio); OTP rate-limiting; shadcn Calendar/TimePicker in wizard step 3
+- **P2**: VAT/tax config + PDF invoices; push notifications; in-app chat
 
 ## Next Tasks
-1. Owner activates/balances Universal Key → re-run test_iteration8_e2e (docs upload) to green
-2. Owner final acceptance testing on Preview (not published)
+1. Owner-controlled E2E on Preview with the clean accounts (see /app/memory/test_credentials.md)
+2. Owner activates Universal Key balance → cloud object storage resumes
 3. VAT config + PDF invoices; alerts wiring

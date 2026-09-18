@@ -22,7 +22,10 @@ export default function AdminRequests() {
     api.get("/admin/requests", { params: {
       status: filter || undefined, city: city || undefined,
       date_from: dateFrom || undefined, date_to: dateTo || undefined,
-    } }).then(({ data }) => setRequests(data.requests)).catch(() => {});
+    } }).then(({ data }) => {
+      const seen = new Set();
+      setRequests(data.requests.filter((r) => !seen.has(r._id) && seen.add(r._id)));
+    }).catch(() => {});
   useEffect(() => { load(); }, [filter, city, dateFrom, dateTo]);
 
   const openDetail = async (id) => {
