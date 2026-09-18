@@ -5,7 +5,7 @@ import {
   ShieldCheck, Wallet, Users, Zap, ChevronLeft, Building2, UserCheck,
   MapPin, Clock, BadgeCheck, ArrowLeft, Star, ClipboardList,
 } from "lucide-react";
-import { ACTIVE_SERVICES, COMING_SOON_SERVICES, sar } from "@/lib/constants";
+import { ACTIVE_SERVICES, COMING_SOON_SERVICES } from "@/lib/constants";
 import { useI18n } from "@/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
@@ -22,11 +22,6 @@ function Estimator() {
   const [count, setCount] = useState(4);
   const [days, setDays] = useState(3);
   const svc = ACTIVE_SERVICES.find((s) => s.key === serviceKey);
-  const total =
-    svc.unit === "shipment"
-      ? svc.ref_rate * (count * 50)
-      : svc.ref_rate * count * days;
-  const commission = total * 0.1;
   return (
     <div className="glass rounded-2xl p-6 sm:p-8">
       <p className="text-brand text-sm font-semibold mb-1">{t("landing.estCalc")}</p>
@@ -66,14 +61,7 @@ function Estimator() {
           </div>
         )}
       </div>
-      <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-t border-navy-600/50 pt-5">
-        <div>
-          <p className="text-xs text-slate-400">{t("landing.estTotal")}</p>
-          <p className="heading text-4xl font-black text-gradient-brand num" data-testid="est-total">{sar(total)}</p>
-          <p className="text-[11px] text-slate-500 mt-1">
-            {t("landing.estNote")} — <span className="num">{sar(commission)}</span>
-          </p>
-        </div>
+      <div className="mt-6 flex flex-wrap items-center justify-end gap-4 border-t border-navy-600/50 pt-5">
         <Link
           to="/login"
           data-testid="est-cta"
@@ -110,7 +98,7 @@ export default function Landing() {
       <header className="fixed top-0 inset-x-0 z-50 glass border-x-0 border-t-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3" data-testid="landing-logo">
-            <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-9 h-9 rounded-xl object-contain bg-white/95 p-1 shadow-[0_0_18px_rgba(0,229,163,0.4)]" />
+            <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-9 h-9 rounded-xl object-cover shadow-[0_0_18px_rgba(0,229,163,0.4)]" />
             <span className="font-heading font-extrabold text-xl">JR Logistics</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm text-slate-300">
@@ -327,7 +315,7 @@ export default function Landing() {
       <footer className="border-t border-navy-600/40 py-10 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-8 h-8 rounded-lg object-contain bg-white/95 p-1" />
+            <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-8 h-8 rounded-lg object-cover" />
             <div>
               <p className="font-heading font-bold">JR Logistics</p>
               <p className="text-[11px] text-slate-500">{t("landing.footerTag")}</p>

@@ -94,7 +94,7 @@ export default function DashboardLayout() {
   const sidebar = (
     <div className="flex flex-col h-full">
       <Link to="/" className="flex items-center gap-3 px-5 py-6 border-b border-navy-600/50" data-testid="sidebar-logo">
-        <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-10 h-10 rounded-xl object-contain bg-white/95 p-1 shadow-[0_0_20px_rgba(0,229,163,0.35)]" />
+        <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-10 h-10 rounded-xl object-cover shadow-[0_0_20px_rgba(0,229,163,0.35)]" />
         <div>
           <p className="font-heading font-extrabold text-lg leading-none">JR Logistics</p>
           <p className="text-[11px] text-slate-500 mt-1">{t("landing.footerTag")}</p>

@@ -111,6 +111,11 @@ class TestAdminSettings:
             "publish": True,
         }
         r = requests.post(f"{API}/business/requests", headers=_h(biz_token), json=payload)
+        if r.status_code == 400 and r.json().get("detail", {}).get("code") == "INSUFFICIENT_FUNDS":
+            d = r.json()["detail"]
+            requests.post(f"{API}/business/wallet/topup", headers=_h(biz_token),
+                          json={"amount": d["required"] - d["available"] + 100})
+            r = requests.post(f"{API}/business/requests", headers=_h(biz_token), json=payload)
         assert r.status_code == 200, r.text
         req = r.json()["request"]
         assert req["rate"] == 9  # fell back to admin default
