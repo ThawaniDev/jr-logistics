@@ -25,7 +25,17 @@ async def catalog_services():
 async def catalog_defaults():
     s = await get_settings()
     return {"default_rate": s["default_rate"], "commission_rate": s["commission_rate"],
-            "vehicle_types": s["vehicle_types"], "service_areas": s["service_areas"]}
+            "vehicle_types": s["vehicle_types"], "service_areas": s["service_areas"],
+            "enabled_pickup_cities": s.get("enabled_pickup_cities", ["الرياض"]),
+            "enabled_delivery_cities": s.get("enabled_delivery_cities", s["service_areas"])}
+
+
+@router.get("/catalog/terms")
+async def catalog_terms():
+    s = await get_settings()
+    return {"version": s.get("terms_version", "1.0"),
+            "business_text": s.get("terms_business_text", ""),
+            "driver_text": s.get("terms_driver_text", "")}
 
 
 class ProfileIn(BaseModel):
@@ -38,6 +48,7 @@ class ProfileIn(BaseModel):
     industry: Optional[str] = None
     services: Optional[List[str]] = None
     vehicle_type: Optional[str] = None
+    vehicle_temperature: Optional[str] = None
     bank_name: Optional[str] = None
     iban: Optional[str] = None
     national_id: Optional[str] = None
@@ -56,7 +67,7 @@ async def update_profile(body: ProfileIn, user: dict = Depends(get_current_user)
             if v is not None:
                 updates[f"business_profile.{f}"] = v
     if user["role"] == "worker":
-        for f in ("services", "bank_name", "iban", "national_id", "vehicle_type"):
+        for f in ("services", "bank_name", "iban", "national_id", "vehicle_type", "vehicle_temperature"):
             v = getattr(body, f)
             if v is not None:
                 updates[f"worker_profile.{f}"] = v

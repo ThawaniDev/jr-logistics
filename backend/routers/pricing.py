@@ -82,3 +82,72 @@ async def deactivate_pricing(pricing_id: str, user: dict = p_edit):
     await audit(user, "pricing_deactivated", "business", p["business_id"],
                 before={"rate": p["rate"], "version": p.get("version")})
     return {"ok": True}
+
+
+# ---------- Route-based pricing rules (vehicle + temperature + pickup + delivery) ----------
+
+class PricingRuleIn(BaseModel):
+    business_id: Optional[str] = None  # null = global rule
+    vehicle_type: str
+    temperature_type: Optional[str] = None
+    pickup_city: str
+    delivery_city: str
+    price: float
+    effective_date: str
+    notes: Optional[str] = None
+    agreement_ref: Optional[str] = None
+    version: Optional[str] = None
+
+
+@router.get("/rules")
+async def list_rules(business_id: Optional[str] = None, user: dict = p_view):
+    query = {"business_id": business_id} if business_id else {}
+    items = await db.pricing_rules.find(query).sort("created_at", -1).to_list(500)
+    for p in items:
+        if p.get("business_id"):
+            b = await db.users.find_one({"_id": p["business_id"]},
+                                        {"name": 1, "business_profile.company_name": 1})
+            p["business"] = pub(b) if b else None
+    return {"rules": pub_list(items)}
+
+
+@router.post("/rules")
+async def create_rule(body: PricingRuleIn, user: dict = p_edit):
+    if body.price <= 0:
+        raise HTTPException(status_code=400, detail="السعر يجب أن يكون أكبر من صفر")
+    if body.vehicle_type not in ("sedan", "van", "dyna"):
+        raise HTTPException(status_code=400, detail="نوع المركبة غير صالح")
+    if body.vehicle_type == "sedan":
+        body.temperature_type = None
+    elif body.temperature_type not in ("dry", "cold"):
+        raise HTTPException(status_code=400, detail="حدد نوع الحرارة (جاف/مبرد) لمركبات الفان والدينا")
+    if body.business_id:
+        biz = await db.users.find_one({"_id": body.business_id, "role": "business"})
+        if not biz:
+            raise HTTPException(status_code=404, detail="المنشأة غير موجودة")
+    dup_q = {"business_id": body.business_id, "vehicle_type": body.vehicle_type,
+             "temperature_type": body.temperature_type, "pickup_city": body.pickup_city,
+             "delivery_city": body.delivery_city, "status": "active"}
+    await db.pricing_rules.update_many(dup_q, {"$set": {"status": "superseded", "superseded_at": now_iso()}})
+    doc = {"_id": new_id(), **body.model_dump(), "status": "active",
+           "version": body.version or f"v-{now_iso()[:10]}",
+           "created_by": {"id": user["_id"], "name": user["name"]}, "created_at": now_iso()}
+    await db.pricing_rules.insert_one(doc)
+    await audit(user, "pricing_rule_created", "pricing_rule", doc["_id"],
+                after={"vehicle_type": doc["vehicle_type"], "temperature_type": doc["temperature_type"],
+                       "pickup_city": doc["pickup_city"], "delivery_city": doc["delivery_city"],
+                       "price": doc["price"], "version": doc["version"],
+                       "business_id": doc["business_id"], "agreement_ref": doc["agreement_ref"]})
+    return {"ok": True, "rule": pub(doc)}
+
+
+@router.post("/rules/{rule_id}/deactivate")
+async def deactivate_rule(rule_id: str, user: dict = p_edit):
+    p = await db.pricing_rules.find_one({"_id": rule_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="غير موجود")
+    await db.pricing_rules.update_one({"_id": rule_id},
+                                      {"$set": {"status": "inactive", "deactivated_at": now_iso()}})
+    await audit(user, "pricing_rule_deactivated", "pricing_rule", rule_id,
+                before={"price": p["price"], "version": p.get("version")})
+    return {"ok": True}

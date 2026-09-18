@@ -6,7 +6,7 @@ from datetime import date, timedelta, datetime, timezone
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP
-from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings, audit
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings, audit, log_event
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 wrk = Depends(require_roles("worker"))
@@ -226,10 +226,19 @@ async def respond(offer_id: str, body: RespondIn, user: dict = wrk):
     await ensure_acceptable(user, r)
     if r["status"] not in ("published", "filling"):
         raise HTTPException(status_code=400, detail="انتهت صلاحية هذه الفرصة")
-    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "accepted", "responded_at": now_iso(),
-                                                            "terms_accepted_at": now_iso()}})
+    res = await db.offers.update_one({"_id": offer_id, "status": "offered"},
+                                     {"$set": {"status": "accepted", "responded_at": now_iso(),
+                                               "terms_accepted_at": now_iso()}})
+    if res.modified_count == 0:
+        raise HTTPException(status_code=400, detail="تم حجز هذه الفرصة بالفعل — لم تعد متاحة")
     await audit(user, "driver_accepted", "offer", offer_id,
                 after={"request_id": r["_id"], "title": r["title"]})
+    await log_event(r["_id"], offer_id, user, "driver_accepted",
+                    old_status="offered", new_status="accepted")
+    filled = await db.offers.count_documents({"request_id": r["_id"], "status": {"$in": ACTIVE_JOB_STATUSES}})
+    if filled >= r.get("required_count", 1):
+        await db.offers.update_many({"request_id": r["_id"], "status": "offered"},
+                                    {"$set": {"status": "replacement_locked", "locked_at": now_iso()}})
     if r["status"] == "published":
         await db.requests.update_one({"_id": r["_id"]}, {"$set": {"status": "filling"}})
     await notify(r["business_id"], "مندوب قبل عرضك",
@@ -329,6 +338,8 @@ async def cancel_job(offer_id: str, body: CancelJobIn, user: dict = wrk):
                         "replacement", "/app/admin/requests")
     await audit(user, "driver_cancelled", "offer", offer_id,
                 after={"reason": reason, "request_id": r["_id"], "week_count": week_count})
+    await log_event(r["_id"], offer_id, user, "driver_cancelled",
+                    new_status="cancelled", notes=reason)
     return {"ok": True, "replacement_offers": matched}
 
 
@@ -347,6 +358,8 @@ async def checkin(offer_id: str, user: dict = wrk):
                  "attendance", f"/app/business/requests/{r['_id']}")
     await audit(user, "driver_arrived", "offer", offer_id,
                 after={"request_id": r["_id"], "arrived_at": arrived_at})
+    await log_event(r["_id"], offer_id, user, "driver_arrived",
+                    old_status="confirmed", new_status="attendance_confirmed")
     return {"ok": True}
 
 
@@ -375,6 +388,9 @@ async def finish_job(offer_id: str, body: FinishIn, user: dict = wrk):
     await audit(user, "driver_finished", "offer", offer_id,
                 after={"request_id": r["_id"], "loaded_qty": o.get("loaded_qty"),
                        "driver_reported_qty": body.delivered_qty})
+    await log_event(r["_id"], offer_id, user, "driver_finished",
+                    old_status="attended", new_status="delivered_reported",
+                    notes=f"delivered={body.delivered_qty}, loaded={loaded}")
     return {"ok": True, "status": "delivered_reported"}
 
 
@@ -418,6 +434,7 @@ async def confirm_loading(offer_id: str, user: dict = wrk):
     await db.offers.update_one({"_id": offer_id},
                                {"$set": {"loading_confirmed": True, "loading_confirmed_at": now_iso()}})
     await audit(user, "loading_confirmed", "offer", offer_id, after={"loaded_qty": o.get("loaded_qty")})
+    await log_event(o["request_id"], offer_id, user, "loading_confirmed_by_driver")
     r = await db.requests.find_one({"_id": o["request_id"]})
     await notify(r["business_id"], "المندوب أكّد كمية الشحنات",
                  f"{user['name']} أكّد تحميل {o['loaded_qty']} شحنة — {r['title']}",
@@ -438,6 +455,7 @@ async def dispute_loading(offer_id: str, body: LoadingDisputeIn, user: dict = wr
         raise HTTPException(status_code=400, detail="تم التعامل مع هذه الكمية مسبقاً")
     await db.offers.update_one({"_id": offer_id}, {"$set": {"loading_disputed": True}})
     await audit(user, "loading_disputed", "offer", offer_id, after={"loaded_qty": o.get("loaded_qty")})
+    await log_event(o["request_id"], offer_id, user, "loading_disputed_by_driver")
     r = await db.requests.find_one({"_id": o["request_id"]})
     ticket = {
         "_id": new_id(), "user_id": user["_id"],

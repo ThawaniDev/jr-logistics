@@ -19,6 +19,8 @@ from routers.pricing import router as pricing_router
 from routers.finance import router as finance_router
 from routers.location import router as location_router
 from routers.reports import router as reports_router
+from routers.jobs import router as jobs_router
+from routers.operations import router as operations_router
 from seed import seed_all
 from storage import init_storage
 
@@ -30,6 +32,8 @@ app.include_router(worker_router)
 app.include_router(admin_router)
 app.include_router(common_router)
 app.include_router(documents_router)
+app.include_router(jobs_router)
+app.include_router(operations_router)
 app.include_router(pricing_router)
 app.include_router(finance_router)
 app.include_router(location_router)

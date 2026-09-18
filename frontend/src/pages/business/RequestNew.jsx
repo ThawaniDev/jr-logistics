@@ -13,15 +13,19 @@ export default function RequestNew() {
   const STEPS = [t("wizard.step1"), t("wizard.step2"), t("wizard.step3"), t("wizard.step4")];
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
-    service_type: "delivery_driver", title: "", required_count: 1, rate: "",
+    service_type: "delivery_driver", title: "", required_count: 1,
     duration_type: "one_day", days_count: 2, shipments_per_driver: "",
-    vehicle_type: "", city: "الرياض", address: "", start_date: "", start_time: "08:00", requirements: "",
+    vehicle_type: "", temperature_type: "", pickup_city: "الرياض", delivery_city: "الرياض",
+    city: "الرياض", address: "", start_date: "", start_time: "08:00", requirements: "",
   });
   const [defaults, setDefaults] = useState({
     default_rate: 8, commission_rate: 0.10,
     vehicle_types: DEFAULT_VEHICLE_TYPES,
     service_areas: ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة", "المدينة المنورة"],
+    enabled_pickup_cities: ["الرياض"],
+    enabled_delivery_cities: ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة", "المدينة المنورة"],
   });
+  const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
   const [insufficient, setInsufficient] = useState(null);
   const [termsAgreed, setTermsAgreed] = useState(false);
@@ -34,9 +38,21 @@ export default function RequestNew() {
         commission_rate: data.commission_rate,
         vehicle_types: data.vehicle_types?.length ? data.vehicle_types : prev.vehicle_types,
         service_areas: data.service_areas?.length ? data.service_areas : prev.service_areas,
+        enabled_pickup_cities: data.enabled_pickup_cities?.length ? data.enabled_pickup_cities : prev.enabled_pickup_cities,
+        enabled_delivery_cities: data.enabled_delivery_cities?.length ? data.enabled_delivery_cities : prev.enabled_delivery_cities,
       })))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (step !== 3 || !form.vehicle_type) return;
+    setQuote(null);
+    api.get("/business/pricing/quote", { params: {
+      vehicle_type: form.vehicle_type,
+      temperature_type: ["van", "dyna"].includes(form.vehicle_type) ? form.temperature_type || undefined : undefined,
+      pickup_city: form.pickup_city, delivery_city: form.delivery_city,
+    } }).then(({ data }) => setQuote(data)).catch(() => setQuote({ ok: false, message: t("wiz2.quoteError") }));
+  }, [step, form.vehicle_type, form.temperature_type, form.pickup_city, form.delivery_city]);
 
   const svc = form.service_type ? SERVICE_MAP[form.service_type] : null;
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -47,22 +63,23 @@ export default function RequestNew() {
   }, [form.duration_type, form.days_count]);
 
   const estimate = useMemo(() => {
-    const rate = Number(form.rate) || defaults.default_rate;
-    if (!svc) return null;
+    if (!svc || !quote?.ok) return null;
+    const rate = quote.price;
     const total = svc.has_shipments
       ? rate * (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)
       : rate * Number(form.required_count || 0) * durationDays;
-    const commission = total * defaults.commission_rate;
+    const commission = total * quote.commission_rate;
     return { total, commission, payout: total - commission, rate };
-  }, [svc, form.rate, form.shipments_per_driver, form.required_count, durationDays, defaults]);
+  }, [svc, quote, form.shipments_per_driver, form.required_count, durationDays]);
 
   const next = () => {
     if (step === 0 && !form.service_type) return toast.error(t("wizard.step1"));
     if (step === 1) {
-      if (form.rate && Number(form.rate) <= 0) return toast.error(t("wizard.rate"));
       if (form.required_count < 1) return toast.error(t("wizard.driversCount"));
       if (svc?.has_shipments && !form.shipments_per_driver) return toast.error(t("wizard.shipments"));
       if (svc?.needs_vehicle && !form.vehicle_type.trim()) return toast.error(t("wizard.vehicle"));
+      if (svc?.needs_vehicle && ["van", "dyna"].includes(form.vehicle_type) && !form.temperature_type)
+        return toast.error(t("wiz2.tempRequired"));
     }
     if (step === 2 && (!form.address.trim() || !form.start_date)) return toast.error(t("wizard.area"));
     setStep((s) => s + 1);
@@ -76,11 +93,11 @@ export default function RequestNew() {
       const payload = {
         ...form,
         required_count: Number(form.required_count),
-        rate: form.rate ? Number(form.rate) : 0,
         days_count: Number(form.days_count),
         shipments_per_driver: form.shipments_per_driver ? Number(form.shipments_per_driver) : null,
         title: form.title || null,
         vehicle_type: form.vehicle_type || null,
+        temperature_type: ["van", "dyna"].includes(form.vehicle_type) ? form.temperature_type || null : null,
         requirements: form.requirements || null,
         publish: !asDraft,
         terms: !asDraft ? termsAgreed : false,
@@ -131,7 +148,7 @@ export default function RequestNew() {
           <div className="grid sm:grid-cols-2 gap-3" data-testid="step-service">
             {ACTIVE_SERVICES.map((s) => (
               <button key={s.key} type="button" data-testid={`pick-service-${s.key}`}
-                onClick={() => setForm({ ...form, service_type: s.key, rate: s.ref_rate })}
+                onClick={() => setForm({ ...form, service_type: s.key })}
                 className={`p-4 rounded-xl border text-start transition-all flex items-start gap-3 ${
                   form.service_type === s.key
                     ? "border-brand/60 bg-brand/5 shadow-[0_0_20px_rgba(0,229,163,0.08)]"
@@ -162,12 +179,6 @@ export default function RequestNew() {
                 <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.driversCount")} *</label>
                 <Input data-testid="req-count" type="number" min="1" value={form.required_count} onChange={set("required_count")} className="bg-navy-800 border-navy-600 h-11 num" />
               </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1.5">
-                  {t("wizard.rate")} — {t("wizard.rateDefault")} <span className="num text-brand">{defaults.default_rate}</span>
-                </label>
-                <Input data-testid="req-rate" type="number" min="1" value={form.rate} onChange={set("rate")} placeholder={String(defaults.default_rate)} className="bg-navy-800 border-navy-600 h-11 num" />
-              </div>
               {svc.has_shipments && (
                 <div>
                   <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.shipments")} *</label>
@@ -175,14 +186,27 @@ export default function RequestNew() {
                 </div>
               )}
               {svc.needs_vehicle && (
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.vehicle")} *</label>
-                  <select data-testid="req-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
-                    className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
-                    <option value="">{t("wizard.chooseVehicle")}</option>
-                    {defaults.vehicle_types.map((v) => <option key={v}>{v}</option>)}
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.vehicle")} *</label>
+                    <select data-testid="req-vehicle" value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value, temperature_type: "" })}
+                      className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                      <option value="">{t("wizard.chooseVehicle")}</option>
+                      {defaults.vehicle_types.map((v) => <option key={v} value={v}>{t(`veh.${v}`)}</option>)}
+                    </select>
+                  </div>
+                  {["van", "dyna"].includes(form.vehicle_type) && (
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1.5">{t("veh.tempType")} *</label>
+                      <select data-testid="req-temp" value={form.temperature_type} onChange={set("temperature_type")}
+                        className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                        <option value="">{t("auth.choose")}</option>
+                        <option value="dry">{t("veh.dry")}</option>
+                        <option value="cold">{t("veh.cold")}</option>
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             <div>
@@ -210,13 +234,23 @@ export default function RequestNew() {
           <div className="space-y-4" data-testid="step-location">
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">{t("common.city")} *</label>
-                <select data-testid="req-city" value={form.city} onChange={set("city")}
+                <label className="text-xs text-slate-400 block mb-1.5">{t("wiz2.pickupCity")} *</label>
+                <select data-testid="req-pickup-city" value={form.pickup_city} onChange={set("pickup_city")}
                   className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
-                  {defaults.service_areas.map((c) => <option key={c}>{c}</option>)}
+                  {defaults.enabled_pickup_cities.map((c) => <option key={c}>{c}</option>)}
                 </select>
+                {defaults.enabled_pickup_cities.length === 1 && (
+                  <p className="text-[10px] text-slate-500 mt-1">{t("wiz2.phaseOneNote")}</p>
+                )}
               </div>
               <div>
+                <label className="text-xs text-slate-400 block mb-1.5">{t("wiz2.deliveryCity")} *</label>
+                <select data-testid="req-delivery-city" value={form.delivery_city} onChange={set("delivery_city")}
+                  className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                  {defaults.enabled_delivery_cities.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
                 <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.area")} *</label>
                 <Input data-testid="req-address" value={form.address} onChange={set("address")} placeholder={t("wizard.areaPh")} className="bg-navy-800 border-navy-600 h-11" />
               </div>
@@ -237,6 +271,14 @@ export default function RequestNew() {
           </div>
         )}
 
+        {step === 3 && svc && !estimate && (
+          <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-5 space-y-2" data-testid="no-pricing-rule">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+              <p className="text-sm font-bold text-rose-300">{quote && !quote.ok ? quote.message : t("wiz2.noPrice")}</p>
+            </div>
+          </div>
+        )}
         {step === 3 && svc && estimate && (
           <div className="space-y-5" data-testid="step-review">
             <div className="grid sm:grid-cols-2 gap-3 text-sm">
@@ -245,13 +287,13 @@ export default function RequestNew() {
                 [t("wizard.rTitle"), form.title || svc.name],
                 [t("wizard.rDrivers"), form.required_count],
                 [t("wizard.rDuration"), `${DURATIONS.find((d) => d.key === form.duration_type)?.label} (${durationDays})`],
-                [t("wizard.rRate"), form.rate ? sar(form.rate) : `${t("wizard.rateDefault")}: ${sar(defaults.default_rate)}`],
+                [t("wiz2.appliedPrice"), quote?.ok ? `${sar(quote.price)} · ${quote.version || ""}` : "—"],
                 ...(svc.has_shipments ? [
                   [t("wizard.rShipments"), form.shipments_per_driver],
                   [t("wizard.rTotal"), (Number(form.shipments_per_driver) || 0) * Number(form.required_count || 0)],
                 ] : []),
                 ...(svc.needs_vehicle && form.vehicle_type ? [[t("wizard.rVehicle"), form.vehicle_type]] : []),
-                [t("wizard.rLocation"), `${form.city} — ${form.address}`],
+                [t("wizard.rLocation"), `${form.pickup_city} → ${form.delivery_city} — ${form.address}`],
                 [t("wizard.rStart"), `${form.start_date} · ${form.start_time}`],
               ].map(([k, v]) => (
                 <div key={k} className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40">
@@ -317,7 +359,7 @@ export default function RequestNew() {
           </button>
         ) : (
           <div className="flex gap-3">
-            <button onClick={() => publish(false)} disabled={busy || !termsAgreed} data-testid="wizard-publish-btn"
+            <button onClick={() => publish(false)} disabled={busy || !termsAgreed || !quote?.ok} data-testid="wizard-publish-btn"
               className="flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors disabled:opacity-50 shadow-[0_0_25px_rgba(0,229,163,0.3)]">
               <Rocket className="w-4 h-4" /> {busy ? t("wizard.publishing") : t("wizard.publish")}
             </button>

@@ -354,4 +354,27 @@ async def seed_all():
                 await db.users.update_one({"_id": s["_id"]},
                                           {"$set": {"password_hash": hash_password(staff_pw),
                                                     "must_change_password": True}})
-        await db.settings.update_one({"key": "seed_v6"}, {"$set": {"key": "seed_v6", "at": now_iso()}}, upsert=True)
+    if not await db.settings.find_one({"key": "seed_v7"}):
+        from utils import get_settings
+        s7 = await get_settings()
+        updates = {}
+        if s7.get("vehicle_types") != ["sedan", "van", "dyna"]:
+            updates["vehicle_types"] = ["sedan", "van", "dyna"]
+        if not s7.get("enabled_delivery_cities"):
+            updates["enabled_delivery_cities"] = s7.get("service_areas", [])
+        if not s7.get("terms_business_text"):
+            updates["terms_business_text"] = (
+                "بموجب موافقتك على الشروط والأحكام واتفاقية استخدام منصة JR Logistics، تقر بأن جميع الفرص "
+                "والعلاقات التي تنشأ عبر المنصة تخضع لاتفاقية المنصة، وتتعهد بعدم الالتفاف على منصة "
+                "JR Logistics أو إبرام تعاملات مباشرة خارج المنصة مع المناديب الذين تم التعريف بهم من خلالها، "
+                "وذلك وفقاً للاتفاقية المعمول بها والخاضعة للمراجعة القانونية وفق الأنظمة السعودية.")
+            updates["terms_driver_text"] = (
+                "بموجب موافقتك على الشروط والأحكام واتفاقية استخدام منصة JR Logistics، تقر بأن جميع الفرص "
+                "والعلاقات التي تنشأ عبر المنصة تخضع لاتفاقية المنصة، وتتعهد بعدم الالتفاف على منصة "
+                "JR Logistics أو إبرام تعاملات مباشرة خارج المنصة مع المنشآت التي تم التعريف بها من خلالها، "
+                "وذلك وفقاً للاتفاقية المعمول بها والخاضعة للمراجعة القانونية وفق الأنظمة السعودية.")
+        if updates:
+            await db.settings.update_one({"key": "platform"}, {"$set": updates}, upsert=True)
+        await db.settings.update_one({"key": "seed_v7"}, {"$set": {"key": "seed_v7", "at": now_iso()}}, upsert=True)
+
+    await db.settings.update_one({"key": "seed_v6"}, {"$set": {"key": "seed_v6", "at": now_iso()}}, upsert=True)

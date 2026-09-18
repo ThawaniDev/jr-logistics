@@ -58,7 +58,7 @@ class TestNewWorkflowE2E:
         r = requests.post(f"{API}/auth/register", headers=_h(biz_reg["registration_token"]), json={
             "registration_token": biz_reg["registration_token"], "role": "business",
             "name": "مدير مستودع الاختبار", "company_name": "مستودع الاختبار النظيف",
-            "city": "الرياض", "industry": "logistics"})
+            "city": "الرياض", "industry": "logistics", "terms_accepted": True})
         assert r.status_code == 200, r.text
         biz_token = r.json()["token"]
 
@@ -69,7 +69,7 @@ class TestNewWorkflowE2E:
         r = requests.post(f"{API}/auth/register", headers=_h(drv_reg["registration_token"]), json={
             "registration_token": drv_reg["registration_token"], "role": "worker",
             "name": "مندوب الاختبار النظيف", "city": "الرياض",
-            "services": ["delivery_driver"], "vehicle_type": "سيدان"})
+            "services": ["delivery_driver"], "vehicle_type": "sedan", "terms_accepted": True})
         assert r.status_code == 200, r.text
         drv_token = r.json()["token"]
         drv_id = r.json()["user"]["_id"]
@@ -107,14 +107,19 @@ class TestNewWorkflowE2E:
         me = requests.get(f"{API}/auth/me", headers=_h(drv_token)).json()
         assert me["user"]["worker_profile"]["verification_status"] == "verified"
 
-        # --- business topup + publish 30-shipment request ---
+        # --- business topup + publish 30-shipment request (route pricing rule required) ---
+        r = requests.post(f"{API}/admin/pricing/rules", headers=_h(adm), json={
+            "vehicle_type": "sedan", "pickup_city": "الرياض", "delivery_city": "الرياض",
+            "price": 8, "effective_date": "2026-01-01", "version": "TEST10"})
+        assert r.status_code == 200, r.text
         r = requests.post(f"{API}/business/wallet/topup", headers=_h(biz_token), json={"amount": 1000})
         assert r.status_code == 200, r.text
         r = requests.post(f"{API}/business/requests", headers=_h(biz_token), json={
             "service_type": "delivery_driver", "title": "TEST10 طلب 30 شحنة", "city": "الرياض",
             "address": "مستودع الاختبار", "required_count": 1, "start_date": "2026-09-20",
             "start_time": "08:00", "duration_type": "one_day", "days_count": 1,
-            "rate": 8, "shipments_per_driver": 30, "vehicle_type": "سيدان",
+            "shipments_per_driver": 30, "vehicle_type": "sedan",
+            "pickup_city": "الرياض", "delivery_city": "الرياض",
             "publish": True, "terms": True})
         assert r.status_code == 200, r.text
         req = r.json()["request"]
@@ -241,13 +246,13 @@ class TestNewWorkflowE2E:
         biz_reg = _otp_token(biz_phone)
         r = requests.post(f"{API}/auth/register", headers=_h(biz_reg["registration_token"]), json={
             "registration_token": biz_reg["registration_token"], "role": "business",
-            "name": "منشأة نزاع", "company_name": "مستودع النزاع", "city": "الرياض"})
+            "name": "منشأة نزاع", "company_name": "مستودع النزاع", "city": "الرياض", "terms_accepted": True})
         biz_token = r.json()["token"]
         drv_reg = _otp_token(drv_phone)
         r = requests.post(f"{API}/auth/register", headers=_h(drv_reg["registration_token"]), json={
             "registration_token": drv_reg["registration_token"], "role": "worker",
             "name": "مندوب نزاع", "city": "الرياض",
-            "services": ["delivery_driver"], "vehicle_type": "سيدان"})
+            "services": ["delivery_driver"], "vehicle_type": "sedan", "terms_accepted": True})
         drv_token = r.json()["token"]
         drv_id = r.json()["user"]["_id"]
         for dtype in ("national_id", "driving_license", "vehicle_registration"):
@@ -258,12 +263,16 @@ class TestNewWorkflowE2E:
         for d in [d for d in docs if d["worker_id"] == drv_id]:
             requests.post(f"{API}/admin/documents/{d['_id']}/review", headers=_h(adm), json={"action": "verify"})
 
+        requests.post(f"{API}/admin/pricing/rules", headers=_h(adm), json={
+            "vehicle_type": "sedan", "pickup_city": "الرياض", "delivery_city": "الرياض",
+            "price": 8, "effective_date": "2026-01-01"})
         requests.post(f"{API}/business/wallet/topup", headers=_h(biz_token), json={"amount": 1000})
         r = requests.post(f"{API}/business/requests", headers=_h(biz_token), json={
             "service_type": "delivery_driver", "title": "TEST10 نزاع عدد", "city": "الرياض",
             "address": "مستودع", "required_count": 1, "start_date": "2026-09-21",
             "start_time": "08:00", "duration_type": "one_day", "days_count": 1,
-            "rate": 8, "shipments_per_driver": 30, "vehicle_type": "سيدان",
+            "shipments_per_driver": 30, "vehicle_type": "sedan",
+            "pickup_city": "الرياض", "delivery_city": "الرياض",
             "publish": True, "terms": True})
         req_id = r.json()["request"]["_id"]
         offers = requests.get(f"{API}/worker/offers", headers=_h(drv_token)).json()["offers"]

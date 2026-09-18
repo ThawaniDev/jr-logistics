@@ -41,6 +41,7 @@ import AdminPricing from "@/pages/admin/AdminPricing";
 import AdminFinance from "@/pages/admin/AdminFinance";
 import AdminReports from "@/pages/admin/AdminReports";
 import AdminLiveMap from "@/pages/admin/AdminLiveMap";
+import AdminOperations from "@/pages/admin/AdminOperations";
 
 function RoleIndex() {
   const { user, loading } = useAuth();
@@ -87,6 +88,7 @@ function App() {
               <Route path="admin/finance" element={<AdminFinance />} />
               <Route path="admin/reports" element={<AdminReports />} />
               <Route path="admin/live-map" element={<AdminLiveMap />} />
+              <Route path="admin/operations" element={<AdminOperations />} />
               <Route path="admin/support" element={<Support />} />
               <Route path="support" element={<Support />} />
               <Route path="notifications" element={<Notifications />} />

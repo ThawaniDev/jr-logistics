@@ -5,10 +5,13 @@ from typing import Optional, Literal, List
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP, DEFAULT_COMMISSION_RATE, DURATION_DAYS
-from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings, audit, get_client_pricing, ledger_entry
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings, audit, get_client_pricing, ledger_entry, log_event, resolve_price
 
 router = APIRouter(prefix="/api/business", tags=["business"])
 biz = Depends(require_roles("business"))
+
+BUSY_STATUSES = ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed",
+                 "delivered_reported", "pending_settlement", "qty_disputed"]
 
 
 def compute_estimate(service_key: str, required_count: int, duration_days: int,
@@ -32,10 +35,19 @@ async def match_workers(request: dict) -> int:
         "worker_profile.verification_status": "verified",
         "worker_profile.services": request["service_type"],
     }).to_list(50)
+    # eligibility: no conflicting active job + vehicle compatibility
+    busy_ids = set(await db.offers.distinct("worker_id", {"status": {"$in": BUSY_STATUSES}}))
+    if request.get("vehicle_type"):
+        workers = [w for w in workers
+                   if (w.get("worker_profile") or {}).get("vehicle_type") in (None, "", request["vehicle_type"])]
+    if request.get("temperature_type"):
+        workers = [w for w in workers
+                   if (w.get("worker_profile") or {}).get("vehicle_temperature") in (None, "", request["temperature_type"])]
     existing = await db.offers.distinct("worker_id", {"request_id": request["_id"]})
+    is_repl = bool(request.get("replacement_requested"))
     offers = []
     for w in workers:
-        if w["_id"] in existing:
+        if w["_id"] in existing or w["_id"] in busy_ids:
             continue
         offers.append({
             "_id": new_id(),
@@ -43,7 +55,7 @@ async def match_workers(request: dict) -> int:
             "worker_id": w["_id"],
             "business_id": request["business_id"],
             "status": "offered",
-            "is_replacement": False,
+            "is_replacement": is_repl,
             "earning": 0,
             "created_at": now_iso(),
             "responded_at": None,
@@ -51,13 +63,16 @@ async def match_workers(request: dict) -> int:
     if offers:
         await db.offers.insert_many(offers)
         svc = SERVICE_MAP[request["service_type"]]
+        city = request.get("pickup_city") or request.get("city")
         for o in offers:
             await notify(
                 o["worker_id"],
-                f"فرصة عمل جديدة: {svc['name']}",
-                f"طلب جديد في {request['city']} — راجع التفاصيل الكاملة قبل القبول",
+                "فرصة بديلة عاجلة — أول من يقبل يحصل عليها" if is_repl else f"فرصة عمل جديدة: {svc['name']}",
+                f"طلب جديد في {city} — راجع التفاصيل الكاملة قبل القبول",
                 "offer", "/app/worker/opportunities",
             )
+            await log_event(request["_id"], o["_id"], None, "driver_notified",
+                            notes="replacement" if is_repl else "initial_match")
     return len(offers)
 
 
@@ -101,6 +116,9 @@ class RequestIn(BaseModel):
     shipment_count: Optional[int] = None
     shipments_per_driver: Optional[int] = None
     vehicle_type: Optional[str] = None
+    temperature_type: Optional[str] = None
+    pickup_city: Optional[str] = None
+    delivery_city: Optional[str] = None
     requirements: Optional[str] = None
     publish: bool = True
     terms: bool = False
@@ -149,6 +167,23 @@ async def estimate(body: EstimateIn, user: dict = biz):
             "unit": SERVICE_MAP[body.service_type]["unit"]}
 
 
+@router.get("/pricing/quote")
+async def pricing_quote(vehicle_type: str, pickup_city: str, delivery_city: str,
+                        temperature_type: Optional[str] = None, user: dict = biz):
+    settings = await get_settings()
+    if pickup_city not in settings.get("enabled_pickup_cities", ["الرياض"]):
+        return {"ok": False, "message": "مدينة الاستلام غير مفعّلة حالياً — المرحلة الأولى: الرياض فقط"}
+    rule = await resolve_price(user["_id"], vehicle_type,
+                               temperature_type if vehicle_type != "sedan" else None,
+                               pickup_city, delivery_city)
+    if not rule:
+        return {"ok": False,
+                "message": "لا يوجد سعر معتمد لهذا المسار والمركبة. يرجى التواصل مع JR Logistics Operations."}
+    return {"ok": True, "price": rule["price"], "version": rule.get("version"),
+            "effective_date": rule.get("effective_date"),
+            "commission_rate": settings["commission_rate"]}
+
+
 @router.post("/requests")
 async def create_request(body: RequestIn, user: dict = biz):
     if body.service_type not in SERVICE_MAP:
@@ -161,8 +196,23 @@ async def create_request(body: RequestIn, user: dict = biz):
     if svc["needs_vehicle"] and not body.vehicle_type:
         raise HTTPException(status_code=400, detail="حدد نوع المركبة المطلوبة")
     settings = await get_settings()
+    pickup_city = body.pickup_city or body.city
+    delivery_city = body.delivery_city or body.city
+    if pickup_city not in settings.get("enabled_pickup_cities", ["الرياض"]):
+        raise HTTPException(status_code=400,
+                            detail="مدينة الاستلام غير مفعّلة حالياً — المرحلة الأولى: الرياض فقط")
+    if delivery_city not in settings.get("enabled_delivery_cities", settings["service_areas"]):
+        raise HTTPException(status_code=400, detail="مدينة التسليم غير مفعّلة حالياً")
     pricing = await get_client_pricing(user["_id"])
-    rate = pricing["rate"] if pricing else (body.rate if body.rate and body.rate > 0 else settings["default_rate"])
+    rule = None
+    if svc["needs_vehicle"]:
+        rule = await resolve_price(user["_id"], body.vehicle_type,
+                                   body.temperature_type if body.vehicle_type != "sedan" else None,
+                                   pickup_city, delivery_city)
+        if not rule:
+            raise HTTPException(status_code=400,
+                                detail="لا يوجد سعر معتمد لهذا المسار والمركبة. يرجى التواصل مع JR Logistics Operations.")
+    rate = rule["price"] if rule else (pricing["rate"] if pricing else (body.rate if body.rate and body.rate > 0 else settings["default_rate"]))
     commission_rate = pricing["commission_rate"] if pricing else settings["commission_rate"]
     shipment_count = (body.shipments_per_driver * body.required_count
                       if body.shipments_per_driver else body.shipment_count)
@@ -191,11 +241,20 @@ async def create_request(body: RequestIn, user: dict = biz):
         "estimated_total": total,
         "commission": commission,
         "payout_total": payout,
-        "pricing_version": (pricing or {}).get("version"),
+        "pickup_city": pickup_city,
+        "delivery_city": delivery_city,
+        "temperature_type": body.temperature_type if body.vehicle_type != "sedan" else None,
+        "pricing_version": (rule or pricing or {}).get("version"),
         "pricing_snapshot": {
             "rate": rate, "commission_rate": commission_rate,
-            "source": "client_pricing" if pricing else "platform_default",
+            "source": "pricing_rule" if rule else ("client_pricing" if pricing else "platform_default"),
+            "pricing_rule_id": (rule or {}).get("_id"),
             "pricing_id": (pricing or {}).get("_id"),
+            "vehicle_type": body.vehicle_type,
+            "temperature_type": body.temperature_type if body.vehicle_type != "sedan" else None,
+            "pickup_city": pickup_city, "delivery_city": delivery_city,
+            "business_id": user["_id"],
+            "effective_date": (rule or {}).get("effective_date"),
             "at": now_iso(),
         },
         "status": "draft",
@@ -205,6 +264,7 @@ async def create_request(body: RequestIn, user: dict = biz):
         "created_at": now_iso(),
     }
     await db.requests.insert_one(doc)
+    await log_event(doc["_id"], None, user, "request_created", new_status="draft")
     matched = 0
     if body.publish:
         await reserve_funds(user["_id"], doc)
@@ -214,6 +274,9 @@ async def create_request(body: RequestIn, user: dict = biz):
         await db.requests.update_one({"_id": doc["_id"]}, {"$set": updates})
         doc["status"] = "published"
         matched = await match_workers(doc)
+        await log_event(doc["_id"], None, user, "request_published",
+                        old_status="draft", new_status="published",
+                        notes=f"matched={matched}")
         await notify(user["_id"], "تم إنشاء طلبك ونشره",
                      f"طلب: {doc['title']} — حُجز {doc['estimated_total']} ر.س وأُرسل لـ {matched} مندوب مطابق",
                      "request", f"/app/business/requests/{doc['_id']}")
@@ -234,6 +297,8 @@ async def publish_request(request_id: str, body: PublishIn = None, user: dict = 
     await db.requests.update_one({"_id": request_id}, {"$set": updates})
     r["status"] = "published"
     matched = await match_workers(r)
+    await log_event(request_id, None, user, "request_published",
+                    old_status="draft", new_status="published", notes=f"matched={matched}")
     await notify(user["_id"], "تم نشر طلبك",
                  f"طلب: {r['title']} — أُرسل لـ {matched} مندوب مطابق",
                  "request", f"/app/business/requests/{request_id}")
@@ -315,6 +380,7 @@ async def mark_attendance(request_id: str, offer_id: str, body: AttendanceIn, us
             await db.requests.update_one({"_id": request_id}, {"$set": {"status": "in_progress"}})
         await audit(user, "attendance_confirmed", "offer", offer_id,
                     after={"request_id": request_id, "worker_id": o["worker_id"]})
+        await log_event(request_id, offer_id, user, "attendance_confirmed", new_status="attended")
         return {"ok": True, "status": "attended"}
     await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "no_show", "no_show_reason": body.reason}})
     await db.cancellations.insert_one({
@@ -352,6 +418,7 @@ async def record_loading(request_id: str, body: LoadingIn, user: dict = biz):
                  "attendance", "/app/worker/jobs")
     await audit(user, "loading_recorded", "offer", body.offer_id,
                 after={"qty": body.qty, "request_id": request_id})
+    await log_event(request_id, body.offer_id, user, "loading_recorded", notes=f"loaded={body.qty}")
     return {"ok": True, "loaded_qty": body.qty}
 
 
@@ -380,6 +447,9 @@ async def confirm_delivered(request_id: str, offer_id: str, body: DeliveredIn, u
         await audit(user, "delivery_confirmed", "offer", offer_id,
                     before={"driver_reported_qty": o.get("driver_reported_qty")},
                     after={"final_qty": final_qty, "request_id": request_id})
+        await log_event(request_id, offer_id, user, "delivery_confirmed",
+                        old_status="delivered_reported", new_status="pending_settlement",
+                        notes=f"final_qty={final_qty}")
         return {"ok": True, "status": "pending_settlement", "final_qty": final_qty}
     await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "qty_disputed"}})
     ticket = {
@@ -405,6 +475,8 @@ async def confirm_delivered(request_id: str, offer_id: str, body: DeliveredIn, u
     await audit(user, "delivery_disputed", "offer", offer_id,
                 before={"driver_reported_qty": o.get("driver_reported_qty"), "loaded_qty": o.get("loaded_qty")},
                 after={"note": body.note, "request_id": request_id})
+    await log_event(request_id, offer_id, user, "delivery_disputed",
+                    old_status="delivered_reported", new_status="qty_disputed", notes=body.note)
     return {"ok": True, "status": "qty_disputed", "ticket_id": ticket["_id"]}
 
 
@@ -472,7 +544,50 @@ async def complete_request(request_id: str, user: dict = biz):
                         "completed", "/app/admin/finance")
     await audit(user, "request_completed", "request", request_id,
                 after={"settlements_created": len(payable)})
+    for o in payable:
+        await log_event(request_id, o["_id"], user, "settlement_created",
+                        new_status="pending_settlement",
+                        notes=f"final_qty={o.get('final_qty')}")
+    await log_event(request_id, None, user, "request_completed", new_status="completed")
     return {"ok": True, "settlements_created": len(payable)}
+
+
+URGENT_REASONS = ["driver_not_arrived", "need_replacement", "attendance_issue", "shipment_issue",
+                  "qty_discrepancy", "finish_issue", "communication_issue", "other"]
+
+
+class UrgentHelpIn(BaseModel):
+    reason: str
+    note: Optional[str] = None
+    offer_id: Optional[str] = None
+
+
+@router.post("/requests/{request_id}/urgent-help")
+async def urgent_help(request_id: str, body: UrgentHelpIn, user: dict = biz):
+    r = await get_owned_request(request_id, user)
+    if body.reason not in URGENT_REASONS:
+        raise HTTPException(status_code=400, detail="سبب غير صالح")
+    offer = None
+    if body.offer_id:
+        offer = await db.offers.find_one({"_id": body.offer_id, "request_id": request_id})
+    ticket = {
+        "_id": new_id(), "user_id": user["_id"],
+        "subject": f"طلب مساعدة عاجلة — {r['title']}",
+        "category": "urgent_help",
+        "urgent_reason": body.reason,
+        "message": body.note or f"مساعدة عاجلة ({body.reason}) لطلب: {r['title']}",
+        "request_id": request_id, "offer_id": body.offer_id,
+        "driver_id": (offer or {}).get("worker_id"),
+        "priority": "urgent", "escalation": "operations", "status": "open",
+        "activity": [{"action": "created", "by": user["name"], "at": now_iso()}],
+        "replies": [], "is_demo": user.get("is_demo", False), "created_at": now_iso(),
+    }
+    await db.tickets.insert_one(ticket)
+    await notify_staff("cases", "طلب مساعدة عاجلة من مستودع",
+                       f"{r['title']} — السبب: {body.reason}", "case", "/app/admin/cases")
+    await notify_admins("طلب مساعدة عاجلة", f"{r['title']} — {body.reason}", "case", "/app/admin/cases")
+    await log_event(request_id, body.offer_id, user, "urgent_help_requested", notes=body.reason)
+    return {"ok": True, "ticket_id": ticket["_id"]}
 
 
 class CancelRequestIn(BaseModel):

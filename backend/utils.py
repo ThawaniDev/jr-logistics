@@ -17,7 +17,15 @@ DEFAULT_SETTINGS = {"key": "platform", "default_rate": DEFAULT_RATE,
                     "vat_pct": 15,
                     "alert_no_checkin_grace_min": 30,
                     "alert_unfilled_hours": 6,
-                    "urgent_unfilled_hours": 24}
+                    "urgent_unfilled_hours": 24,
+                    "enabled_pickup_cities": ["الرياض"],
+                    "warehouse_confirm_pending_min": 30,
+                    "replacement_timeout_min": 30,
+                    "settlement_pending_hours": 24,
+                    "doc_expiry_warn_days": 30,
+                    "terms_version": "1.0",
+                    "terms_business_text": "",
+                    "terms_driver_text": ""}
 
 
 async def get_settings() -> dict:
@@ -28,6 +36,37 @@ async def get_settings() -> dict:
     merged = {**DEFAULT_SETTINGS, **s}
     merged.pop("_id", None)
     return merged
+
+
+CITY_COORDS = {
+    "الرياض": (24.7136, 46.6753), "جدة": (21.4858, 39.1925), "الدمام": (26.4207, 50.0888),
+    "الخبر": (26.2172, 50.1971), "مكة المكرمة": (21.3891, 39.8579), "المدينة المنورة": (24.5247, 39.5692),
+    "نيوم": (27.9622, 35.3023), "تبوك": (28.3838, 36.5550), "أبها": (18.2164, 42.5053),
+    "بريدة": (26.3260, 43.9750),
+}
+
+
+async def log_event(request_id: str, offer_id, actor, event_type: str,
+                    old_status=None, new_status=None, notes=None):
+    await db.job_events.insert_one({
+        "_id": new_id(), "request_id": request_id, "offer_id": offer_id,
+        "actor_id": actor.get("_id") if actor else None,
+        "actor_name": actor.get("name") if actor else "النظام",
+        "actor_role": actor.get("role") if actor else "system",
+        "event_type": event_type, "old_status": old_status, "new_status": new_status,
+        "notes": notes, "created_at": now_iso(),
+    })
+
+
+async def resolve_price(business_id: str, vehicle_type: str, temperature_type,
+                        pickup_city: str, delivery_city: str):
+    q = {"vehicle_type": vehicle_type, "pickup_city": pickup_city,
+         "delivery_city": delivery_city, "status": "active",
+         "temperature_type": temperature_type if vehicle_type != "sedan" else None}
+    rule = await db.pricing_rules.find_one({**q, "business_id": business_id}, sort=[("created_at", -1)])
+    if not rule:
+        rule = await db.pricing_rules.find_one({**q, "business_id": None}, sort=[("created_at", -1)])
+    return rule
 
 
 def new_id() -> str:

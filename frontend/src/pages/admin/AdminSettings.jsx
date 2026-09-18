@@ -47,6 +47,16 @@ export default function AdminSettings() {
         vat_pct: String(s.vat_pct ?? 15),
         vehicle_types: (s.vehicle_types || []).join("\n"),
         service_areas: (s.service_areas || []).join("\n"),
+        enabled_pickup_cities: (s.enabled_pickup_cities || []).join("\n"),
+        enabled_delivery_cities: (s.enabled_delivery_cities || []).join("\n"),
+        late_grace: String(s.alert_no_checkin_grace_min ?? 30),
+        wh_pending: String(s.warehouse_confirm_pending_min ?? 30),
+        repl_timeout: String(s.replacement_timeout_min ?? 30),
+        settle_hours: String(s.settlement_pending_hours ?? 24),
+        doc_days: String(s.doc_expiry_warn_days ?? 30),
+        terms_version: s.terms_version || "1.0",
+        terms_business_text: s.terms_business_text || "",
+        terms_driver_text: s.terms_driver_text || "",
       });
     }).catch((e) => toast.error(errMsg(e)));
   }, []);
@@ -66,6 +76,16 @@ export default function AdminSettings() {
         vat_pct: Number(form.vat_pct),
         vehicle_types: form.vehicle_types.split("\n").map((v) => v.trim()).filter(Boolean),
         service_areas: form.service_areas.split("\n").map((v) => v.trim()).filter(Boolean),
+        enabled_pickup_cities: form.enabled_pickup_cities.split("\n").map((v) => v.trim()).filter(Boolean),
+        enabled_delivery_cities: form.enabled_delivery_cities.split("\n").map((v) => v.trim()).filter(Boolean),
+        alert_no_checkin_grace_min: Number(form.late_grace),
+        warehouse_confirm_pending_min: Number(form.wh_pending),
+        replacement_timeout_min: Number(form.repl_timeout),
+        settlement_pending_hours: Number(form.settle_hours),
+        doc_expiry_warn_days: Number(form.doc_days),
+        terms_version: form.terms_version,
+        terms_business_text: form.terms_business_text,
+        terms_driver_text: form.terms_driver_text,
       };
       const { data } = await api.patch("/admin/settings", payload);
       setSettings(data.settings);
@@ -185,6 +205,78 @@ export default function AdminSettings() {
           <Textarea data-testid="settings-service-areas" value={form.service_areas}
             onChange={(e) => setForm({ ...form, service_areas: e.target.value })}
             className="bg-navy-800 border-navy-600 min-h-[100px]" />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("wiz2.pickupCity")} — {t("adminx.enabledCitiesNote")}</label>
+              <Textarea data-testid="settings-pickup-cities" value={form.enabled_pickup_cities}
+                onChange={(e) => setForm({ ...form, enabled_pickup_cities: e.target.value })}
+                className="bg-navy-800 border-navy-600 min-h-[70px]" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("wiz2.deliveryCity")} — {t("adminx.enabledCitiesNote")}</label>
+              <Textarea data-testid="settings-delivery-cities" value={form.enabled_delivery_cities}
+                onChange={(e) => setForm({ ...form, enabled_delivery_cities: e.target.value })}
+                className="bg-navy-800 border-navy-600 min-h-[70px]" />
+            </div>
+          </div>
+        </div>
+
+        <div className="card-surface p-6 space-y-4" data-testid="alerts-config-section">
+          <p className="font-heading font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400" /> {t("adminx.alertsSection")}
+          </p>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("adminx.alertLateGrace")}</label>
+              <Input data-testid="settings-late-grace" type="number" min="5" max="240" value={form.late_grace}
+                onChange={(e) => setForm({ ...form, late_grace: e.target.value })} className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("adminx.alertWhPending")}</label>
+              <Input data-testid="settings-wh-pending" type="number" min="5" max="240" value={form.wh_pending}
+                onChange={(e) => setForm({ ...form, wh_pending: e.target.value })} className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("adminx.alertReplTimeout")}</label>
+              <Input data-testid="settings-repl-timeout" type="number" min="5" max="240" value={form.repl_timeout}
+                onChange={(e) => setForm({ ...form, repl_timeout: e.target.value })} className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("adminx.alertSettleHours")}</label>
+              <Input data-testid="settings-settle-hours" type="number" min="1" max="168" value={form.settle_hours}
+                onChange={(e) => setForm({ ...form, settle_hours: e.target.value })} className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("adminx.alertDocDays")}</label>
+              <Input data-testid="settings-doc-days" type="number" min="1" max="180" value={form.doc_days}
+                onChange={(e) => setForm({ ...form, doc_days: e.target.value })} className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+          </div>
+        </div>
+
+        <div className="card-surface p-6 space-y-4" data-testid="terms-config-section">
+          <p className="font-heading font-bold flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-brand" /> {t("adminx.termsSection")}
+          </p>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("adminx.termsVersion")}</label>
+            <Input data-testid="settings-terms-version" value={form.terms_version}
+              onChange={(e) => setForm({ ...form, terms_version: e.target.value })}
+              className="bg-navy-800 border-navy-600 h-11 max-w-xs" />
+            <p className="text-[11px] text-slate-500 mt-1">{t("adminx.termsVersionNote")}</p>
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("adminx.termsBusiness")}</label>
+            <Textarea data-testid="settings-terms-business" value={form.terms_business_text}
+              onChange={(e) => setForm({ ...form, terms_business_text: e.target.value })}
+              className="bg-navy-800 border-navy-600 min-h-[90px]" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("adminx.termsDriver")}</label>
+            <Textarea data-testid="settings-terms-driver" value={form.terms_driver_text}
+              onChange={(e) => setForm({ ...form, terms_driver_text: e.target.value })}
+              className="bg-navy-800 border-navy-600 min-h-[90px]" />
+          </div>
         </div>
 
         <button data-testid="settings-save-btn" disabled={busy}

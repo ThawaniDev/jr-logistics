@@ -43,6 +43,18 @@ class SettingsIn(BaseModel):
     cancel_suspend_days: Optional[int] = None
     cancel_weekly_limit: Optional[int] = None
     vat_pct: Optional[float] = None
+    enabled_pickup_cities: Optional[List[str]] = None
+    enabled_delivery_cities: Optional[List[str]] = None
+    warehouse_confirm_pending_min: Optional[int] = None
+    replacement_timeout_min: Optional[int] = None
+    settlement_pending_hours: Optional[int] = None
+    doc_expiry_warn_days: Optional[int] = None
+    alert_no_checkin_grace_min: Optional[int] = None
+    alert_unfilled_hours: Optional[int] = None
+    urgent_unfilled_hours: Optional[int] = None
+    terms_version: Optional[str] = None
+    terms_business_text: Optional[str] = None
+    terms_driver_text: Optional[str] = None
 
 
 @router.patch("/settings")
@@ -84,6 +96,29 @@ async def update_platform_settings(body: SettingsIn, user: dict = adm):
         if not cleaned:
             raise HTTPException(status_code=400, detail="أضف منطقة خدمة واحدة على الأقل")
         updates["service_areas"] = cleaned
+    for field in ("enabled_pickup_cities", "enabled_delivery_cities"):
+        v = getattr(body, field)
+        if v is not None:
+            cleaned = [c.strip() for c in v if c.strip()]
+            if not cleaned:
+                raise HTTPException(status_code=400, detail="أضف مدينة واحدة على الأقل")
+            updates[field] = cleaned
+    for field, lo, hi in (("warehouse_confirm_pending_min", 5, 240),
+                          ("replacement_timeout_min", 5, 240),
+                          ("settlement_pending_hours", 1, 168),
+                          ("doc_expiry_warn_days", 1, 180),
+                          ("alert_no_checkin_grace_min", 5, 240),
+                          ("alert_unfilled_hours", 1, 168),
+                          ("urgent_unfilled_hours", 1, 720)):
+        v = getattr(body, field)
+        if v is not None:
+            if not lo <= v <= hi:
+                raise HTTPException(status_code=400, detail="قيمة التنبيه خارج النطاق المسموح")
+            updates[field] = v
+    for field in ("terms_version", "terms_business_text", "terms_driver_text"):
+        v = getattr(body, field)
+        if v is not None and v.strip():
+            updates[field] = v.strip()
     if not updates:
         raise HTTPException(status_code=400, detail="لا توجد تغييرات")
     await db.settings.update_one({"key": "platform"}, {"$set": updates}, upsert=True)

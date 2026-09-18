@@ -88,7 +88,8 @@ export const TICKET_STATUS = {
 
 export const sar = (n) => `${Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 2 })} ر.س`;
 
-export const DEFAULT_VEHICLE_TYPES = ["سيدان", "فان"];
+export const DEFAULT_VEHICLE_TYPES = ["sedan", "van", "dyna"];
+export const TEMP_TYPES = ["dry", "cold"];
 
 export const roleHome = (role) =>
   role === "admin" || role === "staff" ? "/app/admin" : role === "worker" ? "/app/worker" : "/app/business";

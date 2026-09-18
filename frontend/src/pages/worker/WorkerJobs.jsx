@@ -7,6 +7,9 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { sar } from "@/lib/constants";
 import { useI18n } from "@/i18n";
+import { Phone, MessageCircle } from "lucide-react";
+import { JobChat } from "@/components/JobChat";
+import { JobTimeline } from "@/components/JobTimeline";
 
 function Stars({ value, onChange, testid }) {
   return (
@@ -71,6 +74,7 @@ export default function WorkerJobs() {
   const [cancelReason, setCancelReason] = useState("");
   const [finishFor, setFinishFor] = useState(null);
   const [deliveredQty, setDeliveredQty] = useState("");
+  const [openOps, setOpenOps] = useState(null);
 
   const cancelJob = async (offerId) => {
     if (!cancelReason.trim()) return toast.error(t("jobs.cancelReason"));
@@ -135,6 +139,25 @@ export default function WorkerJobs() {
                   {o.driver_reported_qty != null && <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.reportedQty")}: <b className="num text-blue-400">{o.driver_reported_qty}</b></span>}
                   {o.final_qty != null && <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.finalQty")}: <b className="num text-emerald-400">{o.final_qty}</b></span>}
                 </div>
+                {["accepted", "confirmed", "attendance_confirmed", "attended", "delivered_reported", "pending_settlement", "qty_disputed"].includes(o.status) && (
+                  <div className="flex flex-wrap gap-2" data-testid={`contact-row-${o._id}`}>
+                    <button data-testid={`call-warehouse-${o._id}`}
+                      onClick={async () => { try { const { data } = await api.post(`/jobs/${o._id}/contact`, { channel: "call" }); toast.info(data.message); } catch (e) { toast.error(errMsg(e)); } }}
+                      className="flex items-center gap-1.5 text-xs font-semibold border border-navy-600 rounded-xl px-3 py-2 text-slate-300 hover:border-brand/40 hover:text-brand transition-colors">
+                      <Phone className="w-3.5 h-3.5" /> {t("opsroom.contactWarehouse")}
+                    </button>
+                    <button data-testid={`chat-toggle-${o._id}`} onClick={() => setOpenOps(openOps === o._id ? null : o._id)}
+                      className="flex items-center gap-1.5 text-xs font-semibold border border-navy-600 rounded-xl px-3 py-2 text-slate-300 hover:border-brand/40 hover:text-brand transition-colors">
+                      <MessageCircle className="w-3.5 h-3.5" /> {t("opsroom.chat")}
+                    </button>
+                  </div>
+                )}
+                {openOps === o._id && (
+                  <div className="space-y-3" data-testid={`ops-room-${o._id}`}>
+                    <JobChat offerId={o._id} />
+                    <JobTimeline offerId={o._id} />
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {o.status === "confirmed" && (
                     <button data-testid={`checkin-${o._id}`} onClick={() => checkin(o._id)}

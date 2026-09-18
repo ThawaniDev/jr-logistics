@@ -3,10 +3,12 @@ import { useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ArrowRight, MapPin, Calendar, Clock, Users, Star, CheckCircle2,
-  XCircle, Lock, Flag, UserCheck, RefreshCcw,
+  XCircle, Lock, Flag, UserCheck, RefreshCcw, Phone, MessageCircle, Siren,
 } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
+import { JobChat } from "@/components/JobChat";
+import { JobTimeline } from "@/components/JobTimeline";
 import { sar } from "@/lib/constants";
 import { useI18n } from "@/i18n";
 
@@ -28,6 +30,10 @@ export default function RequestDetail() {
   const { id } = useParams();
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState("");
+  const [openOps, setOpenOps] = useState(null);
+  const [urgentOpen, setUrgentOpen] = useState(false);
+  const [urgentReason, setUrgentReason] = useState("");
+  const [urgentNote, setUrgentNote] = useState("");
   const [ratingFor, setRatingFor] = useState(null);
   const [score, setScore] = useState(5);
   const [comment, setComment] = useState("");
@@ -161,6 +167,10 @@ export default function RequestDetail() {
               {t("reqDetail.confirmHint", { n: r.required_count - acceptedCount })} <span className="num">{sar(wallet.available)}</span>
             </p>
           )}
+          <button data-testid="urgent-help-btn" onClick={() => setUrgentOpen(true)}
+            className="flex items-center gap-2 text-xs font-bold border border-rose-500/40 text-rose-400 rounded-xl px-4 py-2.5 hover:bg-rose-500/10 transition-colors">
+            <Siren className="w-4 h-4" /> {t("urgent.btn")}
+          </button>
           {["confirmed", "in_progress"].includes(r.status) && !canComplete && awaitingQty && (
             <p className="text-xs text-amber-400 self-center" data-testid="complete-hint">
               {t("reqDetail.completeHint")}
@@ -320,6 +330,26 @@ export default function RequestDetail() {
                   </p>
                 )}
 
+                {["accepted", "confirmed", "attendance_confirmed", "attended", "delivered_reported", "pending_settlement", "qty_disputed", "paid"].includes(o.status) && (
+                  <div className="flex flex-wrap gap-2 pt-1" data-testid={`ops-actions-${o._id}`}>
+                    <button data-testid={`call-driver-${o._id}`}
+                      onClick={async () => { try { const { data } = await api.post(`/jobs/${o._id}/contact`, { channel: "call" }); toast.info(data.message); } catch (e) { toast.error(errMsg(e)); } }}
+                      className="flex items-center gap-1.5 text-xs font-semibold border border-navy-600 rounded-xl px-3 py-2 text-slate-300 hover:border-brand/40 hover:text-brand transition-colors">
+                      <Phone className="w-3.5 h-3.5" /> {t("opsroom.contactDriver")}
+                    </button>
+                    <button data-testid={`chat-toggle-${o._id}`} onClick={() => setOpenOps(openOps === o._id ? null : o._id)}
+                      className="flex items-center gap-1.5 text-xs font-semibold border border-navy-600 rounded-xl px-3 py-2 text-slate-300 hover:border-brand/40 hover:text-brand transition-colors">
+                      <MessageCircle className="w-3.5 h-3.5" /> {t("opsroom.chat")}
+                    </button>
+                  </div>
+                )}
+                {openOps === o._id && (
+                  <div className="grid md:grid-cols-2 gap-3 pt-1" data-testid={`ops-room-${o._id}`}>
+                    <JobChat offerId={o._id} />
+                    <JobTimeline offerId={o._id} />
+                  </div>
+                )}
+
                 {o.status === "paid" && !rated_offer_ids.includes(o._id) && (
                   ratingFor === o._id ? (
                     <div className="space-y-3 pt-1" data-testid={`rating-form-${o._id}`}>
@@ -351,6 +381,45 @@ export default function RequestDetail() {
           </div>
         )}
       </div>
+
+      {urgentOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="urgent-modal">
+          <div className="absolute inset-0 bg-navy-950/85 backdrop-blur-sm" onClick={() => setUrgentOpen(false)} />
+          <div className="relative card-surface w-full max-w-md p-6 space-y-4">
+            <h3 className="heading text-lg font-extrabold flex items-center gap-2">
+              <Siren className="w-5 h-5 text-rose-400" /> {t("urgent.title")}
+            </h3>
+            <div className="grid grid-cols-2 gap-2" data-testid="urgent-reasons">
+              {["driver_not_arrived", "need_replacement", "attendance_issue", "shipment_issue", "qty_discrepancy", "finish_issue", "communication_issue", "other"].map((rk) => (
+                <button key={rk} type="button" data-testid={`urgent-reason-${rk}`}
+                  onClick={() => setUrgentReason(rk)}
+                  className={`chip text-[11px] transition-all ${urgentReason === rk ? "bg-rose-500/15 text-rose-300 border-rose-500/40" : "bg-navy-800 text-slate-400 border-navy-600 hover:border-slate-500"}`}>
+                  {t(`urgent.r_${rk}`)}
+                </button>
+              ))}
+            </div>
+            <textarea value={urgentNote} onChange={(e) => setUrgentNote(e.target.value)} data-testid="urgent-note"
+              placeholder={t("urgent.note")}
+              className="w-full bg-navy-800 border border-navy-600 rounded-xl px-3 py-2 text-sm min-h-[70px] focus:outline-none focus:ring-1 focus:ring-brand" />
+            <button
+              data-testid="urgent-send-btn"
+              disabled={!urgentReason || busy === "urgent"}
+              onClick={async () => {
+                setBusy("urgent");
+                try {
+                  await api.post(`/business/requests/${id}/urgent-help`, { reason: urgentReason, note: urgentNote || null });
+                  toast.success(t("urgent.sent"));
+                  setUrgentOpen(false);
+                  setUrgentReason("");
+                  setUrgentNote("");
+                } catch (e) { toast.error(errMsg(e)); } finally { setBusy(""); }
+              }}
+              className="w-full h-11 bg-rose-500 text-white font-bold rounded-xl hover:bg-rose-400 transition-colors disabled:opacity-40">
+              {t("urgent.send")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -33,6 +33,7 @@ const NAVS = {
   ],
   admin: [
     { to: "/app/admin", key: "nav.dashboard", icon: LayoutDashboard, end: true, perm: "stats" },
+    { to: "/app/admin/operations", key: "opstoday.title", icon: BarChart3, perm: "requests_view" },
     { to: "/app/admin/users", key: "nav.users", icon: Users, perm: "users_view" },
     { to: "/app/admin/requests", key: "nav.adminRequests", icon: ClipboardList, perm: "requests_view" },
     { to: "/app/admin/cancellations", key: "nav.cancellations", icon: XCircle, perm: "requests_view" },

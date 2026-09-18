@@ -15,7 +15,9 @@ export default function Register() {
   const [token, setToken] = useState(null);
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState(null);
-  const [form, setForm] = useState({ name: "", email: "", city: "", company_name: "", cr_number: "", industry: "", national_id: "", vehicle_type: "" });
+  const [form, setForm] = useState({ name: "", email: "", city: "", company_name: "", cr_number: "", industry: "", national_id: "", vehicle_type: "", vehicle_temperature: "" });
+  const [terms, setTerms] = useState(null);
+  const [termsAgreed, setTermsAgreed] = useState(false);
   const [services, setServices] = useState(["delivery_driver"]);
   const [vehicleTypes, setVehicleTypes] = useState(DEFAULT_VEHICLE_TYPES);
   const [serviceAreas, setServiceAreas] = useState([]);
@@ -31,6 +33,7 @@ export default function Register() {
         setForm((f) => ({ ...f, city: f.city || data.service_areas[0] }));
       }
     }).catch(() => {});
+    api.get("/catalog/terms").then(({ data }) => setTerms(data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -53,6 +56,9 @@ export default function Register() {
     if (!form.name.trim()) return toast.error(t("auth.errName"));
     if (role === "business" && !form.company_name.trim()) return toast.error(t("auth.errCompany"));
     if (role === "worker" && services.length === 0) return toast.error(t("auth.errServices"));
+    if (role === "worker" && ["van", "dyna"].includes(form.vehicle_type) && !form.vehicle_temperature)
+      return toast.error(t("termsReg.errTemp"));
+    if (!termsAgreed) return toast.error(t("termsReg.error"));
     setBusy(true);
     try {
       const { data } = await api.post("/auth/register", {
@@ -66,6 +72,8 @@ export default function Register() {
         industry: form.industry || null,
         national_id: form.national_id || null,
         vehicle_type: form.vehicle_type || null,
+        vehicle_temperature: ["van", "dyna"].includes(form.vehicle_type) ? form.vehicle_temperature || null : null,
+        terms_accepted: termsAgreed,
         services,
       });
       sessionStorage.removeItem("isnad_reg_token");
@@ -161,12 +169,23 @@ export default function Register() {
                   </div>
                   <div>
                     <label className="text-xs text-slate-400 block mb-1.5">{t("auth.vehicleType")}</label>
-                    <select data-testid="register-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
+                    <select data-testid="register-vehicle" value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value, vehicle_temperature: "" })}
                       className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
                       <option value="">{t("auth.choose")}</option>
-                      {vehicleTypes.map((v) => <option key={v}>{v}</option>)}
+                      {vehicleTypes.map((v) => <option key={v} value={v}>{t(`veh.${v}`)}</option>)}
                     </select>
                   </div>
+                  {["van", "dyna"].includes(form.vehicle_type) && (
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1.5">{t("veh.tempType")} *</label>
+                      <select data-testid="register-temp" value={form.vehicle_temperature} onChange={set("vehicle_temperature")}
+                        className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                        <option value="">{t("auth.choose")}</option>
+                        <option value="dry">{t("veh.dry")}</option>
+                        <option value="cold">{t("veh.cold")}</option>
+                      </select>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -193,9 +212,24 @@ export default function Register() {
                 </div>
               </div>
             )}
+            {role && (
+              <div className="rounded-2xl border border-navy-600/50 bg-navy-800/40 p-5 space-y-3" data-testid="register-terms-block">
+                <p className="font-heading font-bold text-sm">{t("termsReg.title")}</p>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {terms ? (role === "business" ? terms.business_text : terms.driver_text) : ""}
+                </p>
+                <p className="text-[11px] text-slate-500">{t("termsReg.version")}: <span className="num">{terms?.version}</span> — {t("termsReg.legalNote")}</p>
+                <label className="flex items-start gap-3 cursor-pointer text-sm pt-1" data-testid="register-terms-wrap">
+                  <input type="checkbox" checked={termsAgreed} onChange={(e) => setTermsAgreed(e.target.checked)}
+                    data-testid="register-terms-checkbox"
+                    className="mt-1 w-4 h-4 accent-emerald-400" />
+                  <span>{t("termsReg.agree")}</span>
+                </label>
+              </div>
+            )}
             <button
               data-testid="register-submit-btn"
-              disabled={busy || !role}
+              disabled={busy || !role || !termsAgreed}
               className="w-full h-12 bg-brand text-navy-900 font-bold rounded-xl hover:bg-brand-hover transition-colors disabled:opacity-50"
             >
               {busy ? t("auth.creating") : t("auth.createAccount")}

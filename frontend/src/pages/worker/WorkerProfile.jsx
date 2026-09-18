@@ -14,7 +14,7 @@ export default function WorkerProfile() {
   const [form, setForm] = useState({
     name: user?.name || "", email: user?.email || "", city: user?.city || "",
     bank_name: wp.bank_name || "", iban: wp.iban || "", national_id: wp.national_id || "",
-    vehicle_type: wp.vehicle_type || "",
+    vehicle_type: wp.vehicle_type || "", vehicle_temperature: wp.vehicle_temperature || "",
   });
   const [services, setServices] = useState(wp.services || []);
   const [vehicleTypes, setVehicleTypes] = useState(DEFAULT_VEHICLE_TYPES);
@@ -90,12 +90,24 @@ export default function WorkerProfile() {
           </div>
           <div>
             <label className="text-xs text-slate-400 block mb-1.5">{t("auth.vehicleType")}</label>
-            <select data-testid="profile-vehicle" value={form.vehicle_type} onChange={set("vehicle_type")}
+            <select data-testid="profile-vehicle" value={form.vehicle_type}
+              onChange={(e) => setForm({ ...form, vehicle_type: e.target.value, vehicle_temperature: "" })}
               className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
               <option value="">{t("auth.choose")}</option>
-              {vehicleTypes.map((v) => <option key={v}>{v}</option>)}
+              {vehicleTypes.map((v) => <option key={v} value={v}>{t(`veh.${v}`)}</option>)}
             </select>
           </div>
+          {["van", "dyna"].includes(form.vehicle_type) && (
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("veh.tempType")}</label>
+              <select data-testid="profile-temp" value={form.vehicle_temperature} onChange={set("vehicle_temperature")}
+                className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                <option value="">{t("auth.choose")}</option>
+                <option value="dry">{t("veh.dry")}</option>
+                <option value="cold">{t("veh.cold")}</option>
+              </select>
+            </div>
+          )}
           <div>
             <label className="text-xs text-slate-400 block mb-1.5">{t("profile.bank")}</label>
             <Input data-testid="profile-bank" value={form.bank_name} onChange={set("bank_name")} className="bg-navy-800 border-navy-600 h-11" />

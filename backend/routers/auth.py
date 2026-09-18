@@ -44,6 +44,8 @@ class RegisterIn(BaseModel):
     vehicle_type: Optional[str] = None
     bank_name: Optional[str] = None
     iban: Optional[str] = None
+    vehicle_temperature: Optional[str] = None
+    terms_accepted: bool = False
 
 
 def set_auth_cookie(response: Response, token: str):
@@ -107,7 +109,7 @@ async def verify_otp(body: OtpVerify, response: Response):
 
 
 @router.post("/register")
-async def register(body: RegisterIn, response: Response):
+async def register(body: RegisterIn, response: Response, request: Request):
     try:
         payload = decode_token(body.registration_token)
         if payload.get("type") != "registration":
@@ -117,6 +119,12 @@ async def register(body: RegisterIn, response: Response):
     phone = payload["phone"]
     if body.role not in ("business", "worker"):
         raise HTTPException(status_code=400, detail="نوع الحساب غير صالح")
+    if not body.terms_accepted:
+        raise HTTPException(status_code=400,
+                            detail="يجب الموافقة على الشروط والأحكام واتفاقية استخدام منصة JR Logistics")
+    if body.role == "worker" and body.vehicle_type in ("van", "dyna") and \
+            body.vehicle_temperature not in ("dry", "cold"):
+        raise HTTPException(status_code=400, detail="حدد نوع الحرارة (جاف/مبرد) للمركبة")
     if await db.users.find_one({"phone": phone}):
         raise HTTPException(status_code=400, detail="هذا الرقم مسجل مسبقاً")
 
@@ -144,6 +152,7 @@ async def register(body: RegisterIn, response: Response):
             "services": body.services,
             "national_id": body.national_id,
             "vehicle_type": body.vehicle_type,
+            "vehicle_temperature": body.vehicle_temperature if body.vehicle_type in ("van", "dyna") else None,
             "availability": "available",
             "bank_name": body.bank_name,
             "iban": body.iban,
@@ -153,6 +162,15 @@ async def register(body: RegisterIn, response: Response):
         }
     await db.users.insert_one(user)
     await get_wallet(user["_id"])
+    from utils import get_settings
+    settings = await get_settings()
+    await db.terms_consents.insert_one({
+        "_id": new_id(), "user_id": user["_id"], "account_type": body.role,
+        "terms_version": settings.get("terms_version", "1.0"),
+        "document_ref": f"JR-TERMS-{settings.get('terms_version', '1.0')}",
+        "status": "accepted", "accepted_at": now_iso(),
+        "ip": request.client.host if request.client else None,
+    })
     token = create_access_token(user)
     set_auth_cookie(response, token)
     return {"token": token, "user": user}

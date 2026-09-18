@@ -6,7 +6,7 @@ from typing import Optional
 from db import db
 from deps import require_staff
 from utils import (new_id, now_iso, pub, pub_list, audit, add_txn, get_wallet,
-                   get_settings, next_invoice_no, notify, ledger_entry)
+                   get_settings, next_invoice_no, notify, ledger_entry, log_event)
 
 router = APIRouter(prefix="/api/admin/finance", tags=["finance"])
 p_view = Depends(require_staff("settlements_view", "finance_view", "wallets"))
@@ -48,6 +48,8 @@ async def review_settlement(settlement_id: str, body: ReviewIn, user: dict = p_r
                                               "reviewed_by": {"id": user["_id"], "name": user["name"],
                                                               "at": now_iso(), "note": body.note}}})
     await audit(user, "settlement_reviewed", "settlement", settlement_id, note=body.note)
+    await log_event(s["request_id"], s.get("offer_id"), user, "finance_reviewed",
+                    old_status="pending_review", new_status="under_review", notes=body.note)
     return {"ok": True}
 
 
@@ -75,6 +77,8 @@ async def approve_settlement(settlement_id: str, body: ApproveIn, request: Reque
     await db.approvals.insert_one({"_id": new_id(), **approval})
     await audit(user, "settlement_approved", "settlement", settlement_id,
                 after={"net": s["net"], "commission": s["commission"]}, note=body.note)
+    await log_event(s["request_id"], s.get("offer_id"), user, "settlement_approved",
+                    new_status="approved", notes=body.note)
     return {"ok": True}
 
 
@@ -126,6 +130,8 @@ async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payo
         "created_at": now_iso(),
     }
     await db.invoices.insert_one(invoice)
+    await log_event(s["request_id"], s.get("offer_id"), user, "invoice_generated",
+                    notes=f"invoice={invoice_no}, vat={s['vat']}")
 
     payout_rec = {"executed_by": {"id": user["_id"], "name": user["name"]},
                   "method": body.method, "reference": payment_ref,
@@ -136,6 +142,8 @@ async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payo
     await audit(user, "payout_executed", "settlement", settlement_id,
                 after={"net": s["net"], "method": body.method, "reference": payment_ref},
                 note=body.note)
+    await log_event(s["request_id"], s.get("offer_id"), user, "payout_executed",
+                    new_status="paid", notes=f"ref={payment_ref}")
     await notify(s["driver_id"], "تم إيداع أرباحك",
                  f"تم إيداع {s['net']} ر.س في محفظتك عن مهمة: {title}", "earning", "/app/worker/wallet")
     # request settled when all its settlements are paid
@@ -144,6 +152,7 @@ async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payo
     if remaining == 0:
         await db.requests.update_one({"_id": s["request_id"]},
                                      {"$set": {"settlement_status": "settled", "escrow_reserved": False}})
+        await log_event(s["request_id"], None, user, "job_closed", new_status="settled")
         await notify(s["business_id"], "اكتملت التسوية",
                      f"تمت تسوية طلب: {title} وصرف مستحقات المندوبين",
                      "completed", f"/app/business/requests/{s['request_id']}")
