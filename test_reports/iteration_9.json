@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 9 — JR Logistics rebrand + driver financial privacy verification. Full backend regression: 107 passed / 4 skipped / 2 failed (only the 2 known-external doc-upload tests). Iteration9 suite (client pricing, settlements/accountant flow, loading confirmation, driver privacy, live location RBAC, reports+ledger, VAT) = 12/12 PASS. Frontend UI corrections verified live: (a) Landing has NO 'التكلفة التقديرية الإجمالية' block — estimator input est-count present but total/commission block removed. (b) JR monogram logo (/assets/jr-logo-mark.png) renders on Landing header, /admin/login and everywhere with NO white rounded-square background. (c) Browser tab title is 'JR Logistics | جي آر لوجستكس'. (d) Favicon points to jr-logo-mark.png. (e) No ISNAD/إسناد/Tawazon strings in Landing or admin login body. (f) WorkerOpportunities.jsx renders r.expected_earning (NET) and perShipmentNet (line 14, 31, 36, 53); source contains no rate/commission/client-price display. (g) RequestNew.jsx cost-breakdown data-testid is gated inside step-review (line 263 inside step-review block at line 241). Live API verification: driver /api/worker/offers → offer.request payload has expected_earning and NO banned fields (rate, estimated_total, commission, pricing_snapshot, client_price, commission_rate, commission_amount). RBAC: business calling GET /api/admin/locations returns 403; admin returns 200. Finance staff can GET /api/admin/finance/settlements (200) but is 403 on /api/admin/staff. Iteration9 tests already assert: TestClientPricing set+snapshot immutability, TestDriverFinancialPrivacy strips pricing, TestLoadingAndSettlement full flow with accountant approval + payout + wallet credit + platform commission + ledger entry, TestLiveLocation admin ok / business 403, TestReportsAndLedger all types + export audit + alerts + driver 403.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/documents/upload", "issue": "Returns 500 due to EXTERNAL dependency: Emergent Object Storage init endpoint (https://integrations.emergentagent.com/objstore/api/v1/storage/init) returns 401 'key is not active' for configured EMERGENT_LLM_KEY. This is NOT a code bug — /app/backend/storage.py init_storage() correctly propagates the upstream error. Confirmed via backend.err.log stack trace. Affects test_iteration8_e2e::test_D1_driver_uploads_required_docs and test_D2_admin_sees_pending_and_verifies. Fix requires re-activating/rotating the EMERGENT_LLM_KEY or the object-storage service key — external ops action, not developer-fixable in code."},
+      {"endpoint": "POST /api/auth/otp/send", "issue": "(Carried from iter-5/7/8) Still returns 200 + demo_otp for admin/staff phones — block only enforced at /verify. Non-blocking."},
+      {"endpoint": "Data pollution", "issue": "(Carried) Admin /users first page still shows accumulated TEST_* business rows from prior iterations."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Business request wizard step 3", "issues": ["(Carried) Native <input type=date/time> instead of shadcn Calendar/TimePicker."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9.py",
+    "/app/backend/tests/test_iteration8_e2e.py",
+    "/app/test_reports/pytest/iter9_results.xml",
+    "/app/test_reports/pytest/iter9_all.xml"
+  ],
+  "action_items": [
+    "(External) Rotate/reactivate the EMERGENT_LLM_KEY consumed by /app/backend/storage.py init_storage() so document uploads succeed. Not a code fix — infra/ops action. All other flows verified working end-to-end.",
+    "(Low, carried) Add ordering/pagination to GET /api/business/requests.",
+    "(Low, carried) Block /api/auth/otp/send for admin/staff phones (403 immediately).",
+    "(Design, carried) Replace native date/time inputs on RequestNew.jsx step 3 with shadcn Calendar/TimePicker.",
+    "(Housekeeping) Clean up TEST_* accumulated business + request rows."
+  ],
+  "critical_code_review_comments": [
+    "worker.py enrich_offer correctly strips rate/estimated_total/commission/pricing_snapshot/client_price and injects expected_earning — verified via live API against +966500000201 offers.",
+    "WorkerOpportunities.jsx (lines 14, 31, 36, 53) uses expected_earning + perShipmentNet exclusively; never displays client price or commission. Matches PRD driver-financial-privacy requirement.",
+    "Landing.jsx no longer renders public total-cost/commission block; estimator inputs + CTA remain functional.",
+    "RequestNew.jsx cost-breakdown lives inside step-review (line 241 wrapper, line 263 breakdown) — pricing revealed only at wizard review/confirmation step. Correct.",
+    "Live-location RBAC is correctly enforced: business gets 403 on /api/admin/locations, admin gets 200 (routers/location.py uses admin-only decorator).",
+    "Finance staff RBAC scoping correct: 200 on /api/admin/finance/settlements, 403 on /api/admin/staff.",
+    "documents.upload 500 is NOT a code bug — it is a genuine 401 upstream from Emergent Object Storage. The router propagates it as 500 (could ideally be surfaced as 503 with a friendlier detail so the frontend can render 'الخدمة غير متاحة مؤقتاً' rather than a generic 500 — minor UX polish, not blocking).",
+    "Full accountant/settlement flow (review→approve→payout→driver wallet credit→business escrow debit→platform commission ledger→audit trail) verified by TestLoadingAndSettlement.test_full_loading_settlement_flow — all math and audit assertions pass."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_9.json"
+  ],
+  "success_rate": {"backend": "98.2% (107/109 non-skipped; the 2 failures are external storage 401)", "frontend": "smoke-verified — Landing / /admin/login / dashboard branding all correct; driver financial privacy verified via API"},
+  "test_credentials": "Used credentials from /app/memory/test_credentials.md as supplied. Super Admin (email+password), Finance staff (+966500000303), Business (+966500000101 OTP), Driver (+966500000201 OTP) all work.",
+  "seed_data_creation": "Iteration9 suite creates transient TEST_* requests during test_full_loading_settlement_flow and pricing tests; all are advanced through completion/settlement. No new persistent seed data introduced by this run beyond what test_iteration9.py already generates each execution.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All JR Logistics rebrand + driver-financial-privacy corrections are LIVE and verified. To re-run: `cd /app/backend && python -m pytest tests/ -v` (expects 107 pass, 2 fail on documents upload due to external key, 4 skips). If documents upload gets fixed (EMERGENT_LLM_KEY rotated), test_iteration8_e2e should go fully green. WorkerOpportunities NET math sanity: req_d3 = 25 shipments × 9 SAR × 0.9 = 202.5 SAR net, 8.1 SAR/shipment — matches perShipmentNet formula in WorkerOpportunities.jsx line 14. No open code issues.",
+  "rca of the issue": "Documents upload 500 root cause: /app/backend/routers/documents.py:51 calls put_object() → /app/backend/storage.py:23 calls init_storage() → POST to https://integrations.emergentagent.com/objstore/api/v1/storage/init with header authorization=EMERGENT_LLM_KEY receives HTTP 401 'key is not active'. resp.raise_for_status() raises requests.exceptions.HTTPError which bubbles up as FastAPI 500. Reproduction: any authenticated driver POST /api/documents/upload with valid multipart body. Mitigation options: (1) rotate/reactivate EMERGENT_LLM_KEY [preferred, external]; (2) catch HTTPError in storage.init_storage and raise HTTPException(503, detail={'code':'STORAGE_UNAVAILABLE'}) so the frontend shows a graceful message instead of 500 [minor UX polish]. Not tested/fixed here per review request instruction."
+}

@@ -95,12 +95,21 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Bug fix: rating upsert 500 on repeat rating (immutable `_id` moved to `$setOnInsert`) in business.py + worker.py
 - Tests: 34 passed / 3 skipped (pytest); frontend smoke-tested in AR/EN/UR
 
+## Implemented (2026-09-18) — Final UI corrections + full regression (iteration 9)
+- Removed public "التكلفة التقديرية الإجمالية" block from Landing estimator (inputs + CTA remain); backend calc intact; Business pricing breakdown only at wizard review step (cost-breakdown)
+- New approved JR road/motion monogram logo (white+teal on dark navy, NO white rounded-square) generated & deployed at /assets/jr-logo-mark.png + jr-logo-lockup.png; used on Landing/Login/AdminLogin/DashboardLayout/favicon (object-cover, no bg-white wrapper)
+- Brand strings ISNAD/إسناد/Tawazon → JR Logistics in AR/EN/UR translations + App.css; index.html title/favicon already JR
+- FIXED driver privacy bug: WorkerOpportunities.jsx was rendering stripped fields (estimated_total/rate, hardcoded ×0.9); now shows expected_earning (NET) + per-shipment net only (e.g. 8.1 SAR/shipment for 9 SAR client price)
+- storage.py: object-storage upstream 401 now surfaced as graceful 503 STORAGE_UNAVAILABLE (bilingual message) instead of raw 500
+- test_iteration3 insufficient-funds test hardened with self-topup
+- Testing agent iteration_9.json: backend 107 passed / 4 skipped / 2 failed (both external storage-key 401); all JR rebrand/privacy/settlement/RBAC/live-location checks PASS; frontend smoke-verified
+
 ## Backlog
-- **P1**: Real SMS provider (Twilio); real payment gateway (Moyasar/Stripe); OTP rate-limiting; weekly auto-settlement for long contracts; driver ID verification upload
-- **P2**: Push notifications, in-app chat, analytics charts, CSV export, geo-based matching, recurring contracts
-- **P3**: Multi-language (EN), mobile apps, PDF invoices, audit log
+- **P0 (EXTERNAL/OWNER ACTION)**: EMERGENT_LLM_KEY rejected by object-storage init ("key is not active") → driver document uploads blocked. Owner: Profile → Manage plan → Universal Key → Add Balance / enable auto top-up. Code side is correct (503 graceful).
+- **P1**: Operational alerts triggering to RBAC roles (late drivers, urgent requests, shipment discrepancies, expiring docs); real payment gateway (Moyasar/Stripe); real SMS (Twilio); OTP rate-limiting
+- **P2**: Tax/VAT readiness config + PDF invoice generation; push notifications; in-app chat; shadcn Calendar/TimePicker in wizard; pagination/ordering for /api/business/requests; TEST_* data cleanup
 
 ## Next Tasks
-1. Collect production keys (Twilio, payment gateway) when going live
-2. Add OTP rate limiting before production
-3. Weekly settlement cron for long-duration contracts
+1. Owner activates/balances Universal Key → re-run test_iteration8_e2e (docs upload) to green
+2. Owner final acceptance testing on Preview (not published)
+3. VAT config + PDF invoices; alerts wiring

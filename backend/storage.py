@@ -1,5 +1,6 @@
 import os
 import requests
+from fastapi import HTTPException
 
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
@@ -14,7 +15,10 @@ def init_storage(force: bool = False) -> str:
         return _storage_key
     resp = requests.post(f"{STORAGE_URL}/init",
                          json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
-    resp.raise_for_status()
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=503,
+                            detail={"code": "STORAGE_UNAVAILABLE",
+                                    "message": "خدمة التخزين غير متاحة مؤقتاً — Storage service temporarily unavailable"})
     _storage_key = resp.json()["storage_key"]
     return _storage_key
 
