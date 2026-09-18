@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 11 — Frontend UI verification of JR Logistics new backend features. Backend test_iteration11.py 9/9 PASS re-confirmed. Frontend E2E playwright coverage: (A) AdminPricing UI: created GLOBAL sedan Riyadh→Riyadh 8 SAR + Van cold Riyadh→Riyadh 12 SAR — both saved successfully, toast 'تم حفظ قاعدة السعر' appeared, rules table now shows الحرارة column with 6 active rules. (B) Business request wizard: step1 pick service works after clicking wizard-next-btn; step2 vehicle labels correctly show سيدان|sedan / فان|van / دينا|dyna, req-temp visible only for van/dyna and hidden for sedan; step3 pickup dropdown restricted to الرياض only with phase-one note 'المرحلة الأولى: الاستلام من الرياض فقط'; delivery dropdown lists 10 enabled cities; step4 cost-breakdown renders with rule-based price (30 shipments × 8 = 240 SAR base, 24 SAR commission, 216 SAR net) plus AGR version reference; biz-terms-checkbox correctly gates wizard-publish-btn (disabled→enabled after check). NEGATIVE: switching delivery to الدمام (no rule for sedan Riyadh→Dammam) → step-review shows no-pricing-rule error 'لا يوجد سعر معتمد لهذا المسار والمركبة، يرجى التواصل مع JR Logistics Operations.' and wizard-publish-btn is DISABLED, cost-breakdown hidden. (C) AdminOperations /app/admin/operations: 9 ops-card-* render (activeRequests, expectedDrivers, present, notArrived, working, waitingWarehouse etc.), late-drivers-section + alerts-section render, sidebar 'عمليات اليوم' link present. Smart alert row visible: 'اختلاف في كمية الشحنات — يوجد اختلاف في العدد النهائي — TEST10 نزاع عدد'. (D) AdminLiveMap /app/admin/live-map: ksa-map renders with react-leaflet + OSM tiles, all 4 filters (status/vehicle/temp/city) + map-legend visible; filtering to الرياض city-summary shows real counts (9 total: 3 متاح, 0 غير متاح, 1 بالفرصة, 4 مرتبط, 1 مشكلة). (E) AdminSettings: settings-pickup-cities, settings-delivery-cities, alerts-config-section, terms-config-section, settings-terms-version, settings-terms-business, settings-terms-driver ALL render; settings-save-btn works ('تم حفظ الإعدادات — تسري على الطلبات الجديدة فوراً'). (F) Register with terms: new phone +966501234321 → OTP → /register; register-terms-block renders with JR Logistics terms text from settings, register-terms-checkbox gates register-submit-btn (disabled→enabled after check). (G) Urgent-help modal on RequestDetail: urgent-help-btn visible on published request → urgent-modal opens with 8 reason chips (urgent-reason-*), urgent-note textarea, urgent-send-btn → send returns success toast 'تم إرسال طلب المساعدة العاجلة'. (H) Ops-room per offer: RequestDetail shows ops-actions-<oid> row with call-driver-<oid> + chat-toggle-<oid>; clicking chat-toggle opens ops-room-<oid> (JobChat + JobTimeline panels). (I) Regression smoke: /app/admin (dashboard), /app/business/requests, RequestDetail, /admin/login, /login OTP flow — all load with 0 console errors during the run (one hydration warning about <span> child of <option> in Login dropdown, pre-existing minor).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/cases (or the collection powering /app/admin/cases page)", "issue": "After a successful business urgent-help submission (backend 200 + success toast + notification badge incremented 5→6), the /app/admin/cases page still shows 'لا توجد حالات مفتوحة'. Either the urgent operations case is stored with a different type/status not surfaced by AdminCases (which is titled 'حالات عدم توفير العمل والتعويضات — compensation cases'), or the operations case lives in a separate collection. Please confirm the intended UI surface for urgent operations cases (may be already visible in /app/admin/operations alerts-section as this is more likely, but the review request called out '/app/admin/cases')."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminLiveMap", "issue": "react-leaflet CircleMarker does NOT propagate the data-testid prop to the DOM (it is not a valid Leaflet option). The map visually renders the driver dot correctly, but Playwright query 'document.querySelectorAll([data-testid^=marker-])' returns 0, meaning marker-<workerId> and driver-card-<workerId> testids are NOT queryable. To make markers testable, wrap each CircleMarker in a Pane or pass the id via eventHandlers + a hidden <li data-testid=marker-{id}/> outside the map, or use react-leaflet's whenReady + ref to add the attribute imperatively.", "selector": "[data-testid^=marker-]", "priority": "LOW"},
+      {"component": "Login (dropdown role)", "issue": "React hydration warning: '<span> cannot be a child of <option>'. Pre-existing minor; does not block anything.", "selector": "select > option > span", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Business request wizard step 3", "issues": ["Native <input type=date> + <input type=time> still used (carried from prior iteration). Consider shadcn Calendar / TimePicker."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11.py",
+    "/app/test_reports/iteration_11.json"
+  ],
+  "action_items": [
+    "Clarify whether urgent-help operations cases should appear on /app/admin/cases page — if yes, extend the AdminCases query to include type=urgent_operations (or equivalent) alongside the current compensation cases. If no, update the iteration 11 review-request wording (they should surface via /app/admin/operations alerts or a new operations-cases page).",
+    "Make AdminLiveMap markers testable by adding a queryable data-testid in the DOM (react-leaflet CircleMarker drops arbitrary props). Suggest an off-map <ul data-testid=drivers-list> mirroring the drivers array with marker-{worker_id} and driver-card-{worker_id} testids so E2E can assert marker/count/popup content without the leaflet DOM quirks.",
+    "(Carried from iter 10, low) Replace native date/time inputs on RequestNew.jsx step 3 with shadcn Calendar/TimePicker.",
+    "(Carried from iter 10, low) Fix pre-existing hydration warning about <span> inside <option> in Login role dropdown."
+  ],
+  "critical_code_review_comments": [
+    "AdminPricing (rules): pricing-rule-form correctly toggles rule-temp based on vehicle_type (van/dyna show it, sedan hides it). Rules table adds the الحرارة column and rule-row-{id} keys. Save flow returns toast success and reloads the rules list. ✓",
+    "RequestNew step 3: enabled_pickup_cities correctly restricts pickup to الرياض ONLY (with phase-one note); enabled_delivery_cities lists the configured cities from platform settings. ✓",
+    "RequestNew step 4: quote endpoint returns cost-breakdown when a matching rule exists AND no-pricing-rule block + disabled publish when no rule exists — exactly the spec. Terms checkbox is the second gate. ✓",
+    "Urgent-help end-to-end: urgent-help-btn → urgent-modal → 8 urgent-reason-* chips → urgent-send-btn → POST /business/requests/{id}/urgent-help succeeds. Toast fires + notification badge increments on admin nav. Only missing piece is the surfacing on /app/admin/cases (see backend_issues.minor).",
+    "AdminOperations: ops-card-* summary + late-drivers-section + alerts-section render with real backend data (smart alerts pull from platform_settings thresholds). ✓",
+    "AdminLiveMap: react-leaflet MapContainer/TileLayer/CircleMarker/Popup all mount without runtime errors. City-summary counts are real from /admin/live-map API. Only issue is that CircleMarker doesn't preserve data-testid — QA/testability nit.",
+    "AdminSettings adds enabled_pickup_cities / enabled_delivery_cities textareas, alerts thresholds section (settings-late-grace, wh-pending, repl-timeout, settle-hours, doc-days), and terms section (version + business + driver text). Save works and toast confirms. ✓",
+    "Register: register-terms-block pulls JR Logistics terms text + version from settings, register-terms-checkbox correctly gates register-submit-btn. ✓",
+    "No raw translation keys leaked on any visited surface (Arabic RTL). English toggle available on all admin pages via language switcher."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_11.json"
+  ],
+  "success_rate": {
+    "backend": "100% (test_iteration11.py 9/9 + test_iteration10.py implicitly retained)",
+    "frontend": "~97% — all P0/P1 flows in the review-request are green. Only ambiguity is where urgent operations cases surface in the admin (page choice/product decision, not a code bug)."
+  },
+  "test_credentials": "Admin: emadabuharb1993@gmail.com / Isnad-Dev-Admin-2026! ✓. Business OTP +966530534184 ✓ (wallet 760 SAR after residual). New register phone: +966501234321 (created during test). Driver OTP +966593603404 not exercised this round (backend already covers verified/available driver in test_iteration11).",
+  "seed_data_creation": "Created 2 GLOBAL pricing rules via UI: (sedan, الرياض→الرياض, 8 SAR, AGR-2026-TEST-SEDAN-<ts>) and (van, cold, الرياض→الرياض, 12 SAR, AGR-2026-TEST-VAN-COLD-<ts>). Registered nothing (register flow validated only up to enabling submit, not submitted to keep DB clean).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "AdminLiveMap markers: data-testid on CircleMarker is dropped by react-leaflet, so query by [data-testid^=marker-] returns 0 even when markers render. If future tests need to interact with a marker, use CircleMarker eventHandlers or overlay a plain HTML list. Business request wizard: after picking service in step 1, you MUST click wizard-next-btn (the service card click does NOT auto-advance). OTP: use hidden input [data-testid=otp-code-input].fill(otp), not clicking otp-slot-* (the individual slots are non-editable rendering divs behind the input which intercepts pointer events). Two active global pricing rules now exist for الرياض routes so any subsequent quote calls for sedan or van-cold Riyadh→Riyadh will succeed.",
+  "rca of the issue": "No blocking issues found. The two flagged items are: (1) UI-only testability quirk on react-leaflet markers (data-testid prop discarded by the library), (2) product ambiguity on where urgent-help operations cases should be viewable in the admin — the current /app/admin/cases page is scoped to compensation cases; the operations case is created on the backend (badge counter increments, POST returns 200) but this page filters it out. Both are LOW priority."
+}

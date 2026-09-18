@@ -115,12 +115,26 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Fixed duplicate-key issues: dedupe in AdminRequests + AdminLiveMap
 - Tests: test_iteration10.py 2/2 PASS (happy path 30 loaded/27 delivered → 194.4 payout; dispute path blocks settlement). Old suites iter3-9 DEPRECATED (depended on wiped demo seed data)
 
+## Implemented (2026-09-18, iteration 11) — Operations room, communication, route pricing, live map, platform protection
+- Route-based pricing rules (pricing_rules): vehicle (sedan/van/dyna) + temperature (dry/cold) + pickup/delivery cities + price + effective_date + version + agreement_ref; business-specific override → global fallback; supersede on new rule; request BLOCKED with "لا يوجد سعر معتمد..." when no rule; immutable pricing_snapshot per request (price changes never affect history)
+- Phase-1 Riyadh-only pickup (enabled_pickup_cities) + enabled_delivery_cities; admin-editable in AdminSettings
+- Registration terms consent: required checkbox, texts/version from settings (/api/catalog/terms), immutable terms_consents records (user, role, version, timestamp, IP)
+- Operations room per job: job_events timeline (18 event types with actor/role/old/new status/timestamps) + in-app chat (job_messages, RBAC driver/business/staff) + masked contact action (relay-ready, no number exposure)
+- Urgent warehouse help: 8 reasons → urgent operations ticket linked to business/request/offer/driver + timeline event; surfaced on /app/admin/cases
+- Admin "عمليات اليوم" (/app/admin/operations): live summary cards, late-drivers table (call/WhatsApp/rematch/ops-room), smart alerts with admin-configurable thresholds
+- Live KSA drivers map (react-leaflet): real markers by operational status, filters, city summary, driver cards, RBAC-gated
+- Replacement hardening: busy-driver exclusion, vehicle/temp compatibility, atomic first-accept-wins lock, slot-filled locking
+- Vehicle system migrated to sedan/van/dyna + temperature across registration, profile, wizard, matching, pricing, map
+- Driver operational profile endpoint; invoice generated on payout + job_closed event
+- Tests: test_iteration11.py 9/9 + test_iteration10.py 2/2 green on clean DB; testing_agent iteration_11.json ~97% frontend green
+
+
 ## Backlog
-- **P0 (EXTERNAL/OWNER ACTION)**: EMERGENT_LLM_KEY rejected by object-storage init ("key is not active") — local fallback active; owner: Profile → Manage plan → Universal Key → Add Balance to re-enable cloud object storage
-- **P1**: Operational alerts wiring to RBAC roles; real payment gateway; real SMS (Twilio); OTP rate-limiting; shadcn Calendar/TimePicker in wizard step 3
-- **P2**: VAT/tax config + PDF invoices; push notifications; in-app chat
+- **P0 (EXTERNAL/OWNER ACTION)**: Universal Key "not active" for cloud object storage — local persistent fallback active (/app/backend/uploads); owner: Profile → Manage plan → Universal Key → Add Balance
+- **P1**: shadcn Calendar/TimePicker in wizard step 3; real payment gateway; real SMS (Twilio); OTP rate-limiting; masked-call relay provider (hook exists at /api/jobs/{id}/contact)
+- **P2**: VAT PDF invoice rendering (invoice records exist); push notifications; Login dropdown hydration warning (cosmetic)
 
 ## Next Tasks
-1. Owner-controlled E2E on Preview with the clean accounts (see /app/memory/test_credentials.md)
-2. Owner activates Universal Key balance → cloud object storage resumes
-3. VAT config + PDF invoices; alerts wiring
+1. Owner-controlled E2E on Preview with clean accounts (test_credentials.md); global pricing rules exist for sedan/van-cold Riyadh routes
+2. Owner activates Universal Key balance → cloud storage resumes
+3. Calendar/TimePicker polish + payment gateway integration

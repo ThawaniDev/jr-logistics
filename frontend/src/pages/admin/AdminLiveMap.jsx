@@ -117,13 +117,30 @@ export default function AdminLiveMap() {
       ) : drivers.length === 0 ? (
         <EmptyState icon={MapPin} title={t("mapv.noDrivers")} desc={t("mapv.sub")} testid="livemap-empty" />
       ) : (
-        <div className="flex flex-wrap gap-3 text-xs" data-testid="map-legend">
-          {STATUS_KEYS.map((k) => (
-            <span key={k} className="flex items-center gap-1.5 text-slate-400">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS_COLORS[k] }} />
-              {t(`mapv.${k === "on_job" ? "onJob" : k}`)}
-            </span>
-          ))}
+        <div className="card-surface p-4" data-testid="drivers-list">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {drivers.map((d) => (
+              <div key={d.worker_id} className="flex items-center gap-3 rounded-xl border border-navy-600/40 bg-navy-800/40 px-3 py-2"
+                data-testid={`marker-${d.worker_id}`}>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: STATUS_COLORS[d.op_status] }} />
+                <div className="min-w-0" data-testid={`driver-card-${d.worker_id}`}>
+                  <p className="text-xs font-bold truncate">{d.name}</p>
+                  <p className="text-[10px] text-slate-500">
+                    {d.city} · {d.vehicle_type ? t(`veh.${d.vehicle_type}`) : "—"}{d.temperature_type ? ` · ${t(`veh.${d.temperature_type}`)}` : ""} · {t(`mapv.${d.op_status === "on_job" ? "onJob" : d.op_status}`)}
+                    {d.live && <span className="text-emerald-400"> ● {t("mapv.liveBadge")}</span>}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-3 text-xs mt-4 pt-3 border-t border-navy-600/40" data-testid="map-legend">
+            {STATUS_KEYS.map((k) => (
+              <span key={k} className="flex items-center gap-1.5 text-slate-400">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS_COLORS[k] }} />
+                {t(`mapv.${k === "on_job" ? "onJob" : k}`)}
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>

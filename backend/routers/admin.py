@@ -529,7 +529,7 @@ async def review_document(doc_id: str, body: ReviewDocIn, user: dict = p_docs):
 @router.get("/cases")
 async def list_cases(user: dict = p_cases):
     items = await db.tickets.find(
-        {"category": {"$in": ["not_put_to_work", "business_not_ready"]}}
+        {"category": {"$in": ["not_put_to_work", "business_not_ready", "urgent_help", "shipment_count_differs"]}}
     ).sort("created_at", -1).to_list(200)
     for t in items:
         t["user"] = pub(await db.users.find_one({"_id": t["user_id"]}, {"name": 1, "phone": 1}))
