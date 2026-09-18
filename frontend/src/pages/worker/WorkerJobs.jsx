@@ -44,10 +44,13 @@ export default function WorkerJobs() {
     }
   };
 
-  const finish = async (offerId) => {
+  const finish = async () => {
+    if (deliveredQty === "" || Number(deliveredQty) < 0) return toast.error(t("jobs.deliveredQ"));
     try {
-      await api.post(`/worker/offers/${offerId}/finish`);
-      toast.success(t("jobs.finishDone"));
+      await api.post(`/worker/offers/${finishFor._id}/finish`, { delivered_qty: Number(deliveredQty) });
+      toast.success(t("jobs.endDone"));
+      setFinishFor(null);
+      setDeliveredQty("");
       load();
     } catch (e) {
       toast.error(errMsg(e));
@@ -66,6 +69,8 @@ export default function WorkerJobs() {
 
   const [cancelFor, setCancelFor] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [finishFor, setFinishFor] = useState(null);
+  const [deliveredQty, setDeliveredQty] = useState("");
 
   const cancelJob = async (offerId) => {
     if (!cancelReason.trim()) return toast.error(t("jobs.cancelReason"));
@@ -124,6 +129,12 @@ export default function WorkerJobs() {
                   <span className="flex items-center gap-1 num"><Calendar className="w-3.5 h-3.5 text-brand" /> {o.request?.start_date} · {o.request?.start_time}</span>
                   <span className="text-slate-500">{t("jobs.expectedEarnings")}: <span className="num text-brand font-semibold">{o.request && sar(o.request.expected_earning || 0)}</span></span>
                 </div>
+                <div className="flex flex-wrap gap-2 text-[11px]" data-testid={`qty-strip-${o._id}`}>
+                  <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.expectedQty")}: <b className="num">{o.request?.shipments_per_driver ?? "—"}</b></span>
+                  {o.loaded_qty != null && <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.loadedQty")}: <b className="num text-brand">{o.loaded_qty}</b></span>}
+                  {o.driver_reported_qty != null && <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.reportedQty")}: <b className="num text-blue-400">{o.driver_reported_qty}</b></span>}
+                  {o.final_qty != null && <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.finalQty")}: <b className="num text-emerald-400">{o.final_qty}</b></span>}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {o.status === "confirmed" && (
                     <button data-testid={`checkin-${o._id}`} onClick={() => checkin(o._id)}
@@ -132,9 +143,9 @@ export default function WorkerJobs() {
                     </button>
                   )}
                   {o.status === "attended" && (
-                    <button data-testid={`finish-${o._id}`} onClick={() => finish(o._id)}
+                    <button data-testid={`finish-${o._id}`} onClick={() => { setFinishFor(o); setDeliveredQty(""); }}
                       className="flex items-center gap-2 bg-green-500 text-navy-900 font-bold rounded-xl px-5 py-2.5 text-xs hover:bg-green-400 transition-colors">
-                      <CheckCircle2 className="w-4 h-4" /> {t("jobs.finish")}
+                      <CheckCircle2 className="w-4 h-4" /> {t("jobs.endOpportunity")}
                     </button>
                   )}
                   {["attended", "driver_completed"].includes(o.status) && o.loaded_qty != null && !o.loading_confirmed && !o.loading_disputed && (
@@ -169,6 +180,21 @@ export default function WorkerJobs() {
                   {o.status === "driver_completed" && (
                     <p className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/25 rounded-xl px-4 py-2.5">
                       {t("jobs.finishDone")}
+                    </p>
+                  )}
+                  {o.status === "delivered_reported" && (
+                    <p className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/25 rounded-xl px-4 py-2.5" data-testid={`waiting-warehouse-${o._id}`}>
+                      {t("jobs.waitingWarehouse")}
+                    </p>
+                  )}
+                  {o.status === "pending_settlement" && (
+                    <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-2.5" data-testid={`pending-settlement-${o._id}`}>
+                      {t("jobs.pendingSettlement")}
+                    </p>
+                  )}
+                  {o.status === "qty_disputed" && (
+                    <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/25 rounded-xl px-4 py-2.5" data-testid={`qty-disputed-${o._id}`}>
+                      {t("jobs.qtyDisputed")}
                     </p>
                   )}
                   {["attendance_confirmed", "attended"].includes(o.status) && !o.no_work_reported && (
@@ -243,6 +269,35 @@ export default function WorkerJobs() {
           </div>
         )}
       </section>
+
+      {finishFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="end-modal">
+          <div className="absolute inset-0 bg-navy-950/85 backdrop-blur-sm" onClick={() => setFinishFor(null)} />
+          <div className="relative card-surface w-full max-w-md p-6 space-y-4">
+            <h3 className="heading text-lg font-extrabold">{t("jobs.endTitle")}</h3>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="bg-navy-800/70 rounded-xl p-3 border border-navy-600/40">
+                <p className="text-[11px] text-slate-500">{t("jobs.expectedQty")}</p>
+                <p className="font-bold num mt-1" data-testid="end-expected-qty">{finishFor.request?.shipments_per_driver ?? "—"}</p>
+              </div>
+              <div className="bg-navy-800/70 rounded-xl p-3 border border-navy-600/40">
+                <p className="text-[11px] text-slate-500">{t("jobs.loadedQty")}</p>
+                <p className="font-bold num mt-1" data-testid="end-loaded-qty">{finishFor.loaded_qty ?? finishFor.request?.shipments_per_driver ?? "—"}</p>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("jobs.deliveredQ")}</label>
+              <input type="number" min="0" value={deliveredQty} onChange={(e) => setDeliveredQty(e.target.value)}
+                data-testid="delivered-qty-input"
+                className="w-full bg-navy-800 border border-navy-600 rounded-xl px-3 h-11 text-sm num focus:outline-none focus:ring-1 focus:ring-brand" />
+            </div>
+            <button onClick={finish} disabled={deliveredQty === ""} data-testid="end-confirm-btn"
+              className="w-full h-11 bg-green-500 text-navy-900 font-bold rounded-xl hover:bg-green-400 transition-colors disabled:opacity-40">
+              {t("jobs.confirmEnd")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

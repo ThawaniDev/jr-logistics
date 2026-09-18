@@ -40,6 +40,13 @@ async def upload_document(doc_type: str = Form(...), expiry_date: str = Form(Non
                           file: UploadFile = File(...), user: dict = wrk):
     if doc_type not in DOC_TYPE_KEYS:
         raise HTTPException(status_code=400, detail="نوع المستند غير صالح")
+    if expiry_date:
+        try:
+            if len(expiry_date) != 10:
+                raise ValueError
+            date.fromisoformat(expiry_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="تاريخ الانتهاء غير صالح — أدخل تاريخاً صحيحاً")
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="حجم الملف يتجاوز 10MB")

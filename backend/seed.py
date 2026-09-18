@@ -228,8 +228,10 @@ def worker_doc(w):
 
 
 async def seed_all():
+    import os
+    demo = os.environ.get("SEED_DEMO", "false").lower() == "true"
     await seed_admin()
-    if not await db.settings.find_one({"key": "seed_v2"}):
+    if demo and not await db.settings.find_one({"key": "seed_v2"}):
         fresh = not await db.settings.find_one({"key": "seed_v1"})
 
         if fresh:
@@ -278,7 +280,7 @@ async def seed_all():
 
         await db.settings.update_one({"key": "seed_v2"}, {"$set": {"key": "seed_v2", "at": now_iso()}}, upsert=True)
 
-    if not await db.settings.find_one({"key": "seed_v3"}):
+    if demo and not await db.settings.find_one({"key": "seed_v3"}):
         # backfill vehicle_type for demo drivers (migration path added after v2)
         for w in WORKERS:
             await db.users.update_one({"_id": w["_id"]},
@@ -319,20 +321,21 @@ async def seed_all():
                     "created_at": now_iso(),
                 })
         # verified documents for all demo drivers
-        from datetime import date, timedelta
-        expiry = (date.today() + timedelta(days=365)).isoformat()
-        for w in WORKERS:
-            for dtype in ("national_id", "driving_license", "vehicle_registration"):
-                if not await db.driver_documents.find_one({"worker_id": w["_id"], "type": dtype, "status": "verified"}):
-                    await db.driver_documents.insert_one({
-                        "_id": new_id(), "worker_id": w["_id"], "type": dtype,
-                        "file_path": None, "original_filename": f"demo-{dtype}.pdf",
-                        "content_type": "application/pdf", "size": 0,
-                        "expiry_date": expiry, "status": "verified",
-                        "reviewed_by": "u_admin", "uploaded_at": now_iso(), "is_demo": True,
-                    })
-            await db.users.update_one({"_id": w["_id"]},
-                                      {"$set": {"worker_profile.verification_status": "verified"}})
+        if demo:
+            from datetime import date, timedelta
+            expiry = (date.today() + timedelta(days=365)).isoformat()
+            for w in WORKERS:
+                for dtype in ("national_id", "driving_license", "vehicle_registration"):
+                    if not await db.driver_documents.find_one({"worker_id": w["_id"], "type": dtype, "status": "verified"}):
+                        await db.driver_documents.insert_one({
+                            "_id": new_id(), "worker_id": w["_id"], "type": dtype,
+                            "file_path": None, "original_filename": f"demo-{dtype}.pdf",
+                            "content_type": "application/pdf", "size": 0,
+                            "expiry_date": expiry, "status": "verified",
+                            "reviewed_by": "u_admin", "uploaded_at": now_iso(), "is_demo": True,
+                        })
+                await db.users.update_one({"_id": w["_id"]},
+                                          {"$set": {"worker_profile.verification_status": "verified"}})
         # compensation policy default
         s = await db.settings.find_one({"key": "platform"})
         if s and "no_work_compensation_pct" not in s:

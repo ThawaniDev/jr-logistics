@@ -42,7 +42,8 @@ export default function RequestDetail() {
   const activeOffers = offers.filter((o) => !["rejected", "cancelled"].includes(o.status));
   const canConfirm = ["published", "filling"].includes(r.status) && acceptedCount >= r.required_count;
   const canComplete = ["confirmed", "in_progress"].includes(r.status) &&
-    offers.some((o) => ["attended", "attendance_confirmed", "driver_completed"].includes(o.status));
+    offers.some((o) => o.status === "pending_settlement");
+  const awaitingQty = offers.some((o) => ["attended", "attendance_confirmed", "delivered_reported"].includes(o.status));
   const DURATION_LABEL = { one_day: t("wizard.duration_one_day"), several_days: t("wizard.duration_several_days"), week: t("wizard.duration_week"), month: t("wizard.duration_month") };
 
   const act = async (key, fn, success) => {
@@ -160,6 +161,11 @@ export default function RequestDetail() {
               {t("reqDetail.confirmHint", { n: r.required_count - acceptedCount })} <span className="num">{sar(wallet.available)}</span>
             </p>
           )}
+          {["confirmed", "in_progress"].includes(r.status) && !canComplete && awaitingQty && (
+            <p className="text-xs text-amber-400 self-center" data-testid="complete-hint">
+              {t("reqDetail.completeHint")}
+            </p>
+          )}
           {canComplete && (
             <button
               data-testid="complete-request-btn"
@@ -244,7 +250,7 @@ export default function RequestDetail() {
                   </div>
                 )}
 
-                {["attended", "attendance_confirmed", "driver_completed"].includes(o.status) && (
+                {["attended", "attendance_confirmed"].includes(o.status) && (
                   <div className="pt-1">
                     {o.loaded_qty == null ? (
                       <div className="flex items-center gap-2" data-testid={`loading-form-${o._id}`}>
@@ -274,6 +280,44 @@ export default function RequestDetail() {
                       </p>
                     )}
                   </div>
+                )}
+
+                {o.status === "delivered_reported" && (
+                  <div className="space-y-2.5 pt-1" data-testid={`delivered-review-${o._id}`}>
+                    <div className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 text-xs space-y-1">
+                      <p><span className="text-slate-500">{t("jobs.loadedQty")}:</span> <span className="num font-semibold">{o.loaded_qty ?? "—"}</span></p>
+                      <p><span className="text-slate-500">{t("reqDetail.driverReported")}:</span> <span className="num font-bold text-blue-400">{o.driver_reported_qty}</span></p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        data-testid={`qty-confirm-${o._id}`}
+                        disabled={busy === `dconf-${o._id}`}
+                        onClick={() => act(`dconf-${o._id}`, () => api.post(`/business/requests/${id}/delivered/${o._id}`, { action: "confirm" }), t("reqDetail.qtyConfirmedToast"))}
+                        className="flex-1 flex items-center justify-center gap-2 bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-semibold rounded-xl px-3 py-2 text-xs hover:bg-emerald-500/25 transition-colors"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> {t("reqDetail.confirmQty")}
+                      </button>
+                      <button
+                        data-testid={`qty-dispute-${o._id}`}
+                        disabled={busy === `ddisp-${o._id}`}
+                        onClick={() => act(`ddisp-${o._id}`, () => api.post(`/business/requests/${id}/delivered/${o._id}`, { action: "dispute" }), t("reqDetail.qtyDisputedToast"))}
+                        className="flex-1 flex items-center justify-center gap-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 font-semibold rounded-xl px-3 py-2 text-xs hover:bg-rose-500/20 transition-colors"
+                      >
+                        <XCircle className="w-3.5 h-3.5" /> {t("reqDetail.disputeQty")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {o.status === "pending_settlement" && (
+                  <p className="text-[11px] text-amber-400 flex items-center gap-1.5 pt-1" data-testid={`final-qty-${o._id}`}>
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {t("reqDetail.finalQtyL")}: <span className="num font-bold">{o.final_qty}</span> — {t("reqDetail.pendingSettlementL")}
+                  </p>
+                )}
+                {o.status === "qty_disputed" && (
+                  <p className="text-[11px] text-rose-400 flex items-center gap-1.5 pt-1" data-testid={`qty-disputed-note-${o._id}`}>
+                    <XCircle className="w-3.5 h-3.5" /> {t("reqDetail.qtyDisputedL")}
+                  </p>
                 )}
 
                 {o.status === "paid" && !rated_offer_ids.includes(o._id) && (

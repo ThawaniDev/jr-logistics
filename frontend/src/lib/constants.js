@@ -49,10 +49,19 @@ export const OFFER_STATUS = {
   attendance_confirmed: { label: "سجّل حضوره", cls: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30" },
   attended: { label: "حاضر", cls: "bg-green-500/10 text-green-300 border-green-500/30" },
   driver_completed: { label: "أنهى المهمة — بانتظار تأكيد المنشأة", cls: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
+  delivered_reported: { label: "بانتظار تأكيد المستودع", cls: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
+  pending_settlement: { label: "بانتظار التسوية", cls: "bg-amber-500/10 text-amber-400 border-amber-500/30" },
+  qty_disputed: { label: "قيد المراجعة — يوجد اختلاف", cls: "bg-rose-500/10 text-rose-400 border-rose-500/30" },
   paid: { label: "مدفوع", cls: "bg-green-500/10 text-green-300 border-green-500/30" },
   no_show: { label: "لم يحضر", cls: "bg-rose-500/10 text-rose-400 border-rose-500/30" },
   rejected: { label: "مرفوض", cls: "bg-slate-700/40 text-slate-400 border-slate-600/40" },
   cancelled: { label: "ملغي", cls: "bg-slate-700/40 text-slate-400 border-slate-600/40" },
+};
+
+export const fmtDate = (iso) => {
+  if (!iso) return "";
+  const parts = String(iso).slice(0, 10).split("-");
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(iso);
 };
 
 export const TXN_LABELS = {

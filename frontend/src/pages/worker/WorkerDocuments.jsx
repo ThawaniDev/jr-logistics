@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { FileCheck, Upload, AlertTriangle, CheckCircle2, Clock, Eye } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { useI18n } from "@/i18n";
+import { fmtDate } from "@/lib/constants";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -78,7 +79,7 @@ export default function WorkerDocuments() {
       )}
       {data.expiring_soon.length > 0 && (
         <p className="text-xs text-amber-400" data-testid="expiring-docs">
-          {t("docs.expiringSoon")}: {data.expiring_soon.map((d) => `${t(`docs.type_${d.type}`)} (${d.expiry_date})`).join("، ")}
+          {t("docs.expiringSoon")}: {data.expiring_soon.map((d) => `${t(`docs.type_${d.type}`)} (${fmtDate(d.expiry_date)})`).join("، ")}
         </p>
       )}
 
@@ -131,7 +132,7 @@ export default function WorkerDocuments() {
                 <div className="flex-1 min-w-[180px]">
                   <p className="font-semibold text-sm">{t(`docs.type_${d.type}`)}</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    {d.original_filename} {d.expiry_date && <>· {t("docs.expiry")}: <span className="num">{d.expiry_date}</span></>}
+                    {d.original_filename} {d.expiry_date && <>· {t("docs.expiry")}: <span className="num">{fmtDate(d.expiry_date)}</span></>}
                   </p>
                 </div>
                 <StatusBadge kind="doc" status={d.status} />

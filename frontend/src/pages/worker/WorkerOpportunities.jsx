@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Zap, MapPin, Calendar, Clock, Users, CheckCircle2, XCircle, Building2, ScrollText, X } from "lucide-react";
+import { Zap, MapPin, Calendar, Clock, Users, CheckCircle2, XCircle, Building2, ScrollText, X, Briefcase } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
@@ -103,10 +104,11 @@ export default function WorkerOpportunities() {
   const [open, setOpen] = useState(null);
   const [busy, setBusy] = useState("");
   const [termsFor, setTermsFor] = useState(null); // { kind: "offer"|"apply", id }
+  const [hasActive, setHasActive] = useState(false);
 
   const load = () => {
-    api.get("/worker/offers").then(({ data }) => setOffers(data.offers)).catch(() => {});
-    api.get("/worker/available").then(({ data }) => setOpen(data.jobs)).catch(() => {});
+    api.get("/worker/offers").then(({ data }) => { setOffers(data.offers); if (data.has_active_job) setHasActive(true); }).catch(() => {});
+    api.get("/worker/available").then(({ data }) => { setOpen(data.jobs); if (data.has_active_job) setHasActive(true); }).catch(() => {});
   };
   useEffect(() => { load(); }, []);
 
@@ -145,6 +147,21 @@ export default function WorkerOpportunities() {
         <p className="text-sm text-slate-400 mt-1">{t("opp.sub")}</p>
       </div>
 
+      {hasActive && (
+        <div className="card-surface p-6 border-brand/30 bg-brand/5 flex items-center gap-4" data-testid="active-job-notice">
+          <Briefcase className="w-6 h-6 text-brand shrink-0" />
+          <div className="flex-1">
+            <p className="font-bold text-sm">{t("opp.activeJobNotice")}</p>
+            <p className="text-xs text-slate-400 mt-1">{t("opp.activeJobNoticeDesc")}</p>
+          </div>
+          <Link to="/app/worker/jobs" data-testid="active-job-link"
+            className="bg-brand text-navy-900 font-bold rounded-xl px-4 py-2 text-xs hover:bg-brand-hover transition-colors">
+            {t("opp.goToJob")}
+          </Link>
+        </div>
+      )}
+
+      {!hasActive && (
       <section>
         <h2 className="heading text-lg font-bold mb-4 flex items-center gap-2">
           <Zap className="w-4 h-4 text-amber-400" /> {t("opp.directed")}
@@ -188,7 +205,9 @@ export default function WorkerOpportunities() {
           </div>
         )}
       </section>
+      )}
 
+      {!hasActive && (
       <section>
         <h2 className="heading text-lg font-bold mb-4">{t("opp.openJobs")}</h2>
         {!open ? (
@@ -220,6 +239,7 @@ export default function WorkerOpportunities() {
           </div>
         )}
       </section>
+      )}
 
       {termsFor && (
         <TermsModal

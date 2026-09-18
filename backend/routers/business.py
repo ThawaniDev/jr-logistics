@@ -310,9 +310,11 @@ async def mark_attendance(request_id: str, offer_id: str, body: AttendanceIn, us
     if not o or o["status"] not in ("confirmed", "attendance_confirmed"):
         raise HTTPException(status_code=400, detail="لا يمكن تحديث حضور هذا المندوب")
     if body.result == "attended":
-        await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "attended"}})
+        await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "attended", "attended_at": now_iso()}})
         if r["status"] == "confirmed":
             await db.requests.update_one({"_id": request_id}, {"$set": {"status": "in_progress"}})
+        await audit(user, "attendance_confirmed", "offer", offer_id,
+                    after={"request_id": request_id, "worker_id": o["worker_id"]})
         return {"ok": True, "status": "attended"}
     await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "no_show", "no_show_reason": body.reason}})
     await db.cancellations.insert_one({
@@ -353,15 +355,77 @@ async def record_loading(request_id: str, body: LoadingIn, user: dict = biz):
     return {"ok": True, "loaded_qty": body.qty}
 
 
+class DeliveredIn(BaseModel):
+    action: Literal["confirm", "dispute"]
+    qty: Optional[int] = None
+    note: Optional[str] = None
+
+
+@router.post("/requests/{request_id}/delivered/{offer_id}")
+async def confirm_delivered(request_id: str, offer_id: str, body: DeliveredIn, user: dict = biz):
+    r = await get_owned_request(request_id, user)
+    o = await db.offers.find_one({"_id": offer_id, "request_id": request_id})
+    if not o or o["status"] != "delivered_reported":
+        raise HTTPException(status_code=400, detail="لا يوجد عدد نهائي بانتظار التأكيد لهذا المندوب")
+    if body.action == "confirm":
+        final_qty = body.qty if body.qty is not None else o.get("driver_reported_qty")
+        if final_qty is None or final_qty < 0:
+            raise HTTPException(status_code=400, detail="عدد غير صالح")
+        await db.offers.update_one({"_id": offer_id}, {"$set": {
+            "status": "pending_settlement", "final_qty": final_qty,
+            "qty_confirmed_by": user["_id"], "qty_confirmed_at": now_iso()}})
+        await notify(o["worker_id"], "تم تأكيد العدد النهائي",
+                     f"أكّدت المنشأة تسليم {final_qty} شحنة لمهمة: {r['title']} — بانتظار التسوية",
+                     "completed", "/app/worker/jobs")
+        await audit(user, "delivery_confirmed", "offer", offer_id,
+                    before={"driver_reported_qty": o.get("driver_reported_qty")},
+                    after={"final_qty": final_qty, "request_id": request_id})
+        return {"ok": True, "status": "pending_settlement", "final_qty": final_qty}
+    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "qty_disputed"}})
+    ticket = {
+        "_id": new_id(), "user_id": user["_id"],
+        "subject": f"اختلاف في العدد النهائي — {r['title']}",
+        "category": "shipment_count_differs",
+        "message": body.note or f"المندوب أفاد بتوصيل {o.get('driver_reported_qty')} — المحملة {o.get('loaded_qty')} — المنشأة تعترض على العدد",
+        "request_id": request_id, "offer_id": offer_id,
+        "priority": "urgent", "escalation": "operations", "status": "open",
+        "activity": [{"action": "created", "by": user["name"], "at": now_iso()}],
+        "replies": [], "is_demo": user.get("is_demo", False), "created_at": now_iso(),
+    }
+    await db.tickets.insert_one(ticket)
+    await notify(o["worker_id"], "اعتراض على العدد النهائي",
+                 f"المنشأة اعترضت على العدد المُبلغ عنه لمهمة: {r['title']} — الحالة قيد المراجعة ولن تُصرف المستحقات قبل الحل",
+                 "support", "/app/worker/jobs")
+    await notify_staff("cases", "اختلاف في العدد النهائي",
+                       f"{r['title']} — المندوب أفاد بـ {o.get('driver_reported_qty')} والمنشأة تعترض",
+                       "case", "/app/admin/cases")
+    await notify_admins("اختلاف في العدد النهائي",
+                        f"طلب {r['title']} — اختلاف بين المندوب والمنشأة على العدد النهائي",
+                        "case", "/app/admin/cases")
+    await audit(user, "delivery_disputed", "offer", offer_id,
+                before={"driver_reported_qty": o.get("driver_reported_qty"), "loaded_qty": o.get("loaded_qty")},
+                after={"note": body.note, "request_id": request_id})
+    return {"ok": True, "status": "qty_disputed", "ticket_id": ticket["_id"]}
+
+
 @router.post("/requests/{request_id}/complete")
 async def complete_request(request_id: str, user: dict = biz):
     r = await get_owned_request(request_id, user)
     if r["status"] not in ("confirmed", "in_progress"):
         raise HTTPException(status_code=400, detail="لا يمكن إنهاء هذا الطلب في حالته الحالية")
-    payable = await db.offers.find(
-        {"request_id": request_id, "status": {"$in": ["attended", "attendance_confirmed", "driver_completed"]}}).to_list(500)
+    unresolved = await db.offers.count_documents(
+        {"request_id": request_id,
+         "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended",
+                            "delivered_reported", "driver_completed"]}})
+    if unresolved:
+        raise HTTPException(status_code=400,
+                            detail="يوجد مندوبون لم تُستكمل إجراءاتهم — أكّد الأعداد النهائية لجميع المندوبين أولاً")
+    qty_disputed = await db.offers.count_documents({"request_id": request_id, "status": "qty_disputed"})
+    if qty_disputed:
+        raise HTTPException(status_code=400, detail="يوجد اختلاف في الأعداد قيد المراجعة — يجب حلّه قبل إنشاء التسوية")
+    payable = await db.offers.find({"request_id": request_id, "status": "pending_settlement"}).to_list(500)
     if not payable:
-        raise HTTPException(status_code=400, detail="لا يوجد حضور مؤكد — سجّل حضور العمال أولاً")
+        raise HTTPException(status_code=400, detail="لا يوجد عدد نهائي مؤكد — أكّد أعداد التوصيل أولاً")
     disputed = [o for o in payable if o.get("loading_disputed")]
     if disputed:
         raise HTTPException(status_code=400, detail="يوجد نزاع على عدد الشحنات — يجب حلّه عبر الدعم قبل الإنهاء")
@@ -372,7 +436,8 @@ async def complete_request(request_id: str, user: dict = biz):
     commission_rate = r.get("commission_rate", DEFAULT_COMMISSION_RATE)
     for o in payable:
         expected_qty = r.get("shipments_per_driver") or 0
-        final_qty = o.get("loaded_qty") if o.get("loaded_qty") is not None else expected_qty
+        final_qty = o.get("final_qty") if o.get("final_qty") is not None else (
+            o.get("loaded_qty") if o.get("loaded_qty") is not None else expected_qty)
         gross = round(rate * final_qty, 2) if expected_qty else share
         commission = round(gross * commission_rate, 2)
         vat = round(commission * vat_pct / 100, 2)
@@ -381,6 +446,7 @@ async def complete_request(request_id: str, user: dict = biz):
             "_id": new_id(), "request_id": request_id, "offer_id": o["_id"],
             "driver_id": o["worker_id"], "business_id": user["_id"],
             "expected_qty": expected_qty, "loaded_qty": o.get("loaded_qty"),
+            "driver_reported_qty": o.get("driver_reported_qty"),
             "final_qty": final_qty, "rate": rate, "commission_rate": commission_rate,
             "gross": gross, "commission": commission, "vat": vat, "vat_pct": vat_pct,
             "net": net, "reserved_share": share,
@@ -404,6 +470,8 @@ async def complete_request(request_id: str, user: dict = biz):
                        f"طلب {r['title']} — {len(payable)} تصفية", "general", "/app/admin/finance")
     await notify_admins("طلب مكتمل بانتظار التسوية", f"{r['title']} — {len(payable)} تصفية معلقة",
                         "completed", "/app/admin/finance")
+    await audit(user, "request_completed", "request", request_id,
+                after={"settlements_created": len(payable)})
     return {"ok": True, "settlements_created": len(payable)}
 
 

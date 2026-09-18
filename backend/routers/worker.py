@@ -11,7 +11,8 @@ from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn,
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 wrk = Depends(require_roles("worker"))
 
-ACTIVE_JOB_STATUSES = ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed"]
+ACTIVE_JOB_STATUSES = ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed",
+                       "delivered_reported", "pending_settlement", "qty_disputed"]
 
 
 async def enrich_offer(o: dict) -> dict:
@@ -65,6 +66,13 @@ async def ensure_acceptable(user: dict, req: dict):
     if until and until > now_iso():
         raise HTTPException(status_code=403,
                             detail=f"حسابك موقوف مؤقتاً حتى {until[:10]} وفق سياسة الإلغاء — تواصل مع الدعم")
+    active = await db.offers.find_one({"worker_id": user["_id"], "request_id": {"$ne": req["_id"]},
+                                       "status": {"$in": ACTIVE_JOB_STATUSES}})
+    if active:
+        raise HTTPException(status_code=400, detail={
+            "code": "ACTIVE_JOB",
+            "message": "لديك مهمة نشطة حالياً — أكملها أولاً أو ألغِها وفق السياسة قبل قبول فرصة أخرى",
+        })
     overlap = await find_overlapping_job(user["_id"], req)
     if overlap:
         raise HTTPException(status_code=400, detail={
@@ -158,10 +166,13 @@ async def set_availability(body: AvailabilityIn, user: dict = wrk):
 
 @router.get("/offers")
 async def my_offers(user: dict = wrk):
+    has_active = bool(await db.offers.find_one({"worker_id": user["_id"], "status": {"$in": ACTIVE_JOB_STATUSES}}))
+    if has_active:
+        return {"offers": [], "has_active_job": True}
     offers = await db.offers.find({"worker_id": user["_id"], "status": "offered"}).sort("created_at", -1).to_list(100)
     for o in offers:
         await enrich_offer(o)
-    return {"offers": pub_list(offers)}
+    return {"offers": pub_list(offers), "has_active_job": False}
 
 
 @router.get("/available")
@@ -170,6 +181,9 @@ async def available_jobs(user: dict = wrk):
     services = wp.get("services", [])
     if not services:
         return {"jobs": []}
+    has_active = bool(await db.offers.find_one({"worker_id": user["_id"], "status": {"$in": ACTIVE_JOB_STATUSES}}))
+    if has_active:
+        return {"jobs": [], "has_active_job": True}
     reqs = await db.requests.find(
         {"service_type": {"$in": services}, "status": {"$in": ["published", "filling"]}}
     ).sort("created_at", -1).to_list(100)
@@ -195,7 +209,7 @@ async def available_jobs(user: dict = wrk):
                   "payout_total", "pricing_snapshot", "pricing_version"):
             r.pop(f, None)
         jobs.append(r)
-    return {"jobs": pub_list(jobs)}
+    return {"jobs": pub_list(jobs), "has_active_job": False}
 
 
 @router.post("/offers/{offer_id}/respond")
@@ -214,6 +228,8 @@ async def respond(offer_id: str, body: RespondIn, user: dict = wrk):
         raise HTTPException(status_code=400, detail="انتهت صلاحية هذه الفرصة")
     await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "accepted", "responded_at": now_iso(),
                                                             "terms_accepted_at": now_iso()}})
+    await audit(user, "driver_accepted", "offer", offer_id,
+                after={"request_id": r["_id"], "title": r["title"]})
     if r["status"] == "published":
         await db.requests.update_one({"_id": r["_id"]}, {"$set": {"status": "filling"}})
     await notify(r["business_id"], "مندوب قبل عرضك",
@@ -321,27 +337,45 @@ async def checkin(offer_id: str, user: dict = wrk):
     o = await db.offers.find_one({"_id": offer_id, "worker_id": user["_id"]})
     if not o or o["status"] != "confirmed":
         raise HTTPException(status_code=400, detail="لا يمكن تسجيل الحضور الآن")
+    arrived_at = now_iso()
     await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "attendance_confirmed",
-                                                            "checkin_at": now_iso()}})
+                                                            "checkin_at": arrived_at,
+                                                            "arrived_at": arrived_at}})
     r = await db.requests.find_one({"_id": o["request_id"]})
-    await notify(r["business_id"], "مندوب سجّل حضوره",
-                 f"{user['name']} سجّل حضوره لطلب: {r['title']} — أكّد الحضور من لوحتك",
+    await notify(r["business_id"], "وصل المندوب إلى الموقع",
+                 f"{user['name']} وصل لطلب: {r['title']} — يرجى تأكيد الحضور من لوحتك",
                  "attendance", f"/app/business/requests/{r['_id']}")
+    await audit(user, "driver_arrived", "offer", offer_id,
+                after={"request_id": r["_id"], "arrived_at": arrived_at})
     return {"ok": True}
+
+
+class FinishIn(BaseModel):
+    delivered_qty: int
 
 
 @router.post("/offers/{offer_id}/finish")
-async def finish_job(offer_id: str, user: dict = wrk):
+async def finish_job(offer_id: str, body: FinishIn, user: dict = wrk):
     o = await db.offers.find_one({"_id": offer_id, "worker_id": user["_id"]})
     if not o or o["status"] != "attended":
-        raise HTTPException(status_code=400, detail="يمكن إنهاء المهمة بعد تأكيد حضورك من المنشأة")
-    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "driver_completed",
-                                                            "finished_at": now_iso()}})
+        raise HTTPException(status_code=400, detail="يمكن إنهاء الفرصة بعد تأكيد حضورك من المنشأة")
+    if body.delivered_qty is None or body.delivered_qty < 0:
+        raise HTTPException(status_code=400, detail="أدخل عدد الشحنات التي تم توصيلها")
+    if o.get("loaded_qty") is not None and not o.get("loading_confirmed"):
+        raise HTTPException(status_code=400, detail="أكّد كمية الشحنات المحملة أولاً قبل إنهاء الفرصة")
     r = await db.requests.find_one({"_id": o["request_id"]})
-    await notify(r["business_id"], "المندوب أنهى المهمة",
-                 f"{user['name']} أنهى مهمة: {r['title']} — أكّد الإتمام لإتمام التسوية وصرف الأرباح",
+    expected = r.get("shipments_per_driver") or 0
+    loaded = o.get("loaded_qty") if o.get("loaded_qty") is not None else expected
+    await db.offers.update_one({"_id": offer_id}, {"$set": {"status": "delivered_reported",
+                                                            "driver_reported_qty": body.delivered_qty,
+                                                            "finished_at": now_iso()}})
+    await notify(r["business_id"], "المندوب أنهى الفرصة",
+                 f"الشحنات المحملة: {loaded} — الشحنات التي أفاد المندوب بتوصيلها: {body.delivered_qty} — يرجى مراجعة العدد وتأكيده.",
                  "completed", f"/app/business/requests/{r['_id']}")
-    return {"ok": True}
+    await audit(user, "driver_finished", "offer", offer_id,
+                after={"request_id": r["_id"], "loaded_qty": o.get("loaded_qty"),
+                       "driver_reported_qty": body.delivered_qty})
+    return {"ok": True, "status": "delivered_reported"}
 
 
 class NoWorkIn(BaseModel):
@@ -383,6 +417,7 @@ async def confirm_loading(offer_id: str, user: dict = wrk):
         raise HTTPException(status_code=400, detail="تم التعامل مع هذه الكمية مسبقاً")
     await db.offers.update_one({"_id": offer_id},
                                {"$set": {"loading_confirmed": True, "loading_confirmed_at": now_iso()}})
+    await audit(user, "loading_confirmed", "offer", offer_id, after={"loaded_qty": o.get("loaded_qty")})
     r = await db.requests.find_one({"_id": o["request_id"]})
     await notify(r["business_id"], "المندوب أكّد كمية الشحنات",
                  f"{user['name']} أكّد تحميل {o['loaded_qty']} شحنة — {r['title']}",
@@ -402,6 +437,7 @@ async def dispute_loading(offer_id: str, body: LoadingDisputeIn, user: dict = wr
     if o.get("loading_confirmed") or o.get("loading_disputed"):
         raise HTTPException(status_code=400, detail="تم التعامل مع هذه الكمية مسبقاً")
     await db.offers.update_one({"_id": offer_id}, {"$set": {"loading_disputed": True}})
+    await audit(user, "loading_disputed", "offer", offer_id, after={"loaded_qty": o.get("loaded_qty")})
     r = await db.requests.find_one({"_id": o["request_id"]})
     ticket = {
         "_id": new_id(), "user_id": user["_id"],

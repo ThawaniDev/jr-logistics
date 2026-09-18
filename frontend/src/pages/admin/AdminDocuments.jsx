@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { FileCheck, Eye, CheckCircle2, XCircle } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { useI18n } from "@/i18n";
+import { fmtDate } from "@/lib/constants";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -70,7 +71,7 @@ export default function AdminDocuments() {
                 <p className="font-semibold text-sm">{d.worker?.name} <span className="text-slate-500 text-xs num">{d.worker?.phone}</span></p>
                 <p className="text-xs text-slate-400 mt-1">
                   {t(`docs.type_${d.type}`)} · {d.original_filename}
-                  {d.expiry_date && <> · {t("admin.colExpiry")}: <span className="num">{d.expiry_date}</span> {d.expired && <span className="text-rose-400">({t("admin.expired")})</span>}</>}
+                  {d.expiry_date && <> · {t("admin.colExpiry")}: <span className="num">{fmtDate(d.expiry_date)}</span> {d.expired && <span className="text-rose-400">({t("admin.expired")})</span>}</>}
                 </p>
               </div>
               <StatusBadge kind="doc" status={d.status} />
