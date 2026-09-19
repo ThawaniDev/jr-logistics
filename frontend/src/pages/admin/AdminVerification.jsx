@@ -111,7 +111,7 @@ export default function AdminVerification() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <StatusBadge status={d.status} ns="docStatus" />
+                <StatusBadge kind="doc" status={d.status} />
                 {d.status === "pending" && (
                   <>
                     <button onClick={() => reviewDoc(d._id, "verify", isOffice)} disabled={busy} data-testid={`vc-doc-verify-${d._id}`}

@@ -39,12 +39,16 @@ export function OnboardingBanner({ profilePath }) {
       )}
       {data.docs?.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {data.docs.map((d) => (
+          {data.docs.map((d) => {
+            const k = `office.status_${d.status}`;
+            const label = t(k);
+            return (
             <span key={d.type} data-testid={`onb-doc-${d.type}`}
               className={`chip text-[10px] ${d.status === "verified" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : d.status === "pending" ? "bg-amber-500/10 border-amber-500/30 text-amber-300" : "bg-rose-500/10 border-rose-500/30 text-rose-300"}`}>
-              {d.name}: {t(`office.status_${d.status}`,) || d.status}
+              {d.name}: {label === k ? d.status : label}
             </span>
-          ))}
+            );
+          })}
         </div>
       )}
       {profilePath && (

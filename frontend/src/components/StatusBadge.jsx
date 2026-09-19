@@ -7,6 +7,8 @@ const MAPS = {
   withdrawal: { map: WITHDRAWAL_STATUS, ns: "wdStatus" },
   ticket: { map: TICKET_STATUS, ns: "ticketStatus" },
   doc: { map: {}, ns: "docStatus" },
+  office: { map: {}, ns: "office.status_" },
+  settlement: { map: {}, ns: "fin.st_" },
 };
 
 export function StatusBadge({ kind = "request", status, pulse = false }) {

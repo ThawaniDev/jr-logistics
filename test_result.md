@@ -101,3 +101,46 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+## user_problem_statement: Build and verify the JR Logistics Saudi Arabic-first logistics marketplace with business, driver, courier office, admin, staff, escrow settlement, verification, operations and multi-tab session flows.
+## backend:
+##   - task: "Iteration 10-12 backend regression"
+##     implemented: true
+##     working: true
+##     file: "/app/backend/tests/test_iteration10.py, /app/backend/tests/test_iteration11.py, /app/backend/tests/test_iteration12.py"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##         -working: true
+##         -agent: "main"
+##         -comment: "Ran python -m pytest backend/tests/test_iteration10.py backend/tests/test_iteration11.py backend/tests/test_iteration12.py -q; 17/17 passed."
+## frontend:
+##   - task: "Iteration 12 UX fixes: onboarding banners, wizard verification gate, translation key leaks, StatusBadge namespaces"
+##     implemented: true
+##     working: true
+##     file: "/app/frontend/src/components/OnboardingBanner.jsx, /app/frontend/src/components/StatusBadge.jsx, /app/frontend/src/pages/business/BusinessDashboard.jsx, /app/frontend/src/pages/worker/WorkerDashboard.jsx, /app/frontend/src/pages/business/RequestNew.jsx, /app/frontend/src/pages/admin/AdminOffices.jsx, /app/frontend/src/i18n/translations.js"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: true
+##         -agent: "main"
+##         -comment: "Confirmed prior iteration-12 fixes are present; added missing office/doc/settlement translation namespaces, mounted dashboard onboarding banners, and added a full wizard verification block for pending businesses. Removed duplicate fin status translation keys before retest."
+## metadata:
+##   created_by: "main_agent"
+##   version: "1.0"
+##   test_sequence: 13
+##   run_ui: true
+## test_plan:
+##   current_focus:
+##     - "Retest iteration-12 frontend issues from /app/test_reports/iteration_12.json"
+##     - "Verify business dashboard onboarding banner and wizard verification gate"
+##     - "Verify office/admin surfaces have no raw i18n keys"
+##     - "Re-run office linking and settlement ownership UI flows not exercised in iteration 12"
+##   stuck_tasks: []
+##   test_all: false
+##   test_priority: "high_first"
+## agent_communication:
+##     -agent: "main"
+##     -message: "Backend regression is green (17/17). Please focus frontend E2E retesting on iteration_12 action items, then exercise driver linking and office settlement ownership in UI. Use credentials from /app/memory/test_credentials.md; OTP demo codes are returned by /api/auth/otp/send. Document cloud upload remains externally blocked only if the Universal Key is still inactive; local upload fallback should still work."

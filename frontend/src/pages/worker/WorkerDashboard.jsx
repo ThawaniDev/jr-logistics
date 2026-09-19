@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Zap, Briefcase, Wallet, Star, MapPin, Calendar, CheckCircle2, Clock, Banknote, FileCheck, AlertTriangle } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
+import { ProviderCard } from "@/components/ProviderCard";
+import { OnboardingBanner } from "@/components/OnboardingBanner";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
@@ -60,6 +62,8 @@ export default function WorkerDashboard() {
 
   return (
     <div className="space-y-6" data-testid="worker-dashboard">
+      <OnboardingBanner profilePath="/app/worker/profile" />
+      <ProviderCard />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="heading text-2xl font-extrabold">{t("common.hello")} {user?.name}</h1>

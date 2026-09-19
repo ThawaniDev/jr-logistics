@@ -26,7 +26,8 @@ WIPE_COLLECTIONS = [
     "requests", "offers", "transactions", "settlements", "ledger", "approvals",
     "invoices", "cancellations", "ratings", "tickets", "notifications",
     "audit_logs", "withdrawals", "driver_documents", "driver_locations",
-    "client_pricing", "otps",
+    "client_pricing", "otps", "office_invites", "agreements", "office_documents",
+    "job_events", "job_messages",
 ]
 
 
@@ -38,7 +39,7 @@ async def main():
     # Only the Super Admin, the 3 staff accounts, and the two known REAL accounts
     # (KEEP_PHONES) are real. Every other business/worker account is test-generated.
     doomed = await db.users.find(
-        {"role": {"$in": ["business", "worker"]},
+        {"role": {"$in": ["business", "worker", "office"]},
          "phone": {"$nin": list(KEEP_PHONES)}},
         {"_id": 1, "phone": 1, "name": 1},
     ).to_list(5000)

@@ -83,11 +83,11 @@ export default function AdminOffices() {
                     <p className="font-bold">{op.office_name || o.name}</p>
                     <p className="text-[11px] text-slate-500">
                       <span className="num">{o.phone}</span>
-                      {op.cr_number && <> · {t("admin.crNumber")}: <span className="num">{op.cr_number}</span></>}
+                      {op.cr_number && <> · {t("vc.crNumber")}: <span className="num">{op.cr_number}</span></>}
                       {op.city && <> · {op.city}</>}
                     </p>
                   </div>
-                  <StatusBadge status={op.verification_status || "pending"} ns="office" />
+                  <StatusBadge kind="office" status={op.verification_status || "pending"} />
                 </div>
                 <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-slate-400">
                   <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {t("vc.driversCount")}: <b className="num text-slate-200">{o.drivers_count}</b></span>

@@ -87,7 +87,7 @@ export default function OfficeDocuments() {
                   {d.expiry_date && <> · {t("docs.expiry")}: <span className="num">{fmtDate(d.expiry_date)}</span></>}
                 </p>
               </div>
-              <StatusBadge status={d.status} ns="docStatus" />
+              <StatusBadge kind="doc" status={d.status} />
             </div>
           ))}
         </div>

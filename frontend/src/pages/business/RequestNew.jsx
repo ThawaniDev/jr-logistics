@@ -6,10 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import api, { errMsg } from "@/lib/api";
 import { useI18n } from "@/i18n";
+import { useAuth } from "@/context/AuthContext";
 import { ACTIVE_SERVICES, SERVICE_MAP, DURATIONS, sar, DEFAULT_VEHICLE_TYPES } from "@/lib/constants";
 
 export default function RequestNew() {
   const { t } = useI18n();
+  const { user } = useAuth();
   const STEPS = [t("wizard.step1"), t("wizard.step2"), t("wizard.step3"), t("wizard.step4")];
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -125,6 +127,22 @@ export default function RequestNew() {
       setBusy(false);
     }
   };
+
+  const bizStatus = user?.business_profile?.verification_status;
+  if (user?.role === "business" && !["verified", "active"].includes(bizStatus || "")) {
+    return (
+      <div className="max-w-xl mx-auto" data-testid="wizard-blocked">
+        <div className="card-surface p-8 text-center space-y-4 border-amber-500/40 bg-amber-500/5">
+          <h1 className="heading text-xl font-extrabold">{t("onb.verifyPending")}</h1>
+          <p className="text-sm text-slate-400">{t("onb.title")}</p>
+          <a href="/app/business/profile" data-testid="wizard-blocked-cta"
+            className="inline-block bg-brand text-navy-900 font-bold rounded-xl px-6 py-2.5 text-sm hover:bg-brand-hover transition-colors">
+            {t("onb.title")}
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6" data-testid="request-new-page">

@@ -6,6 +6,7 @@ import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { sar } from "@/lib/constants";
+import { OnboardingBanner } from "@/components/OnboardingBanner";
 import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/i18n";
 
@@ -24,6 +25,7 @@ export default function BusinessDashboard() {
 
   return (
     <div className="space-y-6" data-testid="business-dashboard">
+      <OnboardingBanner profilePath="/app/business/profile" />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="heading text-2xl font-extrabold">
