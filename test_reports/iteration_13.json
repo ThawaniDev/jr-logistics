@@ -1,0 +1,32 @@
+{
+  "summary": "Retest of iteration-12 frontend action items plus new UI E2E for office-driver linking and settlement-ownership visibility. All prior UX findings from iteration_12 are resolved on preview URL. In addition, one residual raw-i18n-key bug found and fixed in StatusBadge.jsx (kind='office' and kind='settlement' were building malformed keys like 'office.status_.pending' / 'fin.st_.pending' which produced raw keys in the badge). Office-driver linking end-to-end via UI works: office invites driver -> driver sees invite on /app/worker/profile via provider-card -> driver accepts -> office sees linked driver row. Settlements page renders without raw keys. Session isolation (sessionStorage isnad_token, empty localStorage) still confirmed on freshly-registered business account.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration12.py",
+    "/app/test_reports/iteration_13.json"
+  ],
+  "action_items": [
+    "None blocking. Optional: consider gating /app/office/settlements + /app/office/drivers behind agreement acceptance to prevent premature access, though current state renders cleanly."
+  ],
+  "critical_code_review_comments": [
+    "FIXED by tester: StatusBadge.jsx MAPS.office/settlement produced malformed i18n keys 'office.status_.pending' / 'fin.st_.pending' because ns already included the prefix while the render appended an extra '.' separator. Refactored to explicit {ns, prefix} pair and added a raw-key fallback (label === key ? status : label). This makes AdminOffices status chips render correctly in AR/EN/UR and also protects future settlement badges.",
+    "OnboardingBanner correctly falls back to raw status when translation missing (t(k) === k check). Business/Worker dashboards now mount OnboardingBanner as required (iteration_12 gap closed).",
+    "RequestNew.jsx correctly renders full-page wizard-blocked (with wizard-blocked-cta) for pending businesses before letting them enter the wizard - matches acceptance criterion.",
+    "Session isolation implementation still uses sessionStorage per tab; localStorage.getItem('isnad_token') confirmed null for freshly-registered user; backend sets no auth cookie by design."
+  ],
+  "updated_files": [
+    "/app/frontend/src/components/StatusBadge.jsx"
+  ],
+  "success_rate": {"backend": "not re-run (per instructions, main agent already confirmed 17/17 PASS on test_iteration10/11/12)", "frontend": "100% on retested surfaces (BusinessDashboard banner, WorkerDashboard banner, wizard-blocked gate, AdminOffices badges, office-driver invite/accept/link, office settlements empty state, AR/EN/UR label sweep, session isolation)"},
+  "test_credentials": "Admin OK. Freshly created TEST office +966587127668 (verified + agreement accepted), TEST driver +966587288205 (linked to office). Real business +966530534184 and driver +966593603404 NOT mutated. One extra TEST biz +966501760179 created solely to hit the wizard-blocked gate.",
+  "seed_data_creation": "1 TEST office (verified + AGR-* agreement), 1 TEST driver linked to it via UI invite/accept, 1 TEST pending business used for wizard-blocked verification.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iteration_13 verified all iteration_12 findings CLOSED after the StatusBadge fix. Session isolation is stable via sessionStorage 'isnad_token'. Office-driver linking flow test IDs: invite-name, invite-phone, invite-vehicle, invite-send-btn on /app/office/drivers; provider-card, provider-invites, provider-invite-{id}, invite-accept-{id}, invite-decline-{id} on /app/worker/profile; driver-card-{id}, driver-avail-{id} after acceptance. For office register API, top-level fields required: name, company_name, cr_number (Pydantic RegisterIn model - office_profile nested payload is ignored). Saudi phone must be +9665XXXXXXXX (9 digits after +966 starting with 5). Admin login body: {email, password}, not {identifier, password}.",
+  "rca of the issue": "StatusBadge kind='office' had ns='office.status_' and code did t(`${ns}.${status}`) producing 'office.status_.pending' which is not a real translation path. i18n lookup splits by '.' so it walked ar.office.status_ (undefined) and returned the raw key. Same class of bug for kind='settlement' with ns='fin.st_'. Fix: split ns and prefix, then key = `${ns}.${prefix}${status}`; plus a defensive `label === key ? status : label` fallback."
+}

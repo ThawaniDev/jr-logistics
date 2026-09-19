@@ -122,11 +122,14 @@
 ##     file: "/app/frontend/src/components/OnboardingBanner.jsx, /app/frontend/src/components/StatusBadge.jsx, /app/frontend/src/pages/business/BusinessDashboard.jsx, /app/frontend/src/pages/worker/WorkerDashboard.jsx, /app/frontend/src/pages/business/RequestNew.jsx, /app/frontend/src/pages/admin/AdminOffices.jsx, /app/frontend/src/i18n/translations.js"
 ##     stuck_count: 0
 ##     priority: "high"
-##     needs_retesting: true
+##     needs_retesting: false
 ##     status_history:
 ##         -working: true
 ##         -agent: "main"
 ##         -comment: "Confirmed prior iteration-12 fixes are present; added missing office/doc/settlement translation namespaces, mounted dashboard onboarding banners, and added a full wizard verification block for pending businesses. Removed duplicate fin status translation keys before retest."
+##         -working: true
+##         -agent: "testing"
+##         -comment: "Iteration 13 retest passed 100% on touched surfaces; tester fixed residual StatusBadge office/settlement key construction bug and verified office-driver linking, settlements labels, wizard gate, dashboard banners, AR/EN/UR sweep, and session isolation."
 ## metadata:
 ##   created_by: "main_agent"
 ##   version: "1.0"
@@ -134,13 +137,13 @@
 ##   run_ui: true
 ## test_plan:
 ##   current_focus:
-##     - "Retest iteration-12 frontend issues from /app/test_reports/iteration_12.json"
-##     - "Verify business dashboard onboarding banner and wizard verification gate"
-##     - "Verify office/admin surfaces have no raw i18n keys"
-##     - "Re-run office linking and settlement ownership UI flows not exercised in iteration 12"
+##     - "Owner acceptance pass on Preview"
+##     - "VAT configuration + PDF invoice generation"
 ##   stuck_tasks: []
 ##   test_all: false
 ##   test_priority: "high_first"
 ## agent_communication:
 ##     -agent: "main"
-##     -message: "Backend regression is green (17/17). Please focus frontend E2E retesting on iteration_12 action items, then exercise driver linking and office settlement ownership in UI. Use credentials from /app/memory/test_credentials.md; OTP demo codes are returned by /api/auth/otp/send. Document cloud upload remains externally blocked only if the Universal Key is still inactive; local upload fallback should still work."
+##     -message: "Backend regression is green (17/17), frontend build is green, and iteration_13 testing closed all previous findings with retest_needed=false."
+##     -agent: "testing"
+##     -message: "All iteration-12 findings are closed. No blocking or non-blocking bugs remain; optional future gate for office drivers/settlements before agreement acceptance."

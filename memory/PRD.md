@@ -1,4 +1,4 @@
-# ISNAD (إسناد) — Saudi Logistics & Workforce Marketplace — PRD
+# JR Logistics (جي آر لوجستكس) — Saudi Logistics & Workforce Marketplace — PRD
 
 ## Original Problem Statement
 Build a modern Arabic RTL web platform for a Saudi logistics and workforce marketplace connecting businesses (companies, warehouses, logistics firms, event organizers) with temporary operational resources (workers & service providers). 9 service categories: delivery drivers, warehouse workers, loading/unloading, sorting/packing, inventory counting, cars with drivers, cars without drivers, events staff, other logistics services. Three roles: Business, Worker/Service Provider, Admin. Full workflow: request → matching → accept → confirm (escrow) → attendance → completion → payout. Premium Saudi tech brand, Arabic-first RTL, scalable modular architecture.
@@ -128,13 +128,20 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Driver operational profile endpoint; invoice generated on payout + job_closed event
 - Tests: test_iteration11.py 9/9 + test_iteration10.py 2/2 green on clean DB; testing_agent iteration_11.json ~97% frontend green
 
+## Implemented (2026-06, iterations 12-13) — Courier Office verification closure
+- Iteration-12 UI gaps closed: OnboardingBanner mounted on BusinessDashboard and WorkerDashboard; pending businesses now see a full-page verification gate at /app/business/requests/new instead of entering the wizard; office/admin status labels translate correctly in AR/EN/UR
+- StatusBadge fixed for office and settlement namespaces (office.status_*, fin.st_*) with a raw-key fallback; OnboardingBanner document chips no longer leak office.status_missing
+- Courier Office driver linking verified E2E through UI: office invitation → driver provider-card acceptance → linked driver visible to office; settlement surfaces render without raw i18n keys
+- Multi-tab session isolation revalidated: per-tab sessionStorage auth remains isolated and localStorage has no isnad_token
+- Verification: backend pytest test_iteration10/11/12 = 17/17 PASS; frontend production build PASS; testing_agent iteration_13 = 100% on retested surfaces, no open bugs
 
 ## Backlog
-- **P0 (EXTERNAL/OWNER ACTION)**: Universal Key "not active" for cloud object storage — local persistent fallback active (/app/backend/uploads); owner: Profile → Manage plan → Universal Key → Add Balance
-- **P1**: shadcn Calendar/TimePicker in wizard step 3; real payment gateway; real SMS (Twilio); OTP rate-limiting; masked-call relay provider (hook exists at /api/jobs/{id}/contact)
-- **P2**: VAT PDF invoice rendering (invoice records exist); push notifications; Login dropdown hydration warning (cosmetic)
+- **P0 (OWNER ACCEPTANCE)**: Owner-controlled E2E pass on Preview using the accounts in /app/memory/test_credentials.md
+- **P0 (EXTERNAL/OPTIONAL)**: Universal Key balance inactive for cloud object storage; local persistent fallback at /app/backend/uploads remains functional. Owner can top up via Profile → Manage plan → Universal Key → Add Balance
+- **P1**: VAT configuration + PDF invoice generation; real payment gateway; real SMS (Twilio); OTP rate-limiting
+- **P2**: shadcn Calendar/TimePicker polish; push notifications; masked-call relay provider (hook exists at /api/jobs/{id}/contact)
 
 ## Next Tasks
-1. Owner-controlled E2E on Preview with clean accounts (test_credentials.md); global pricing rules exist for sedan/van-cold Riyadh routes
-2. Owner activates Universal Key balance → cloud storage resumes
-3. Calendar/TimePicker polish + payment gateway integration
+1. Owner validates the complete platform flow on Preview
+2. Implement VAT configuration + PDF invoice generation
+3. Integrate real payment gateway after VAT/invoice scope is confirmed
