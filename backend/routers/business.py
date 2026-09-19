@@ -43,6 +43,22 @@ async def match_workers(request: dict) -> int:
     if request.get("temperature_type"):
         workers = [w for w in workers
                    if (w.get("worker_profile") or {}).get("vehicle_temperature") in (None, "", request["temperature_type"])]
+    # provider/office eligibility: linked drivers require a verified office with an accepted agreement
+    linked = {w["_id"]: (w.get("worker_profile") or {}).get("provider_id") for w in workers
+              if (w.get("worker_profile") or {}).get("provider_status") == "linked"
+              and (w.get("worker_profile") or {}).get("provider_id")}
+    if linked:
+        ok_offices = set()
+        async for off in db.users.find({"_id": {"$in": list(set(linked.values()))}, "role": "office"}):
+            if (off.get("office_profile") or {}).get("verification_status") in ("verified", "active") and \
+                    await db.agreements.find_one({"office_id": off["_id"], "status": "accepted"}):
+                ok_offices.add(off["_id"])
+        workers = [w for w in workers if w["_id"] not in linked or linked[w["_id"]] in ok_offices]
+    # office-specific request: only that office's linked drivers
+    if request.get("preferred_office_id"):
+        workers = [w for w in workers
+                   if (w.get("worker_profile") or {}).get("provider_id") == request["preferred_office_id"]
+                   and (w.get("worker_profile") or {}).get("provider_status") == "linked"]
     existing = await db.offers.distinct("worker_id", {"request_id": request["_id"]})
     is_repl = bool(request.get("replacement_requested"))
     offers = []
@@ -122,6 +138,7 @@ class RequestIn(BaseModel):
     requirements: Optional[str] = None
     publish: bool = True
     terms: bool = False
+    preferred_office_id: Optional[str] = None
 
 
 class TopupIn(BaseModel):
@@ -182,6 +199,26 @@ async def pricing_quote(vehicle_type: str, pickup_city: str, delivery_city: str,
     return {"ok": True, "price": rule["price"], "version": rule.get("version"),
             "effective_date": rule.get("effective_date"),
             "commission_rate": settings["commission_rate"]}
+
+
+@router.get("/offices")
+async def list_verified_offices(user: dict = biz):
+    offices = await db.users.find({"role": "office", "status": "active",
+                                   "office_profile.verification_status": {"$in": ["verified", "active"]}}).to_list(200)
+    busy = set(await db.offers.distinct("worker_id", {"status": {"$in": BUSY_STATUSES}}))
+    out = []
+    for o in offices:
+        drivers = await db.users.find({"role": "worker", "worker_profile.provider_id": o["_id"],
+                                       "worker_profile.provider_status": "linked"}).to_list(500)
+        eligible = [d for d in drivers
+                    if (d.get("worker_profile") or {}).get("verification_status") == "verified"
+                    and (d.get("worker_profile") or {}).get("availability") == "available"
+                    and d["_id"] not in busy]
+        out.append({"_id": o["_id"],
+                    "office_name": (o.get("office_profile") or {}).get("office_name") or o.get("name"),
+                    "city": o.get("city"), "drivers_total": len(drivers),
+                    "drivers_available": len(eligible)})
+    return {"offices": out}
 
 
 @router.post("/requests")
@@ -267,6 +304,10 @@ async def create_request(body: RequestIn, user: dict = biz):
     await log_event(doc["_id"], None, user, "request_created", new_status="draft")
     matched = 0
     if body.publish:
+        bp = user.get("business_profile", {})
+        if bp.get("verification_status") not in ("verified", "active"):
+            raise HTTPException(status_code=403,
+                                detail="حساب منشأتك بانتظار التحقق — أكمل البيانات وانتظر اعتماد الإدارة قبل نشر الطلبات")
         await reserve_funds(user["_id"], doc)
         updates = {"status": "published", "published_at": now_iso()}
         if body.terms:
@@ -514,9 +555,14 @@ async def complete_request(request_id: str, user: dict = biz):
         commission = round(gross * commission_rate, 2)
         vat = round(commission * vat_pct / 100, 2)
         net = round(gross - commission, 2)
+        wp = ((await db.users.find_one({"_id": o["worker_id"]},
+                                       {"worker_profile.provider_id": 1,
+                                        "worker_profile.provider_status": 1}) or {}).get("worker_profile") or {})
+        office_id = wp.get("provider_id") if wp.get("provider_status") == "linked" else None
         settlement = {
             "_id": new_id(), "request_id": request_id, "offer_id": o["_id"],
             "driver_id": o["worker_id"], "business_id": user["_id"],
+            "office_id": office_id, "provider_type": "office" if office_id else "driver",
             "expected_qty": expected_qty, "loaded_qty": o.get("loaded_qty"),
             "driver_reported_qty": o.get("driver_reported_qty"),
             "final_qty": final_qty, "rate": rate, "commission_rate": commission_rate,

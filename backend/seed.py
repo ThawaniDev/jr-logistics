@@ -377,4 +377,12 @@ async def seed_all():
             await db.settings.update_one({"key": "platform"}, {"$set": updates}, upsert=True)
         await db.settings.update_one({"key": "seed_v7"}, {"$set": {"key": "seed_v7", "at": now_iso()}}, upsert=True)
 
+    if not await db.settings.find_one({"key": "seed_v8"}):
+        await db.users.update_many({"role": "business", "business_profile.verification_status": {"$exists": False}},
+                                   {"$set": {"business_profile.verification_status": "active"}})
+        await db.users.update_many({"role": "worker", "worker_profile.provider_type": {"$exists": False}},
+                                   {"$set": {"worker_profile.provider_type": "direct",
+                                             "worker_profile.provider_status": "direct"}})
+        await db.settings.update_one({"key": "seed_v8"}, {"$set": {"key": "seed_v8", "at": now_iso()}}, upsert=True)
+
     await db.settings.update_one({"key": "seed_v6"}, {"$set": {"key": "seed_v6", "at": now_iso()}}, upsert=True)

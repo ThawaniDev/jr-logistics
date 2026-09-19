@@ -98,8 +98,9 @@ async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payo
     payment_ref = body.reference or f"PAY-{new_id()[:10].upper()}"
     settings = await get_settings()
 
-    # money movement: driver net, platform commission, business reserved release/refund
-    await db.wallets.update_one({"user_id": s["driver_id"]}, {"$inc": {"available": s["net"]}})
+    # money movement: provider net (driver directly or linked courier office), platform commission, business reserved release/refund
+    payee_id = s.get("office_id") or s["driver_id"]
+    await db.wallets.update_one({"user_id": payee_id}, {"$inc": {"available": s["net"]}})
     share_reserved = s.get("reserved_share", s["gross"] + s["commission"])
     refund = round(share_reserved - s["gross"] - s["commission"], 2)
     await db.wallets.update_one({"user_id": s["business_id"]},
@@ -109,8 +110,8 @@ async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payo
     await db.users.update_one({"_id": s["driver_id"]}, {"$inc": {"worker_profile.jobs_completed": 1}})
 
     title = (r or {}).get("title", s["request_id"])
-    await add_txn(s["driver_id"], "payout", s["net"], "credit",
-                  f"صرف أرباح مهمة: {title}", s["request_id"], actor=user, settlement_id=settlement_id)
+    await add_txn(payee_id, "payout", s["net"], "credit",
+                  f"صرف مستحقات مهمة: {title}", s["request_id"], actor=user, settlement_id=settlement_id)
     await add_txn("platform", "commission", s["commission"], "credit",
                   f"عمولة المنصة — طلب: {title}", s["request_id"], actor=user, settlement_id=settlement_id)
     await add_txn(s["business_id"], "release", s["gross"] + s["commission"], "debit",
@@ -144,8 +145,14 @@ async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payo
                 note=body.note)
     await log_event(s["request_id"], s.get("offer_id"), user, "payout_executed",
                     new_status="paid", notes=f"ref={payment_ref}")
-    await notify(s["driver_id"], "تم إيداع أرباحك",
-                 f"تم إيداع {s['net']} ر.س في محفظتك عن مهمة: {title}", "earning", "/app/worker/wallet")
+    if s.get("office_id"):
+        await notify(s["office_id"], "تم إيداع مستحقات المكتب",
+                     f"تم إيداع {s['net']} ر.س عن مهمة: {title}", "earning", "/app/office/settlements")
+        await notify(s["driver_id"], "تمت تسوية مهمتك",
+                     f"تمت تسوية مهمة: {title} — تُصرف المستحقات عبر مكتبك وفق اتفاقيتك معه", "earning", "/app/worker/jobs")
+    else:
+        await notify(s["driver_id"], "تم إيداع أرباحك",
+                     f"تم إيداع {s['net']} ر.س في محفظتك عن مهمة: {title}", "earning", "/app/worker/wallet")
     # request settled when all its settlements are paid
     remaining = await db.settlements.count_documents(
         {"request_id": s["request_id"], "status": {"$nin": ["paid", "rejected"]}})

@@ -92,6 +92,9 @@ export const DEFAULT_VEHICLE_TYPES = ["sedan", "van", "dyna"];
 export const TEMP_TYPES = ["dry", "cold"];
 
 export const roleHome = (role) =>
-  role === "admin" || role === "staff" ? "/app/admin" : role === "worker" ? "/app/worker" : "/app/business";
+  role === "admin" || role === "staff" ? "/app/admin"
+    : role === "worker" ? "/app/worker"
+    : role === "office" ? "/app/office"
+    : "/app/business";
 
-export const ROLE_LABELS = { business: "منشأة", worker: "سائق / مندوب", admin: "مدير المنصة" };
+export const ROLE_LABELS = { business: "منشأة", worker: "سائق / مندوب", office: "مكتب توصيل", admin: "مدير المنصة" };

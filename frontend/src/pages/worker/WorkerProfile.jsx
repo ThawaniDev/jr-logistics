@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/i18n";
+import { ProviderCard } from "@/components/ProviderCard";
+import { OnboardingBanner } from "@/components/OnboardingBanner";
 import { ACTIVE_SERVICES, DEFAULT_VEHICLE_TYPES } from "@/lib/constants";
 
 export default function WorkerProfile() {
@@ -52,6 +54,8 @@ export default function WorkerProfile() {
         <h1 className="heading text-2xl font-extrabold">{t("profile.titleW")}</h1>
         <p className="text-sm text-slate-400 mt-1">{t("profile.subW")}</p>
       </div>
+      <OnboardingBanner profilePath="/app/worker/profile" />
+      <ProviderCard />
       <form onSubmit={save} className="card-surface p-6 space-y-5">
         <div className="flex items-center gap-3 pb-4 border-b border-navy-600/40">
           <div className="w-12 h-12 rounded-full bg-brand/10 border border-brand/25 flex items-center justify-center font-heading font-bold text-brand text-lg">

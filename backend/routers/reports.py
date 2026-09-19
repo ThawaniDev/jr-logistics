@@ -131,6 +131,35 @@ async def _report_rows(report_type: str, filters: dict) -> list[dict]:
                          "status": u.get("status"), "created_at": u.get("created_at"),
                          "last_login": u.get("last_login"), "audit_actions": acts})
         return rows
+    if report_type == "offices":
+        rows = []
+        async for u in db.users.find({"role": "office"}):
+            op = u.get("office_profile") or {}
+            drivers = await db.users.count_documents(
+                {"role": "worker", "worker_profile.provider_id": u["_id"],
+                 "worker_profile.provider_status": "linked"})
+            sts = await db.settlements.find({"office_id": u["_id"]}).to_list(500)
+            rows.append({"id": u["_id"], "name": u.get("name"),
+                         "office_name": op.get("office_name"), "cr_number": op.get("cr_number"),
+                         "phone": u.get("phone"), "city": u.get("city"),
+                         "registered": u.get("created_at"), "status": u.get("status"),
+                         "verification": op.get("verification_status"),
+                         "drivers": drivers,
+                         "settlements_count": len(sts),
+                         "receivables_pending": round(sum(x["net"] for x in sts if x["status"] in ("pending_review", "under_review", "approved")), 2),
+                         "paid_total": round(sum(x["net"] for x in sts if x["status"] == "paid"), 2)})
+        return rows
+    if report_type == "agreements":
+        rows = []
+        async for a in db.agreements.find().sort("created_at", -1).limit(1000):
+            o = await db.users.find_one({"_id": a["office_id"]}, {"name": 1, "office_profile": 1})
+            rows.append({"id": a["_id"], "office": ((o or {}).get("office_profile") or {}).get("office_name") or (o or {}).get("name"),
+                         "version": a.get("version"), "status": a.get("status"),
+                         "effective_date": a.get("effective_date"), "expiry_date": a.get("expiry_date"),
+                         "accepted_at": a.get("accepted_at"),
+                         "accepted_by": (a.get("accepted_by") or {}).get("name"),
+                         "created_at": a.get("created_at")})
+        return rows
     raise HTTPException(status_code=400, detail="نوع تقرير غير صالح")
 
 

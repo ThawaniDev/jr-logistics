@@ -42,6 +42,14 @@ import AdminFinance from "@/pages/admin/AdminFinance";
 import AdminReports from "@/pages/admin/AdminReports";
 import AdminLiveMap from "@/pages/admin/AdminLiveMap";
 import AdminOperations from "@/pages/admin/AdminOperations";
+import AdminOffices from "@/pages/admin/AdminOffices";
+import AdminVerification from "@/pages/admin/AdminVerification";
+import OfficeDashboard from "@/pages/office/OfficeDashboard";
+import OfficeDrivers from "@/pages/office/OfficeDrivers";
+import OfficeJobs from "@/pages/office/OfficeJobs";
+import OfficeSettlements from "@/pages/office/OfficeSettlements";
+import OfficeDocuments from "@/pages/office/OfficeDocuments";
+import OfficeAgreement from "@/pages/office/OfficeAgreement";
 
 function RoleIndex() {
   const { user, loading } = useAuth();
@@ -89,6 +97,15 @@ function App() {
               <Route path="admin/reports" element={<AdminReports />} />
               <Route path="admin/live-map" element={<AdminLiveMap />} />
               <Route path="admin/operations" element={<AdminOperations />} />
+              <Route path="admin/offices" element={<AdminOffices />} />
+              <Route path="admin/offices/:id" element={<AdminOffices />} />
+              <Route path="admin/verification" element={<AdminVerification />} />
+              <Route path="office" element={<OfficeDashboard />} />
+              <Route path="office/drivers" element={<OfficeDrivers />} />
+              <Route path="office/jobs" element={<OfficeJobs />} />
+              <Route path="office/settlements" element={<OfficeSettlements />} />
+              <Route path="office/documents" element={<OfficeDocuments />} />
+              <Route path="office/agreement" element={<OfficeAgreement />} />
               <Route path="admin/support" element={<Support />} />
               <Route path="support" element={<Support />} />
               <Route path="notifications" element={<Notifications />} />

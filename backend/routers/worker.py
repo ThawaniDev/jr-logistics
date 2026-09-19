@@ -6,7 +6,7 @@ from datetime import date, timedelta, datetime, timezone
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP
-from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings, audit, log_event
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings, audit, log_event, provider_blocks_paid_work
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 wrk = Depends(require_roles("worker"))
@@ -66,6 +66,11 @@ async def ensure_acceptable(user: dict, req: dict):
     if until and until > now_iso():
         raise HTTPException(status_code=403,
                             detail=f"حسابك موقوف مؤقتاً حتى {until[:10]} وفق سياسة الإلغاء — تواصل مع الدعم")
+    if await provider_blocks_paid_work(user):
+        raise HTTPException(status_code=400, detail={
+            "code": "PROVIDER_NOT_ELIGIBLE",
+            "message": "مكتب التوصيل المرتبط بحسابك غير مؤهل حالياً (التحقق أو الاتفاقية غير مكتملة) — تواصل مع مكتبك أو الدعم",
+        })
     active = await db.offers.find_one({"worker_id": user["_id"], "request_id": {"$ne": req["_id"]},
                                        "status": {"$in": ACTIVE_JOB_STATUSES}})
     if active:
@@ -341,6 +346,69 @@ async def cancel_job(offer_id: str, body: CancelJobIn, user: dict = wrk):
     await log_event(r["_id"], offer_id, user, "driver_cancelled",
                     new_status="cancelled", notes=reason)
     return {"ok": True, "replacement_offers": matched}
+
+
+# ---------- Provider (courier office) relationship ----------
+
+@router.get("/provider")
+async def my_provider(user: dict = wrk):
+    wp = user.get("worker_profile", {})
+    out = {"provider_type": wp.get("provider_type", "direct"),
+           "provider_status": wp.get("provider_status", "direct"),
+           "provider_since": wp.get("provider_since"), "office": None}
+    if wp.get("provider_id"):
+        off = await db.users.find_one({"_id": wp["provider_id"]}, {"name": 1, "office_profile": 1})
+        if off:
+            out["office"] = {"_id": off["_id"],
+                             "name": (off.get("office_profile") or {}).get("office_name") or off["name"],
+                             "verification_status": (off.get("office_profile") or {}).get("verification_status")}
+    return out
+
+
+@router.get("/provider-invites")
+async def provider_invites(user: dict = wrk):
+    invites = await db.office_invites.find({"phone": user["phone"], "status": "pending"}) \
+        .sort("created_at", -1).to_list(20)
+    for iv in invites:
+        off = await db.users.find_one({"_id": iv["office_id"]}, {"name": 1, "office_profile": 1})
+        iv["office_name"] = ((off or {}).get("office_profile") or {}).get("office_name") or (off or {}).get("name")
+    return {"invites": pub_list(invites)}
+
+
+class InviteRespondIn(BaseModel):
+    action: str
+
+
+@router.post("/provider-invites/{invite_id}/respond")
+async def respond_provider_invite(invite_id: str, body: InviteRespondIn, user: dict = wrk):
+    iv = await db.office_invites.find_one({"_id": invite_id, "phone": user["phone"], "status": "pending"})
+    if not iv:
+        raise HTTPException(status_code=404, detail="الدعوة غير موجودة أو انتهت")
+    if body.action == "decline":
+        await db.office_invites.update_one({"_id": invite_id},
+                                           {"$set": {"status": "declined", "responded_at": now_iso()}})
+        await notify(iv["office_id"], "اعتذر مندوب عن الدعوة",
+                     f"{user['name']} اعتذر عن الانضمام لمكتبك", "general", "/app/office/drivers")
+        await audit(user, "provider_invite_declined", "office_invite", invite_id)
+        return {"ok": True, "status": "declined"}
+    if body.action != "accept":
+        raise HTTPException(status_code=400, detail="إجراء غير صالح")
+    office = await db.users.find_one({"_id": iv["office_id"], "role": "office"})
+    if not office:
+        raise HTTPException(status_code=400, detail="المكتب غير موجود")
+    wp = user.get("worker_profile", {})
+    if wp.get("provider_status") == "linked" and wp.get("provider_id") != iv["office_id"]:
+        raise HTTPException(status_code=400, detail="أنت مرتبط بمكتب آخر — ألغِ الارتباط الحالي أولاً")
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {
+        "worker_profile.provider_id": iv["office_id"], "worker_profile.provider_type": "office",
+        "worker_profile.provider_status": "linked", "worker_profile.provider_since": now_iso()}})
+    await db.office_invites.update_one({"_id": invite_id}, {"$set": {
+        "status": "accepted", "responded_at": now_iso(), "accepted_by": user["_id"]}})
+    await notify(iv["office_id"], "مندوب جديد انضم لمكتبك",
+                 f"{user['name']} قبل دعوة الارتباط", "general", "/app/office/drivers")
+    await audit(user, "provider_linked", "office_invite", invite_id,
+                after={"office_id": iv["office_id"]})
+    return {"ok": True, "status": "linked"}
 
 
 @router.post("/offers/{offer_id}/checkin")

@@ -29,6 +29,7 @@ STAFF_ROLE_PRESETS = {
     "account_manager": ["users_view", "users_edit", "requests_view", "tickets_view",
                         "pricing_view", "reports_view", "stats"],
     "reports": ["reports_view", "reports_export", "stats", "audit_view"],
+    "platform_manager": ["stats"],
     "supervisor": ["stats", "requests", "requests_view", "drivers", "documents", "attendance",
                    "replacements", "cases", "tickets", "users", "users_view",
                    "withdrawals", "transactions", "reports", "ratings", "audit",
@@ -46,6 +47,7 @@ ALL_PERMISSIONS = [
     "reports_view", "reports_export",
     "staff_view", "staff_create", "staff_edit", "staff_suspend",
     "roles_manage", "permissions_manage",
+    "offices_view", "offices_manage", "verification_manage",
     "settings_view", "settings_edit", "audit_view",
     # legacy coarse keys kept for backward compatibility
     "stats", "users", "requests", "drivers", "documents", "attendance", "replacements",
@@ -58,6 +60,13 @@ DOC_TYPES = [
     {"key": "driving_license", "name": "رخصة القيادة", "required": True},
     {"key": "vehicle_registration", "name": "استمارة المركبة", "required": True},
     {"key": "vehicle_photo", "name": "صورة المركبة", "required": False},
+]
+
+OFFICE_DOC_TYPES = [
+    {"key": "office_cr", "name": "السجل التجاري", "required": True},
+    {"key": "office_license", "name": "الترخيص / التصريح", "required": True},
+    {"key": "iban_certificate", "name": "شهادة الآيبان", "required": False},
+    {"key": "other", "name": "مستند آخر", "required": False},
 ]
 
 TICKET_CATEGORIES = {

@@ -58,6 +58,21 @@ async def log_event(request_id: str, offer_id, actor, event_type: str,
     })
 
 
+async def provider_blocks_paid_work(worker: dict) -> bool:
+    """True if the driver is linked to an office that is not verified or lacks an accepted agreement."""
+    wp = worker.get("worker_profile", {})
+    oid = wp.get("provider_id")
+    if not oid or wp.get("provider_status") != "linked":
+        return False
+    office = await db.users.find_one({"_id": oid, "role": "office"})
+    if not office:
+        return False
+    if (office.get("office_profile") or {}).get("verification_status") not in ("verified", "active"):
+        return True
+    agr = await db.agreements.find_one({"office_id": oid, "status": "accepted"})
+    return not agr
+
+
 async def resolve_price(business_id: str, vehicle_type: str, temperature_type,
                         pickup_city: str, delivery_city: str):
     q = {"vehicle_type": vehicle_type, "pickup_city": pickup_city,

@@ -44,15 +44,16 @@ class RegisterIn(BaseModel):
     vehicle_type: Optional[str] = None
     bank_name: Optional[str] = None
     iban: Optional[str] = None
+    responsible_person: Optional[str] = None
+    address: Optional[str] = None
     vehicle_temperature: Optional[str] = None
     terms_accepted: bool = False
 
 
 def set_auth_cookie(response: Response, token: str):
-    response.set_cookie(
-        key="access_token", value=token, httponly=True, secure=True,
-        samesite="none", max_age=7 * 24 * 3600, path="/",
-    )
+    # Multi-tab session isolation: Bearer token lives in per-tab sessionStorage;
+    # a shared cookie would merge sessions across tabs, so it is intentionally not set.
+    return
 
 
 @router.post("/otp/send")
@@ -117,7 +118,7 @@ async def register(body: RegisterIn, response: Response, request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="جلسة التسجيل منتهية — أعد التحقق من رقمك")
     phone = payload["phone"]
-    if body.role not in ("business", "worker"):
+    if body.role not in ("business", "worker", "office"):
         raise HTTPException(status_code=400, detail="نوع الحساب غير صالح")
     if not body.terms_accepted:
         raise HTTPException(status_code=400,
@@ -125,6 +126,8 @@ async def register(body: RegisterIn, response: Response, request: Request):
     if body.role == "worker" and body.vehicle_type in ("van", "dyna") and \
             body.vehicle_temperature not in ("dry", "cold"):
         raise HTTPException(status_code=400, detail="حدد نوع الحرارة (جاف/مبرد) للمركبة")
+    if body.role == "office" and not (body.company_name or "").strip():
+        raise HTTPException(status_code=400, detail="أدخل اسم مكتب/شركة التوصيل")
     if await db.users.find_one({"phone": phone}):
         raise HTTPException(status_code=400, detail="هذا الرقم مسجل مسبقاً")
 
@@ -160,6 +163,24 @@ async def register(body: RegisterIn, response: Response, request: Request):
             "rating_count": 0,
             "jobs_completed": 0,
         }
+    if body.role == "office":
+        user["office_profile"] = {
+            "office_name": (body.company_name or "").strip(),
+            "cr_number": body.cr_number or "",
+            "responsible_person": body.responsible_person or body.name,
+            "address": body.address or "",
+            "city": body.city or "",
+            "bank_name": body.bank_name or "",
+            "iban": body.iban or "",
+            "verification_status": "pending",
+        }
+    if body.role == "business":
+        bp = user.get("business_profile") or {}
+        bp["verification_status"] = "pending"
+        bp["responsible_person"] = body.responsible_person or body.name
+        if body.address:
+            bp["address"] = body.address
+        user["business_profile"] = bp
     await db.users.insert_one(user)
     await get_wallet(user["_id"])
     from utils import get_settings

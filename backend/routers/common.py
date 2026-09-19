@@ -38,6 +38,95 @@ async def catalog_terms():
             "driver_text": s.get("terms_driver_text", "")}
 
 
+@router.get("/onboarding/status")
+async def onboarding_status(user: dict = Depends(get_current_user)):
+    from datetime import date as _date
+    from catalog import DOC_TYPES, OFFICE_DOC_TYPES
+    role = user["role"]
+    missing = []
+    docs = []
+    verification = None
+    agreement = None
+    total = 0
+    done = 0
+
+    def field(label, ok):
+        nonlocal total, done
+        total += 1
+        if ok:
+            done += 1
+        else:
+            missing.append(label)
+
+    if role == "worker":
+        wp = user.get("worker_profile", {})
+        verification = wp.get("verification_status", "pending")
+        field("الاسم الكامل", bool(user.get("name")))
+        field("المدينة", bool(user.get("city")))
+        field("نوع المركبة", bool(wp.get("vehicle_type")))
+        field("رقم الهوية/الإقامة", bool(wp.get("national_id")))
+        field("الآيبان", bool(wp.get("iban")))
+        today = _date.today().isoformat()
+        for dt in [d for d in DOC_TYPES if d["required"]]:
+            total += 1
+            doc = await db.driver_documents.find_one({"worker_id": user["_id"], "type": dt["key"]},
+                                                     sort=[("uploaded_at", -1)])
+            status = "missing"
+            if doc:
+                if doc.get("expiry_date") and doc["expiry_date"] < today:
+                    status = "expired"
+                    missing.append(f"مستند منتهٍ: {dt['name']}")
+                elif doc["status"] == "rejected":
+                    status = "rejected"
+                    missing.append(f"مستند مرفوض: {dt['name']}")
+                elif doc["status"] == "verified":
+                    status = "verified"
+                    done += 1
+                else:
+                    status = "pending"
+            else:
+                missing.append(f"مستند مطلوب: {dt['name']}")
+            docs.append({"type": dt["key"], "name": dt["name"], "status": status})
+    elif role == "business":
+        bp = user.get("business_profile", {})
+        verification = bp.get("verification_status", "pending")
+        field("اسم المنشأة", bool(bp.get("company_name")))
+        field("السجل التجاري", bool(bp.get("cr_number")))
+        field("المدينة", bool(user.get("city")))
+        field("البريد الإلكتروني", bool(user.get("email")))
+    elif role == "office":
+        op = user.get("office_profile", {})
+        verification = op.get("verification_status", "pending")
+        field("اسم المكتب", bool(op.get("office_name")))
+        field("السجل التجاري", bool(op.get("cr_number")))
+        field("المدينة", bool(op.get("city") or user.get("city")))
+        field("العنوان", bool(op.get("address")))
+        field("الآيبان", bool(op.get("iban")))
+        for dt in [d for d in OFFICE_DOC_TYPES if d["required"]]:
+            total += 1
+            doc = await db.office_documents.find_one({"office_id": user["_id"], "type": dt["key"],
+                                                      "status": {"$in": ["verified", "pending"]}})
+            if doc:
+                done += 1
+                docs.append({"type": dt["key"], "name": dt["name"], "status": doc["status"]})
+            else:
+                missing.append(f"مستند مطلوب: {dt['name']}")
+                docs.append({"type": dt["key"], "name": dt["name"], "status": "missing"})
+        agr = await db.agreements.find_one({"office_id": user["_id"]}, sort=[("created_at", -1)])
+        agreement = (agr or {}).get("status")
+        total += 1
+        if agreement == "accepted":
+            done += 1
+        else:
+            missing.append("قبول اتفاقية JR Logistics")
+    else:
+        return {"percent": 100, "missing": [], "docs": []}
+
+    percent = round(done / total * 100) if total else 100
+    return {"percent": percent, "missing": missing, "docs": docs,
+            "verification_status": verification, "agreement_status": agreement}
+
+
 class ProfileIn(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None

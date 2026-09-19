@@ -34,7 +34,11 @@ def _mk_business(adm):
         "name": "منشأة iter11", "company_name": "مستودع iter11", "city": "الرياض",
         "terms_accepted": True})
     assert r.status_code == 200, r.text
-    return r.json()["token"], r.json()["user"]["_id"]
+    biz_token = r.json()["token"]
+    biz_id = r.json()["user"]["_id"]
+    rv = requests.post(f"{API}/admin/accounts/{biz_id}/verify", headers=_h(adm), json={"action": "approve"})
+    assert rv.status_code == 200, rv.text
+    return biz_token, biz_id
 
 
 def _mk_driver():

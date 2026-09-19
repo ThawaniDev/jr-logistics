@@ -6,6 +6,7 @@ import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/i18n";
 import { CITIES } from "@/lib/constants";
+import { OnboardingBanner } from "@/components/OnboardingBanner";
 
 export default function BusinessProfile() {
   const { t, lang, setLang, LANGS } = useI18n();
@@ -38,6 +39,7 @@ export default function BusinessProfile() {
         <h1 className="heading text-2xl font-extrabold">{t("profile.titleB")}</h1>
         <p className="text-sm text-slate-400 mt-1">{t("profile.subB")}</p>
       </div>
+      <OnboardingBanner profilePath="/app/business/profile" />
       <form onSubmit={save} className="card-surface p-6 space-y-4">
         <div className="flex items-center gap-3 pb-4 border-b border-navy-600/40">
           <div className="w-12 h-12 rounded-2xl bg-brand/10 border border-brand/25 flex items-center justify-center">

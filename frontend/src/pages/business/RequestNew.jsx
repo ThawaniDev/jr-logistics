@@ -26,6 +26,8 @@ export default function RequestNew() {
     enabled_delivery_cities: ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة", "المدينة المنورة"],
   });
   const [quote, setQuote] = useState(null);
+  const [offices, setOffices] = useState([]);
+  const [preferredOffice, setPreferredOffice] = useState("");
   const [busy, setBusy] = useState(false);
   const [insufficient, setInsufficient] = useState(null);
   const [termsAgreed, setTermsAgreed] = useState(false);
@@ -42,6 +44,7 @@ export default function RequestNew() {
         enabled_delivery_cities: data.enabled_delivery_cities?.length ? data.enabled_delivery_cities : prev.enabled_delivery_cities,
       })))
       .catch(() => {});
+    api.get("/business/offices").then(({ data }) => setOffices(data.offices)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -99,6 +102,7 @@ export default function RequestNew() {
         vehicle_type: form.vehicle_type || null,
         temperature_type: ["van", "dyna"].includes(form.vehicle_type) ? form.temperature_type || null : null,
         requirements: form.requirements || null,
+        preferred_office_id: preferredOffice || null,
         publish: !asDraft,
         terms: !asDraft ? termsAgreed : false,
       };
@@ -248,6 +252,18 @@ export default function RequestNew() {
                 <select data-testid="req-delivery-city" value={form.delivery_city} onChange={set("delivery_city")}
                   className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
                   {defaults.enabled_delivery_cities.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1.5">{t("office.prefOffice")}</label>
+                <select data-testid="req-preferred-office" value={preferredOffice} onChange={(e) => setPreferredOffice(e.target.value)}
+                  className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                  <option value="">{t("office.anyProvider")}</option>
+                  {offices.map((o) => (
+                    <option key={o._id} value={o._id}>
+                      {o.office_name} — {t("office.capacity")}: {o.drivers_available}/{o.drivers_total}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="sm:col-span-2">

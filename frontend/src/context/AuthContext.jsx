@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    if (!localStorage.getItem("isnad_token") && !document.cookie.includes("access_token")) {
+    if (!sessionStorage.getItem("isnad_token")) {
       setLoading(false);
       return;
     }
@@ -30,7 +30,7 @@ export function AuthProvider({ children }) {
   }, [refresh]);
 
   const login = (token, u) => {
-    if (token) localStorage.setItem("isnad_token", token);
+    if (token) sessionStorage.setItem("isnad_token", token);
     setUser(u);
   };
 
@@ -40,7 +40,7 @@ export function AuthProvider({ children }) {
     } catch {
       /* ignore */
     }
-    localStorage.removeItem("isnad_token");
+    sessionStorage.removeItem("isnad_token");
     setUser(null);
     setWallet(null);
   };

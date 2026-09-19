@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Building2, UserCheck, ArrowLeft } from "lucide-react";
+import { Building2, UserCheck, ArrowLeft, Truck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -54,7 +54,7 @@ export default function Register() {
     e.preventDefault();
     if (!role) return toast.error(t("auth.errRole"));
     if (!form.name.trim()) return toast.error(t("auth.errName"));
-    if (role === "business" && !form.company_name.trim()) return toast.error(t("auth.errCompany"));
+    if (["business", "office"].includes(role) && !form.company_name.trim()) return toast.error(t("auth.errCompany"));
     if (role === "worker" && services.length === 0) return toast.error(t("auth.errServices"));
     if (role === "worker" && ["van", "dyna"].includes(form.vehicle_type) && !form.vehicle_temperature)
       return toast.error(t("termsReg.errTemp"));
@@ -93,6 +93,7 @@ export default function Register() {
   const roles = [
     { key: "business", icon: Building2, title: t("auth.business"), desc: t("auth.businessDesc") },
     { key: "worker", icon: UserCheck, title: t("auth.driver"), desc: t("auth.driverDesc") },
+    { key: "office", icon: Truck, title: t("office.roleTitle"), desc: t("office.roleDesc") },
   ];
 
   return (
@@ -145,7 +146,7 @@ export default function Register() {
                   {serviceAreas.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
-              {role === "business" && (
+              {["business", "office"].includes(role) && (
                 <>
                   <div>
                     <label className="text-xs text-slate-400 block mb-1.5">{t("auth.companyName")} *</label>

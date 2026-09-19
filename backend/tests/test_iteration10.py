@@ -61,6 +61,9 @@ class TestNewWorkflowE2E:
             "city": "الرياض", "industry": "logistics", "terms_accepted": True})
         assert r.status_code == 200, r.text
         biz_token = r.json()["token"]
+        biz_id = r.json()["user"]["_id"]
+        r = requests.post(f"{API}/admin/accounts/{biz_id}/verify", headers=_h(adm), json={"action": "approve"})
+        assert r.status_code == 200, r.text
 
         users = requests.get(f"{API}/admin/users", headers=_h(adm)).json()["users"]
         assert any(u.get("phone") == biz_phone for u in users), "new business not visible in Admin"
@@ -248,6 +251,9 @@ class TestNewWorkflowE2E:
             "registration_token": biz_reg["registration_token"], "role": "business",
             "name": "منشأة نزاع", "company_name": "مستودع النزاع", "city": "الرياض", "terms_accepted": True})
         biz_token = r.json()["token"]
+        biz_id = r.json()["user"]["_id"]
+        r = requests.post(f"{API}/admin/accounts/{biz_id}/verify", headers=_h(adm), json={"action": "approve"})
+        assert r.status_code == 200, r.text
         drv_reg = _otp_token(drv_phone)
         r = requests.post(f"{API}/auth/register", headers=_h(drv_reg["registration_token"]), json={
             "registration_token": drv_reg["registration_token"], "role": "worker",

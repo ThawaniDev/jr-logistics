@@ -600,3 +600,179 @@ async def compensate_offer(offer_id: str, body: CompensateIn, user: dict = p_cas
 async def audit_log(user: dict = p_audit):
     items = await db.audit_logs.find().sort("created_at", -1).to_list(300)
     return {"logs": pub_list(items)}
+
+
+# ---------- Courier offices & verification center ----------
+
+p_offices = Depends(require_staff("offices_view", "users_view"))
+p_offices_manage = Depends(require_staff("offices_manage", "verification_manage", "users_edit"))
+
+
+@router.get("/offices")
+async def list_offices(user: dict = p_offices):
+    offices = await db.users.find({"role": "office"}).sort("created_at", -1).to_list(500)
+    out = []
+    for o in offices:
+        drivers = await db.users.count_documents({"role": "worker",
+                                                  "worker_profile.provider_id": o["_id"],
+                                                  "worker_profile.provider_status": "linked"})
+        settlements = await db.settlements.find({"office_id": o["_id"]}).to_list(500)
+        out.append({**pub(o), "drivers_count": drivers,
+                    "settlements_total": round(sum(s["net"] for s in settlements), 2),
+                    "settlements_pending": sum(1 for s in settlements
+                                               if s["status"] in ("pending_review", "under_review"))})
+    return {"offices": out}
+
+
+@router.get("/offices/{oid}")
+async def office_detail(oid: str, user: dict = p_offices):
+    o = await db.users.find_one({"_id": oid, "role": "office"})
+    if not o:
+        raise HTTPException(status_code=404, detail="المكتب غير موجود")
+    drivers = await db.users.find({"role": "worker", "worker_profile.provider_id": oid}).to_list(500)
+    docs = await db.office_documents.find({"office_id": oid}).sort("uploaded_at", -1).to_list(50)
+    agr = await db.agreements.find_one({"office_id": oid}, sort=[("created_at", -1)])
+    settlements = await db.settlements.find({"office_id": oid}).sort("created_at", -1).to_list(100)
+    return {"office": pub(o), "drivers": pub_list(drivers), "documents": pub_list(docs),
+            "agreement": pub(agr) if agr else None, "settlements": pub_list(settlements)}
+
+
+class AccountVerifyIn(BaseModel):
+    action: Literal["approve", "reject", "suspend"]
+    reason: Optional[str] = None
+
+
+@router.post("/offices/{oid}/verify")
+async def verify_office(oid: str, body: AccountVerifyIn, user: dict = p_offices_manage):
+    o = await db.users.find_one({"_id": oid, "role": "office"})
+    if not o:
+        raise HTTPException(status_code=404, detail="المكتب غير موجود")
+    status_map = {"approve": "verified", "reject": "rejected", "suspend": "suspended"}
+    await db.users.update_one({"_id": oid}, {"$set": {
+        "office_profile.verification_status": status_map[body.action],
+        "office_profile.verified_by": user["_id"], "office_profile.verified_at": now_iso(),
+        "office_profile.rejection_reason": body.reason}})
+    titles = {"approve": "تم توثيق مكتبك", "reject": "تم رفض توثيق مكتبك", "suspend": "تم تعليق مكتبك"}
+    await notify(oid, titles[body.action],
+                 body.reason or f"حالة التوثيق: {status_map[body.action]}", "general", "/app/office")
+    await audit(user, f"office_{body.action}", "user", oid,
+                before={"verification_status": (o.get("office_profile") or {}).get("verification_status")},
+                after={"verification_status": status_map[body.action]}, note=body.reason)
+    return {"ok": True, "verification_status": status_map[body.action]}
+
+
+@router.post("/accounts/{uid}/verify")
+async def verify_business_account(uid: str, body: AccountVerifyIn, user: dict = p_offices_manage):
+    target = await db.users.find_one({"_id": uid, "role": "business"})
+    if not target:
+        raise HTTPException(status_code=404, detail="الحساب غير موجود")
+    status_map = {"approve": "verified", "reject": "rejected", "suspend": "suspended"}
+    await db.users.update_one({"_id": uid},
+                               {"$set": {"business_profile.verification_status": status_map[body.action]}})
+    titles = {"approve": "تم توثيق منشأتك", "reject": "تم رفض توثيق منشأتك", "suspend": "تم تعليق منشأتك"}
+    await notify(uid, titles[body.action],
+                 body.reason or f"حالة التوثيق: {status_map[body.action]}", "general", "/app/business")
+    await audit(user, f"business_{body.action}", "user", uid,
+                before={"verification_status": (target.get("business_profile") or {}).get("verification_status")},
+                after={"verification_status": status_map[body.action]}, note=body.reason)
+    return {"ok": True, "verification_status": status_map[body.action]}
+
+
+class OfficeAgreementIn(BaseModel):
+    version: str
+    effective_date: str
+    expiry_date: Optional[str] = None
+    commercial_terms: Optional[str] = None
+    provider_rate_note: Optional[str] = None
+    commission_pct: Optional[float] = None
+    settlement_terms: Optional[str] = None
+    payment_terms: Optional[str] = None
+    cancellation_rules: Optional[str] = None
+    no_show_rules: Optional[str] = None
+    replacement_rules: Optional[str] = None
+    dispute_rules: Optional[str] = None
+    responsibilities: Optional[str] = None
+    data_protection: Optional[str] = None
+
+
+@router.post("/offices/{oid}/agreement")
+async def upsert_office_agreement(oid: str, body: OfficeAgreementIn, user: dict = p_offices_manage):
+    o = await db.users.find_one({"_id": oid, "role": "office"})
+    if not o:
+        raise HTTPException(status_code=404, detail="المكتب غير موجود")
+    await db.agreements.update_many({"office_id": oid, "status": "pending_acceptance"},
+                                    {"$set": {"status": "superseded"}})
+    doc = {"_id": new_id(), "office_id": oid, "jr_entity": "JR Logistics",
+           **body.model_dump(), "status": "pending_acceptance",
+           "created_by": {"id": user["_id"], "name": user["name"]}, "created_at": now_iso()}
+    await db.agreements.insert_one(doc)
+    await notify(oid, "اتفاقية جديدة بانتظار قبولك",
+                 f"أصدرت JR Logistics اتفاقية إصدار {body.version} — راجعها واقبلها لتفعيل العمل المدفوع",
+                 "general", "/app/office/agreement")
+    await audit(user, "office_agreement_issued", "agreement", doc["_id"], after={"version": body.version})
+    return {"ok": True, "agreement": pub(doc)}
+
+
+@router.get("/verification-center")
+async def verification_center(user: dict = p_offices_manage):
+    from datetime import timedelta as _td
+    pending_businesses = await db.users.find(
+        {"role": "business", "business_profile.verification_status": "pending"}).to_list(200)
+    pending_offices = await db.users.find(
+        {"role": "office", "office_profile.verification_status": "pending"}).to_list(200)
+    pending_drivers = await db.users.find(
+        {"role": "worker", "worker_profile.verification_status": "pending"}).to_list(200)
+    driver_docs = await db.driver_documents.find(
+        {"status": {"$in": ["pending", "rejected"]}}).sort("uploaded_at", -1).to_list(300)
+    office_docs = await db.office_documents.find(
+        {"status": {"$in": ["pending", "rejected"]}}).sort("uploaded_at", -1).to_list(300)
+    today = date.today().isoformat()
+    warn = (date.today() + _td(days=30)).isoformat()
+    expiring = await db.driver_documents.find(
+        {"status": "verified", "expiry_date": {"$ne": None, "$gte": today, "$lte": warn}}).to_list(300)
+    expired = await db.driver_documents.find(
+        {"status": "verified", "expiry_date": {"$ne": None, "$lt": today}}).to_list(200)
+    return {"pending_businesses": pub_list(pending_businesses),
+            "pending_offices": pub_list(pending_offices),
+            "pending_drivers": pub_list(pending_drivers),
+            "driver_docs": pub_list(driver_docs), "office_docs": pub_list(office_docs),
+            "expiring_docs": pub_list(expiring), "expired_docs": pub_list(expired)}
+
+
+class OfficeDocReviewIn(BaseModel):
+    action: Literal["verify", "reject"]
+    reason: Optional[str] = None
+
+
+@router.post("/office-documents/{doc_id}/review")
+async def review_office_document(doc_id: str, body: OfficeDocReviewIn, user: dict = p_offices_manage):
+    d = await db.office_documents.find_one({"_id": doc_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    if body.action == "reject" and not (body.reason or "").strip():
+        raise HTTPException(status_code=400, detail="أدخل سبب الرفض")
+    status = "verified" if body.action == "verify" else "rejected"
+    await db.office_documents.update_one({"_id": doc_id}, {"$set": {
+        "status": status, "reviewed_by": user["_id"], "reviewed_at": now_iso(),
+        "rejection_reason": body.reason}})
+    await notify(d["office_id"],
+                 "تم توثيق مستندك" if status == "verified" else "تم رفض مستندك",
+                 f"مستند {d['type']}" + (f" — السبب: {body.reason}" if body.reason else ""),
+                 "general", "/app/office/documents")
+    await audit(user, f"office_document_{status}", "office_document", doc_id,
+                before={"status": d["status"]}, after={"status": status}, note=body.reason)
+    return {"ok": True, "status": status}
+
+
+@router.get("/office-documents/{doc_id}/file")
+async def office_document_file(doc_id: str, user: dict = p_offices_manage):
+    from fastapi import Response
+    from storage import get_object
+    d = await db.office_documents.find_one({"_id": doc_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="المستند غير موجود")
+    try:
+        data, ct = get_object(d["file_path"])
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="الملف غير موجود")
+    return Response(content=data, media_type=d.get("content_type") or ct)
