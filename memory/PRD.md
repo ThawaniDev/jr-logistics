@@ -135,6 +135,21 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Multi-tab session isolation revalidated: per-tab sessionStorage auth remains isolated and localStorage has no isnad_token
 - Verification: backend pytest test_iteration10/11/12 = 17/17 PASS; frontend production build PASS; testing_agent iteration_13 = 100% on retested surfaces, no open bugs
 
+## Implemented (2026-06-20, iteration 15) — 10-feature platform expansion
+1. **Office system** kept as full official entity (dashboard/jobs/financials/reports/documents/support/agreement/settings) — verified intact.
+2. **Platform-owned vs office drivers**: `affiliation` (platform/office) on admin users list, operations directory, drivers report, smart-suggest badges.
+3. **Custody/asset handover** (`routers/custody.py`): warehouse hands items (POS/network/phone/charger/bag/other) → driver confirms → per-item return (returned/not_returned/damaged) → status returned/issue. UI: CustodyPanel (RequestDetail), WorkerCustody (WorkerJobs).
+4. **Smart job assignment**: `score_drivers_for_request` (utils.py) ranks by availability/city/vehicle-temp/workload/time-overlap/provider eligibility; admin GET /requests/{id}/smart-suggest + smart-suggest UI in AdminRequests.
+5. **Driver replacement**: admin POST /offers/{id}/replace + office POST /jobs/{offer_id}/replace; `assignment_history` collection (offered/assigned/accepted/cancelled/no_show/replaced) shown in admin request detail.
+6. **SLA tracking**: `compute_offer_sla` (scheduled vs actual pickup/delivery: on_time/late/missed/at_risk/on_track); admin report type `sla`; office report sla_on_time/sla_late cards.
+7. **Company API** (`routers/integrations.py`): API keys (jrk_*, sha256, max 5, revoke), X-API-Key auth, /api/v1/jobs create/list/detail/events (reuses create_request), api_logs, business webhook_url + webhook_deliveries. UI: BusinessApi page.
+8. **Reports**: new types sla/custody/complaints; affiliation in drivers report.
+9. **Complaints/disputes** (`routers/complaints.py`): job-linked, party-only create (business/worker/office), open→in_progress→resolved/closed, notes, handler assignment, resolution required, full history. UI: shared Complaints page + AdminComplaints; new `complaints` permission.
+10. **Advanced settlements**: /finance/platform financial separation (customer_payments/platform_fees/office_earnings/driver_earnings); configurable settlement_period weekly/monthly (AdminSettings); batch payout /payouts/run-batch + /payouts/batches; AdminFinance separation cards + batches tab.
+- Also fixed latent bug: match_workers driver cap 50→500 (was dropping new drivers once pool >50).
+- Verification: backend pytest iteration10/11/12/14/15 = **25/25 PASS** (test_iteration15.py: custody/complaints/smart-assign+replace/company-API/settlement-period); testing_agent iteration_14.json = **100%** on all new surfaces; frontend build PASS. Older test files (iter 3-9) fail on outdated auth patterns — pre-existing, not regressions.
+
+
 ## Backlog
 - **P0 (OWNER ACCEPTANCE)**: Owner-controlled E2E pass on Preview using the accounts in /app/memory/test_credentials.md
 - **P0 (EXTERNAL/OPTIONAL)**: Universal Key balance inactive for cloud object storage; local persistent fallback at /app/backend/uploads remains functional. Owner can top up via Profile → Manage plan → Universal Key → Add Balance

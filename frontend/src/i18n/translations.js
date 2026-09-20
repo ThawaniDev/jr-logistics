@@ -35,7 +35,7 @@ export const translations = {
       language: "اللغة", status: "الحالة", date: "التاريخ", time: "الوقت", city: "المدينة",
       total: "الإجمالي", amount: "المبلغ", phone: "رقم الجوال", email: "البريد الإلكتروني",
       name: "الاسم", notes: "ملاحظات", viewAll: "عرض الكل", demo: "بيانات تجريبية",
-      hello: "أهلاً،",
+      hello: "أهلاً،", required: "أكمل جميع الحقول المطلوبة",
     },
     nav: {
       dashboard: "لوحة التحكم", requests: "طلباتي", newRequest: "طلب جديد",
@@ -549,7 +549,7 @@ export const translations = {
       language: "Language", status: "Status", date: "Date", time: "Time", city: "City",
       total: "Total", amount: "Amount", phone: "Phone number", email: "Email",
       name: "Name", notes: "Notes", viewAll: "View all", demo: "Demo data",
-      hello: "Hello,",
+      hello: "Hello,", required: "Please complete all required fields",
     },
     nav: {
       dashboard: "Dashboard", requests: "My Requests", newRequest: "New Request",
@@ -1061,7 +1061,7 @@ export const translations = {
       language: "زبان", status: "حیثیت", date: "تاریخ", time: "وقت", city: "شہر",
       total: "کل", amount: "رقم", phone: "فون نمبر", email: "ای میل",
       name: "نام", notes: "نوٹس", viewAll: "سب دیکھیں", demo: "ڈیمو ڈیٹا",
-      hello: "ہیلو،",
+      hello: "ہیلو،", required: "براہ کرم تمام مطلوبہ فیلڈز مکمل کریں",
     },
     nav: {
       dashboard: "ڈیش بورڈ", requests: "میری درخواستیں", newRequest: "نئی درخواست",

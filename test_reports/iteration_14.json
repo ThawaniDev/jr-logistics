@@ -1,0 +1,39 @@
+{
+  "summary": "Frontend E2E for iteration-14 features: admin complaints/finance/settings/reports/requests+smart-suggest, business API integration page, shared complaints page, Arabic RTL nav sidebar. Backend pytest 25/25 was pre-verified by main agent (skipped re-run per instructions). All new admin surfaces render and expose their key data-testids. Smart-suggest endpoint returns ranked candidates with score chips + affiliation badges (مندوب منصة / مندوب مكتب). Business API keys page, webhook input, and 4 documented endpoints render. Shared /app/complaints page (business role) loads and the 'شكوى جديدة' form opens with job/category/subject/description and submit button. Fixed one minor i18n gap surfaced during validation (common.required missing in ar/en/ur — form showed raw key when submitting an empty complaint).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Complaints form (validation)", "issue": "Empty-form submit showed raw i18n key 'common.required' — common namespace was missing this key in ar/en/ur. FIXED by tester by adding common.required to all three locales.", "selector": "[data-testid=\"complaint-submit\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AdminRequests → smart-suggest list", "issues": ["Non-fatal React hydration warning: Emergent dev instrumentation injects a <span data-ve-dynamic> inside <option> in the manual-match <select> (candidates loop line 160). Cosmetic dev-tool artifact only, no user impact and no functional break. Consider reporting to Emergent tooling team; app code itself is clean."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_14.json",
+    "/app/backend/tests/test_iteration14.py",
+    "/app/backend/tests/test_iteration15.py"
+  ],
+  "action_items": [
+    "Review the review-request selector spec mismatch: filter chips on /app/admin/complaints are implemented as data-testid='cfilter-{status}' (all/open/in_progress/resolved/closed), not 'complaint-toggle-*'. The 'complaint-toggle-{id}' testid is instead used for expanding an individual complaint row. This is a spec/doc drift, not a code bug — either update the request or rename. No functional impact.",
+    "Consider adding a lint / global fallback in i18n.js so any missing key renders a soft placeholder instead of the raw dotted path (protects against future 'common.<x>' regressions).",
+    "Investigate the React hydration warning caused by Emergent's x-source instrumentation injecting <span> inside <option>. Not a JR bug but noisy in the console on every request detail expand."
+  ],
+  "critical_code_review_comments": [
+    "Complaints.jsx line 50: t('common.required') was missing and fell through to raw key because i18n returns the key itself (truthy) when missing. Tester added common.required to ar/en/ur. Same pattern check recommended for any other t('common.*') calls to avoid silent regressions.",
+    "AdminRequests smart-suggest is correctly gated: 'suggest-assign-<id>' button is only rendered when s.eligible === true. In the test run, all 8 top candidates were ineligible (active job, unverified, different office etc.) so no assign button rendered — this is expected behavior, verified visually via reasons chip 'لديه مهمة نشطة · مكتب آخر'.",
+    "BusinessApi.jsx name input uses data-testid='api-key-name' (not 'api-key-name-input'). Consistent with existing conventions but worth noting since review-request examples used a different suffix.",
+    "AdminFinance separation cards: labels are 'مدفوعات العملاء / رسوم المنصة / مستحقات المكاتب (مدفوعة) / مستحقات المناديب (مدفوعة)' (finx namespace). All four render inside [data-testid=fin-separation-cards] with the batch bar + 'صرف دفعة التسويات المعتمدة' button and 4th tab 'دفعات الصرف' present."
+  ],
+  "updated_files": [
+    "/app/frontend/src/i18n/translations.js"
+  ],
+  "success_rate": {"backend": "not re-run (pytest 25/25 pre-verified by main agent)", "frontend": "100% on tested surfaces: admin login, admin sidebar (الشكاوى والنزاعات), AdminComplaints, AdminFinance (8 cards + batch bar + دفعات الصرف tab), AdminSettings (دورة التسوية weekly/monthly select saved), AdminReports (SLA/العهدة/الشكاوى chips), AdminRequests smart-suggest+replace+assign-history, BusinessApi (page, webhook, 4 endpoints doc), business sidebar nav, shared Complaints page + form."},
+  "test_credentials": "Admin emadabuharb1993@gmail.com / Isnad-Dev-Admin-2026! OK. Business +966530534184 OTP OK (used only for read-only sidebar/API/Complaints page checks, no destructive writes). No new seed data created; a single BusinessApi key create attempt failed validation because tester sent empty name (correct backend behavior).",
+  "seed_data_creation": "None. No new users/requests/keys/complaints created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Custody E2E (business→driver→checkin→handover→confirm→return) was NOT executed to save time — main agent's iteration10/12 pytest already covers it. Office role (/app/office/reports SLA cards) NOT executed — no cached office token; if needed, use test_credentials.md +966587127668. AdminComplaints filter chips are 'cfilter-{status}', NOT 'complaint-toggle-*'; 'complaint-toggle-{id}' is per-row expand toggle. BusinessApi name input testid is 'api-key-name' (not 'api-key-name-input'). Smart-suggest at /admin/requests only shows 'suggest-assign-*' for eligible drivers; in most published requests all top-8 candidates are ineligible so buttons are absent — that's expected. i18n common.required added in this iteration; if similar raw-key issues arise elsewhere, look for other missing common.* keys.",
+  "rca of the issue": "Complaints.jsx submits with `toast.error(t('common.required') || t('cmp.submit'))`. i18n.js returns the raw key when a translation is missing, which is truthy, so the fallback never kicks in. Result: 'common.required' rendered verbatim in the toast. Root cause: missing key `common.required` in translations.js for ar/en/ur. Fix: added the key with a proper Arabic/English/Urdu string in all three locale trees. Preventive: consider a t() wrapper that logs missing keys or returns a soft placeholder in production."
+}
