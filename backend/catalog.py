@@ -11,11 +11,11 @@ DEFAULT_SERVICE_AREAS = ["الرياض", "جدة", "الدمام", "الخبر",
 # Staff role presets (Super Admin = role "admin" with all permissions)
 STAFF_ROLE_PRESETS = {
     "support": ["stats", "tickets", "tickets_view", "tickets_manage", "users_view", "requests_view",
-                "attendance_view"],
+                "attendance_view", "complaints"],
     "operations": ["stats", "requests", "requests_view", "requests_edit", "requests_assign",
                    "drivers", "drivers_view", "documents", "attendance", "attendance_view",
                    "attendance_edit", "replacements", "replacement_manage", "cases", "tickets",
-                   "tickets_view", "users_view", "live_location_view"],
+                   "tickets_view", "users_view", "live_location_view", "complaints"],
     "operations_supervisor": ["stats", "requests", "requests_view", "requests_edit", "requests_assign",
                               "drivers", "drivers_view", "drivers_sensitive_view", "documents",
                               "attendance", "attendance_view", "attendance_edit", "replacements",
@@ -48,7 +48,7 @@ ALL_PERMISSIONS = [
     "staff_view", "staff_create", "staff_edit", "staff_suspend",
     "roles_manage", "permissions_manage",
     "offices_view", "offices_manage", "verification_manage",
-    "settings_view", "settings_edit", "audit_view",
+    "settings_view", "settings_edit", "audit_view", "complaints",
     # legacy coarse keys kept for backward compatibility
     "stats", "users", "requests", "drivers", "documents", "attendance", "replacements",
     "cases", "tickets", "wallets", "withdrawals", "transactions", "reports",
@@ -75,6 +75,8 @@ TICKET_CATEGORIES = {
     "worker": ["business_not_ready", "not_put_to_work", "shipment_count_differs",
                "location_issue", "task_issue", "attendance_issue", "payment_issue",
                "cancellation", "other"],
+    "office": ["driver_assignment", "driver_availability", "settlement_issue",
+               "payment_issue", "agreement", "documents", "operations", "urgent", "other"],
 }
 
 DURATION_DAYS = {"one_day": 1, "week": 7, "month": 30}

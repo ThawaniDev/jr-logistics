@@ -53,7 +53,7 @@ export default function OfficeSettlements() {
                     <td className="p-4 font-semibold text-xs">{s.request_title || s.request_id}</td>
                     <td className="p-4 text-xs">{s.driver_name}</td>
                     <td className="p-4 num">{s.final_qty}</td>
-                    <td className="p-4 num font-bold text-brand">{sar(s.net)}</td>
+                    <td className="p-4 num font-bold text-brand">{sar(s.provider_amount ?? s.net)}</td>
                     <td className="p-4"><StatusBadge kind="settlement" status={s.status} /></td>
                     <td className="p-4 num text-xs text-slate-400">{fmtDate(s.created_at)}</td>
                   </tr>

@@ -61,7 +61,9 @@ async def _report_rows(report_type: str, filters: dict) -> list[dict]:
                          "no_shows": by.get("no_show", 0),
                          "earnings_total": round(sum(o.get("earning") or 0 for o in offers if o["status"] == "paid"), 2),
                          "wallet_available": wallet.get("available", 0),
-                         "rating": wp.get("rating"), "cancel_count": wp.get("cancel_count", 0)})
+                         "rating": wp.get("rating"), "cancel_count": wp.get("cancel_count", 0),
+                         "affiliation": "office" if (wp.get("provider_type") == "office"
+                                                     and wp.get("provider_status") == "linked") else "platform"})
         return rows
     if report_type == "requests":
         query = {}
@@ -138,6 +140,10 @@ async def _report_rows(report_type: str, filters: dict) -> list[dict]:
             drivers = await db.users.count_documents(
                 {"role": "worker", "worker_profile.provider_id": u["_id"],
                  "worker_profile.provider_status": "linked"})
+            driver_ids = await db.users.distinct(
+                "_id", {"role": "worker", "worker_profile.provider_id": u["_id"],
+                        "worker_profile.provider_status": "linked"})
+            offers = await db.offers.find({"worker_id": {"$in": driver_ids}}).to_list(1000) if driver_ids else []
             sts = await db.settlements.find({"office_id": u["_id"]}).to_list(500)
             rows.append({"id": u["_id"], "name": u.get("name"),
                          "office_name": op.get("office_name"), "cr_number": op.get("cr_number"),
@@ -145,9 +151,18 @@ async def _report_rows(report_type: str, filters: dict) -> list[dict]:
                          "registered": u.get("created_at"), "status": u.get("status"),
                          "verification": op.get("verification_status"),
                          "drivers": drivers,
+                         "active_jobs": sum(1 for x in offers if x["status"] in ("accepted", "confirmed", "attendance_confirmed", "attended", "delivered_reported", "pending_settlement", "qty_disputed")),
+                         "completed_jobs": sum(1 for x in offers if x["status"] == "paid"),
+                         "cancelled_jobs": sum(1 for x in offers if x["status"] == "cancelled"),
+                         "no_shows": sum(1 for x in offers if x["status"] == "no_show"),
+                         "shipments": sum((x.get("final_qty") or x.get("driver_reported_qty") or x.get("loaded_qty") or 0) for x in offers),
                          "settlements_count": len(sts),
-                         "receivables_pending": round(sum(x["net"] for x in sts if x["status"] in ("pending_review", "under_review", "approved")), 2),
-                         "paid_total": round(sum(x["net"] for x in sts if x["status"] == "paid"), 2)})
+                         "receivables_pending": round(sum(x["net"] for x in sts if x["status"] in ("pending_review", "under_review")), 2),
+                         "approved_amount": round(sum(x["net"] for x in sts if x["status"] == "approved"), 2),
+                         "paid_total": round(sum(x["net"] for x in sts if x["status"] == "paid"), 2),
+                         "support_tickets": await db.tickets.count_documents({"user_id": u["_id"]}),
+                         "documents": await db.office_documents.count_documents({"office_id": u["_id"]}),
+                         "agreements": await db.agreements.count_documents({"office_id": u["_id"]})})
         return rows
     if report_type == "agreements":
         rows = []
@@ -159,6 +174,59 @@ async def _report_rows(report_type: str, filters: dict) -> list[dict]:
                          "accepted_at": a.get("accepted_at"),
                          "accepted_by": (a.get("accepted_by") or {}).get("name"),
                          "created_at": a.get("created_at")})
+        return rows
+    if report_type == "sla":
+        from utils import compute_offer_sla
+        settings = await get_settings()
+        grace = settings.get("alert_no_checkin_grace_min", 30)
+        rows = []
+        async for o in db.offers.find(
+                {"status": {"$nin": ["offered", "rejected", "replacement_locked"]}}).sort("created_at", -1).limit(2000):
+            r = await db.requests.find_one({"_id": o["request_id"]},
+                                           {"title": 1, "city": 1, "start_date": 1,
+                                            "start_time": 1, "duration_days": 1})
+            if not r:
+                continue
+            w = await db.users.find_one({"_id": o["worker_id"]}, {"name": 1})
+            sla = compute_offer_sla(o, r, grace)
+            rows.append({"id": o["_id"], "driver": (w or {}).get("name"),
+                         "request": r.get("title"), "city": r.get("city"),
+                         "offer_status": o["status"],
+                         "scheduled_start": sla.get("scheduled_start"),
+                         "actual_start": sla.get("actual_start"),
+                         "start_delay_min": sla.get("start_delay_min"),
+                         "start_sla": sla.get("start_status"),
+                         "scheduled_end": sla.get("scheduled_end"),
+                         "actual_end": sla.get("actual_end"),
+                         "end_delay_min": sla.get("end_delay_min"),
+                         "end_sla": sla.get("end_status")})
+        return rows
+    if report_type == "custody":
+        rows = []
+        async for c in db.custody.find().sort("created_at", -1).limit(1000):
+            w = await db.users.find_one({"_id": c["worker_id"]}, {"name": 1})
+            b = await db.users.find_one({"_id": c["business_id"]},
+                                        {"name": 1, "business_profile.company_name": 1})
+            rows.append({"id": c["_id"], "driver": (w or {}).get("name"),
+                         "business": ((b or {}).get("business_profile") or {}).get("company_name") or (b or {}).get("name"),
+                         "request_id": c.get("request_id"), "status": c.get("status"),
+                         "items": ", ".join(f"{i.get('type')}x{i.get('qty', 1)}" for i in c.get("items", [])),
+                         "handed_at": c.get("handed_at"), "confirmed_at": c.get("confirmed_at"),
+                         "returned_at": c.get("returned_at"),
+                         "issues": sum(1 for x in c.get("returns", []) if x.get("status") != "returned")})
+        return rows
+    if report_type == "complaints":
+        rows = []
+        async for c in db.complaints.find().sort("created_at", -1).limit(1000):
+            u = await db.users.find_one({"_id": c["user_id"]}, {"name": 1})
+            rows.append({"id": c["_id"], "subject": c.get("subject"), "category": c.get("category"),
+                         "status": c.get("status"), "priority": c.get("priority"),
+                         "user": (u or {}).get("name"), "user_role": c.get("user_role"),
+                         "request_id": c.get("request_id"),
+                         "assigned_to": c.get("assigned_to_name"),
+                         "resolution": c.get("resolution"),
+                         "notes": len(c.get("notes", [])),
+                         "created_at": c.get("created_at"), "updated_at": c.get("updated_at")})
         return rows
     raise HTTPException(status_code=400, detail="نوع تقرير غير صالح")
 

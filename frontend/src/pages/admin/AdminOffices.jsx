@@ -14,7 +14,12 @@ export default function AdminOffices() {
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState("");
-  const [agrForm, setAgrForm] = useState({ version: "", effective_date: "", commercial_terms: "", provider_rate_note: "", settlement_terms: "", payment_terms: "" });
+  const [agrForm, setAgrForm] = useState({
+    version: "", effective_date: "", provider_rate: "", commission_pct: "",
+    commercial_terms: "", provider_rate_note: "", settlement_terms: "", payment_terms: "",
+    cancellation_rules: "", no_show_rules: "", replacement_rules: "",
+    responsibilities: "", data_protection: "", dispute_rules: "",
+  });
 
   const load = () => api.get("/admin/offices").then(({ data }) => setOffices(data.offices)).catch((e) => toast.error(errMsg(e)));
   useEffect(() => { load(); }, []);
@@ -26,14 +31,14 @@ export default function AdminOffices() {
 
   const verify = async (id, action) => {
     let reason = null;
-    if (action !== "approve") {
+    if (action === "reject") {
       reason = window.prompt(t("vc.rejectReason")) || "";
       if (!reason.trim()) return toast.error(t("vc.reasonRequired"));
     }
     setBusy(id + action);
     try {
       await api.post(`/admin/offices/${id}/verify`, { action, reason });
-      toast.success(action === "approve" ? t("vc.approved") : t("vc.rejectedT"));
+      toast.success(["approve", "reactivate"].includes(action) ? t("vc.approved") : action === "suspend" ? t("vc.suspend") : t("vc.rejectedT"));
       load();
       if (selected === id) openDetail(id);
     } catch (e) {
@@ -48,9 +53,19 @@ export default function AdminOffices() {
     if (!agrForm.version.trim() || !agrForm.effective_date) return toast.error(t("common.required"));
     setBusy("agr");
     try {
-      await api.post(`/admin/offices/${selected}/agreement`, agrForm);
+      const payload = {
+        ...agrForm,
+        provider_rate: agrForm.provider_rate !== "" ? Number(agrForm.provider_rate) : null,
+        commission_pct: agrForm.commission_pct !== "" ? Number(agrForm.commission_pct) : null,
+      };
+      await api.post(`/admin/offices/${selected}/agreement`, payload);
       toast.success(t("vc.agreementIssued"));
-      setAgrForm({ version: "", effective_date: "", commercial_terms: "", provider_rate_note: "", settlement_terms: "", payment_terms: "" });
+      setAgrForm({
+        version: "", effective_date: "", provider_rate: "", commission_pct: "",
+        commercial_terms: "", provider_rate_note: "", settlement_terms: "", payment_terms: "",
+        cancellation_rules: "", no_show_rules: "", replacement_rules: "",
+        responsibilities: "", data_protection: "", dispute_rules: "",
+      });
       openDetail(selected);
     } catch (e2) {
       toast.error(errMsg(e2));
@@ -117,6 +132,12 @@ export default function AdminOffices() {
                       <Ban className="w-3 h-3" /> {t("vc.suspend")}
                     </button>
                   )}
+                  {["suspended", "rejected"].includes(op.verification_status) && (
+                    <button onClick={() => verify(o._id, "reactivate")} disabled={busy} data-testid={`office-reactivate-${o._id}`}
+                      className="chip bg-emerald-500/10 border-emerald-500/30 text-emerald-300 text-[11px]">
+                      <CheckCircle2 className="w-3 h-3" /> {t("vc.reactivate")}
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -162,11 +183,31 @@ export default function AdminOffices() {
                 onChange={(e) => setAgrForm({ ...agrForm, version: e.target.value })} className="bg-navy-800 border-navy-600 h-10 text-xs" />
               <Input data-testid="agr-effective" type="date" value={agrForm.effective_date}
                 onChange={(e) => setAgrForm({ ...agrForm, effective_date: e.target.value })} className="bg-navy-800 border-navy-600 h-10 text-xs num" />
-              <Input data-testid="agr-rate" placeholder={t("office.providerRate")} value={agrForm.provider_rate_note}
+              <Input data-testid="agr-rate" type="number" min="0" step="0.01" placeholder={t("office.providerRate")} value={agrForm.provider_rate}
+                onChange={(e) => setAgrForm({ ...agrForm, provider_rate: e.target.value })} className="bg-navy-800 border-navy-600 h-10 text-xs num" />
+              <Input data-testid="agr-commission" type="number" min="0" step="0.1" placeholder={t("office.jrFee")} value={agrForm.commission_pct}
+                onChange={(e) => setAgrForm({ ...agrForm, commission_pct: e.target.value })} className="bg-navy-800 border-navy-600 h-10 text-xs num" />
+              <Input data-testid="agr-rate-note" placeholder={t("office.providerRate")} value={agrForm.provider_rate_note}
                 onChange={(e) => setAgrForm({ ...agrForm, provider_rate_note: e.target.value })} className="bg-navy-800 border-navy-600 h-10 text-xs" />
+              <Input data-testid="agr-payment" placeholder={t("office.paymentTerms")} value={agrForm.payment_terms}
+                onChange={(e) => setAgrForm({ ...agrForm, payment_terms: e.target.value })} className="bg-navy-800 border-navy-600 h-10 text-xs" />
             </div>
-            <Input data-testid="agr-terms" placeholder={t("office.commercialTerms")} value={agrForm.commercial_terms}
-              onChange={(e) => setAgrForm({ ...agrForm, commercial_terms: e.target.value })} className="bg-navy-800 border-navy-600 h-10 text-xs" />
+            <div className="grid sm:grid-cols-2 gap-3">
+              {[
+                ["commercial_terms", "office.commercialTerms", "agr-terms"],
+                ["settlement_terms", "office.settlementTerms", "agr-settlement"],
+                ["cancellation_rules", "reqDetail.cancelPolicy", "agr-cancel"],
+                ["no_show_rules", "admin.noShowRules", "agr-noshow"],
+                ["replacement_rules", "admin.replacementRules", "agr-replacement"],
+                ["responsibilities", "office.responsibilities", "agr-responsibilities"],
+                ["data_protection", "office.dataProtection", "agr-data-protection"],
+                ["dispute_rules", "admin.disputeRules", "agr-dispute"],
+              ].map(([field, label, testid]) => (
+                <Input key={field} data-testid={testid} placeholder={t(label)} value={agrForm[field]}
+                  onChange={(e) => setAgrForm({ ...agrForm, [field]: e.target.value })}
+                  className="bg-navy-800 border-navy-600 h-10 text-xs" />
+              ))}
+            </div>
             <button disabled={busy === "agr"} data-testid="agr-issue-btn"
               className="bg-brand text-navy-900 font-bold rounded-xl px-5 py-2 text-xs hover:bg-brand-hover disabled:opacity-50">
               {t("vc.newAgreement")}

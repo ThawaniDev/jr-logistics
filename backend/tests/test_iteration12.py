@@ -185,9 +185,17 @@ class TestOfficeDriversAndSettlement:
             "preferred_office_id": oid, "publish": True, "terms": True})
         assert r.status_code == 200, r.text
         req_id = r.json()["request"]["_id"]
+        # assignment-first: office receives the opportunity before any driver offer exists
+        assert all(o["request_id"] != req_id for o in requests.get(f"{API}/worker/offers", headers=_h(drv_token)).json()["offers"])
+        opps = requests.get(f"{API}/office/opportunities", headers=_h(off_token)).json()["opportunities"]
+        opp = next(o for o in opps if o["_id"] == req_id)
+        eligible = next(d for d in opp["eligible_drivers"] if d["_id"] == drv_id and d["eligible"])
+        r = requests.post(f"{API}/office/opportunities/{req_id}/assign", headers=_h(off_token),
+                          json={"driver_id": eligible["_id"]})
+        assert r.status_code == 200, r.text
         offers = requests.get(f"{API}/worker/offers", headers=_h(drv_token)).json()["offers"]
         offer = next((o for o in offers if o["request_id"] == req_id), None)
-        assert offer, "office driver did not receive the office-specific offer"
+        assert offer, "office driver did not receive the assigned offer"
         requests.post(f"{API}/worker/offers/{offer['_id']}/respond", headers=_h(drv_token),
                       json={"action": "accept", "terms": True})
         requests.post(f"{API}/business/requests/{req_id}/confirm", headers=_h(biz_token))

@@ -7,6 +7,7 @@ import {
   LayoutDashboard, ClipboardList, PlusCircle, Wallet, LifeBuoy, Building2,
   Zap, Briefcase, User, Users, Banknote, Bell, LogOut, Menu, X, ShieldCheck,
   Settings, FileCheck, AlertTriangle, ScrollText, XCircle, Tag, Landmark, MapPin, BarChart3,
+  MessageSquareWarning, Plug,
 } from "lucide-react";
 import { sar } from "@/lib/constants";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -19,6 +20,8 @@ const NAVS = {
     { to: "/app/business/wallet", key: "nav.wallet", icon: Wallet },
     { to: "/app/notifications", key: "nav.notifications", icon: Bell },
     { to: "/app/support", key: "nav.support", icon: LifeBuoy },
+    { to: "/app/complaints", key: "nav.complaints", icon: MessageSquareWarning },
+    { to: "/app/business/api", key: "nav.apiIntegration", icon: Plug },
     { to: "/app/business/profile", key: "nav.bizProfile", icon: Building2 },
   ],
   worker: [
@@ -29,17 +32,24 @@ const NAVS = {
     { to: "/app/worker/documents", key: "nav.myDocuments", icon: FileCheck },
     { to: "/app/notifications", key: "nav.notifications", icon: Bell },
     { to: "/app/support", key: "nav.support", icon: LifeBuoy },
+    { to: "/app/complaints", key: "nav.complaints", icon: MessageSquareWarning },
     { to: "/app/worker/profile", key: "nav.myProfile", icon: User },
   ],
   office: [
     { to: "/app/office", key: "nav.dashboard", icon: LayoutDashboard, end: true },
     { to: "/app/office/drivers", key: "office.myDrivers", icon: Users },
-    { to: "/app/office/jobs", key: "office.jobs", icon: Briefcase },
+    { to: "/app/office/opportunities", key: "office.opportunities", icon: Zap },
+    { to: "/app/office/active-jobs", key: "office.activeJobs", icon: Briefcase },
     { to: "/app/office/settlements", key: "office.settlements", icon: Landmark },
+    { to: "/app/office/receivables", key: "office.receivables", icon: Wallet },
+    { to: "/app/office/payments", key: "office.payments", icon: Banknote },
     { to: "/app/office/documents", key: "office.documents", icon: FileCheck },
     { to: "/app/office/agreement", key: "office.agreement", icon: ScrollText },
-    { to: "/app/notifications", key: "nav.notifications", icon: Bell },
     { to: "/app/support", key: "nav.support", icon: LifeBuoy },
+    { to: "/app/complaints", key: "nav.complaints", icon: MessageSquareWarning },
+    { to: "/app/office/reports", key: "office.reports", icon: BarChart3 },
+    { to: "/app/office/settings", key: "office.settings", icon: Settings },
+    { to: "/app/notifications", key: "nav.notifications", icon: Bell },
   ],
   admin: [
     { to: "/app/admin", key: "nav.dashboard", icon: LayoutDashboard, end: true, perm: "stats" },
@@ -55,6 +65,7 @@ const NAVS = {
     { to: "/app/admin/reports", key: "nav.reports", icon: BarChart3, perm: "reports_view" },
     { to: "/app/admin/documents", key: "nav.documents", icon: FileCheck, perm: "documents" },
     { to: "/app/admin/cases", key: "nav.cases", icon: AlertTriangle, perm: "cases" },
+    { to: "/app/admin/complaints", key: "nav.complaints", icon: MessageSquareWarning, perm: "cases" },
     { to: "/app/admin/withdrawals", key: "nav.withdrawals", icon: Banknote, perm: "withdrawals" },
     { to: "/app/admin/settings", key: "nav.pricing", icon: Settings, perm: "*" },
     { to: "/app/admin/staff", key: "nav.staff", icon: ShieldCheck, perm: "*" },

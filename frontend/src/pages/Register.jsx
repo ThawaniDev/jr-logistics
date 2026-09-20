@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Building2, UserCheck, ArrowLeft, Truck } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/i18n";
@@ -14,8 +15,12 @@ export default function Register() {
   const { t } = useI18n();
   const [token, setToken] = useState(null);
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState(null);
-  const [form, setForm] = useState({ name: "", email: "", city: "", company_name: "", cr_number: "", industry: "", national_id: "", vehicle_type: "", vehicle_temperature: "" });
+  const [role, setRole] = useState(() => sessionStorage.getItem("isnad_pre_role"));
+  const [form, setForm] = useState({
+    name: "", email: "", city: "", company_name: "", cr_number: "", industry: "",
+    national_id: "", vehicle_type: "", vehicle_temperature: "", address: "",
+    bank_name: "", iban: "", tax_number: "", compliance_notes: "",
+  });
   const [terms, setTerms] = useState(null);
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [services, setServices] = useState(["delivery_driver"]);
@@ -73,11 +78,17 @@ export default function Register() {
         national_id: form.national_id || null,
         vehicle_type: form.vehicle_type || null,
         vehicle_temperature: ["van", "dyna"].includes(form.vehicle_type) ? form.vehicle_temperature || null : null,
+        address: form.address || null,
+        bank_name: form.bank_name || null,
+        iban: form.iban || null,
+        tax_number: form.tax_number || null,
+        compliance_notes: form.compliance_notes || null,
         terms_accepted: termsAgreed,
         services,
       });
       sessionStorage.removeItem("isnad_reg_token");
       sessionStorage.removeItem("isnad_reg_phone");
+      sessionStorage.removeItem("isnad_pre_role");
       login(data.token, data.user);
       toast.success(t("auth.regSuccess"));
       navigate(roleHome(data.user.role));
@@ -101,7 +112,7 @@ export default function Register() {
       <div className="absolute top-4 end-4 z-10">
         <LanguageSwitcher />
       </div>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         <Link to="/login" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-brand mb-6" data-testid="register-back">
           <ArrowLeft className="w-4 h-4 rtl:rotate-180" /> {t("auth.backToLogin")}
         </Link>
@@ -111,7 +122,7 @@ export default function Register() {
             <span className="num text-brand font-semibold">{phone}</span> — {t("auth.regVerified")}
           </p>
 
-          <div className="grid grid-cols-2 gap-4 mt-8">
+          <div className="grid sm:grid-cols-3 gap-4 mt-8">
             {roles.map((r) => (
               <button
                 key={r.key}
@@ -132,7 +143,7 @@ export default function Register() {
           <form onSubmit={submit} className="card-surface p-6 mt-6 space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-slate-400 block mb-1.5">{role === "business" ? t("auth.ownerName") : t("auth.fullName")} *</label>
+                <label className="text-xs text-slate-400 block mb-1.5">{["business", "office"].includes(role) ? t("auth.ownerName") : t("auth.fullName")} *</label>
                 <Input data-testid="register-name" value={form.name} onChange={set("name")} className="bg-navy-800 border-navy-600 h-11" />
               </div>
               <div>
@@ -149,7 +160,7 @@ export default function Register() {
               {["business", "office"].includes(role) && (
                 <>
                   <div>
-                    <label className="text-xs text-slate-400 block mb-1.5">{t("auth.companyName")} *</label>
+                    <label className="text-xs text-slate-400 block mb-1.5">{role === "office" ? t("office.officeName") : t("auth.companyName")} *</label>
                     <Input data-testid="register-company" value={form.company_name} onChange={set("company_name")} className="bg-navy-800 border-navy-600 h-11" />
                   </div>
                   <div>
@@ -159,6 +170,30 @@ export default function Register() {
                   <div>
                     <label className="text-xs text-slate-400 block mb-1.5">{t("auth.industry")}</label>
                     <Input data-testid="register-industry" value={form.industry} onChange={set("industry")} placeholder={t("auth.industryPh")} className="bg-navy-800 border-navy-600 h-11" />
+                  </div>
+                </>
+              )}
+              {role === "office" && (
+                <>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-slate-400 block mb-1.5">{t("office.fullAddress")}</label>
+                    <Input data-testid="register-address" value={form.address} onChange={set("address")} className="bg-navy-800 border-navy-600 h-11" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1.5">{t("office.bankName")}</label>
+                    <Input data-testid="register-bank" value={form.bank_name} onChange={set("bank_name")} className="bg-navy-800 border-navy-600 h-11" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1.5">{t("office.iban")}</label>
+                    <Input data-testid="register-iban" dir="ltr" value={form.iban} onChange={set("iban")} className="bg-navy-800 border-navy-600 h-11 text-left" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1.5">{t("office.taxNumber")}</label>
+                    <Input data-testid="register-tax" dir="ltr" value={form.tax_number} onChange={set("tax_number")} className="bg-navy-800 border-navy-600 h-11 text-left" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-slate-400 block mb-1.5">{t("office.complianceNotes")}</label>
+                    <Textarea data-testid="register-compliance" value={form.compliance_notes} onChange={set("compliance_notes")} className="bg-navy-800 border-navy-600 min-h-[80px]" />
                   </div>
                 </>
               )}
@@ -217,7 +252,7 @@ export default function Register() {
               <div className="rounded-2xl border border-navy-600/50 bg-navy-800/40 p-5 space-y-3" data-testid="register-terms-block">
                 <p className="font-heading font-bold text-sm">{t("termsReg.title")}</p>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  {terms ? (role === "business" ? terms.business_text : terms.driver_text) : ""}
+                  {terms ? (role === "worker" ? terms.driver_text : terms.business_text) : ""}
                 </p>
                 <p className="text-[11px] text-slate-500">{t("termsReg.version")}: <span className="num">{terms?.version}</span> — {t("termsReg.legalNote")}</p>
                 <label className="flex items-start gap-3 cursor-pointer text-sm pt-1" data-testid="register-terms-wrap">

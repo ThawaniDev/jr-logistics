@@ -22,6 +22,9 @@ from routers.reports import router as reports_router
 from routers.jobs import router as jobs_router
 from routers.operations import router as operations_router
 from routers.office import router as office_router
+from routers.custody import router as custody_router
+from routers.complaints import router as complaints_router
+from routers.integrations import router as integrations_router
 from seed import seed_all
 from storage import init_storage
 
@@ -40,6 +43,9 @@ app.include_router(pricing_router)
 app.include_router(finance_router)
 app.include_router(location_router)
 app.include_router(reports_router)
+app.include_router(custody_router)
+app.include_router(complaints_router)
+app.include_router(integrations_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,6 +72,13 @@ async def startup():
     await db.client_pricing.create_index([("business_id", 1), ("status", 1)])
     await db.settlements.create_index("request_id")
     await db.settlements.create_index("status")
+    await db.custody.create_index("offer_id")
+    await db.complaints.create_index("user_id")
+    await db.complaints.create_index("request_id")
+    await db.api_keys.create_index("key_hash")
+    await db.api_logs.create_index("business_id")
+    await db.assignment_history.create_index("request_id")
+    await db.webhook_deliveries.create_index("business_id")
     await db.ledger.create_index("created_at")
     await db.ledger.create_index("user_id")
     try:

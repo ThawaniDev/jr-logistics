@@ -12,6 +12,7 @@ import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Notifications from "@/pages/Notifications";
 import Support from "@/pages/Support";
+import Complaints from "@/pages/Complaints";
 
 import BusinessDashboard from "@/pages/business/BusinessDashboard";
 import BusinessRequests from "@/pages/business/BusinessRequests";
@@ -19,6 +20,7 @@ import RequestNew from "@/pages/business/RequestNew";
 import RequestDetail from "@/pages/business/RequestDetail";
 import BusinessWallet from "@/pages/business/BusinessWallet";
 import BusinessProfile from "@/pages/business/BusinessProfile";
+import BusinessApi from "@/pages/business/BusinessApi";
 
 import WorkerDashboard from "@/pages/worker/WorkerDashboard";
 import WorkerOpportunities from "@/pages/worker/WorkerOpportunities";
@@ -44,10 +46,16 @@ import AdminLiveMap from "@/pages/admin/AdminLiveMap";
 import AdminOperations from "@/pages/admin/AdminOperations";
 import AdminOffices from "@/pages/admin/AdminOffices";
 import AdminVerification from "@/pages/admin/AdminVerification";
+import AdminComplaints from "@/pages/admin/AdminComplaints";
 import OfficeDashboard from "@/pages/office/OfficeDashboard";
 import OfficeDrivers from "@/pages/office/OfficeDrivers";
+import OfficeOpportunities from "@/pages/office/OfficeOpportunities";
 import OfficeJobs from "@/pages/office/OfficeJobs";
 import OfficeSettlements from "@/pages/office/OfficeSettlements";
+import OfficeReceivables from "@/pages/office/OfficeReceivables";
+import OfficePayments from "@/pages/office/OfficePayments";
+import OfficeReports from "@/pages/office/OfficeReports";
+import OfficeSettings from "@/pages/office/OfficeSettings";
 import OfficeDocuments from "@/pages/office/OfficeDocuments";
 import OfficeAgreement from "@/pages/office/OfficeAgreement";
 
@@ -76,6 +84,7 @@ function App() {
               <Route path="business/requests/:id" element={<RequestDetail />} />
               <Route path="business/wallet" element={<BusinessWallet />} />
               <Route path="business/profile" element={<BusinessProfile />} />
+              <Route path="business/api" element={<BusinessApi />} />
               <Route path="worker" element={<WorkerDashboard />} />
               <Route path="worker/opportunities" element={<WorkerOpportunities />} />
               <Route path="worker/jobs" element={<WorkerJobs />} />
@@ -102,12 +111,20 @@ function App() {
               <Route path="admin/verification" element={<AdminVerification />} />
               <Route path="office" element={<OfficeDashboard />} />
               <Route path="office/drivers" element={<OfficeDrivers />} />
+              <Route path="office/opportunities" element={<OfficeOpportunities />} />
               <Route path="office/jobs" element={<OfficeJobs />} />
+              <Route path="office/active-jobs" element={<OfficeJobs activeOnly />} />
               <Route path="office/settlements" element={<OfficeSettlements />} />
+              <Route path="office/receivables" element={<OfficeReceivables />} />
+              <Route path="office/payments" element={<OfficePayments />} />
+              <Route path="office/reports" element={<OfficeReports />} />
+              <Route path="office/settings" element={<OfficeSettings />} />
               <Route path="office/documents" element={<OfficeDocuments />} />
               <Route path="office/agreement" element={<OfficeAgreement />} />
               <Route path="admin/support" element={<Support />} />
+              <Route path="admin/complaints" element={<AdminComplaints />} />
               <Route path="support" element={<Support />} />
+              <Route path="complaints" element={<Complaints />} />
               <Route path="notifications" element={<Notifications />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

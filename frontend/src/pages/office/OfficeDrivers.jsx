@@ -136,7 +136,7 @@ export default function OfficeDrivers() {
                   <span>{t("auth.vehicleType")}: <b className="text-slate-200">{wp.vehicle_type ? t(`veh.${wp.vehicle_type}`) : "—"}{wp.vehicle_temperature ? ` · ${t(`veh.${wp.vehicle_temperature}`)}` : ""}</b></span>
                   <span>{t("office.jobsCompleted")}: <b className="num text-slate-200">{wp.jobs_completed || 0}</b></span>
                   <span>{t("office.docsStatus")}: <b className={wp.verification_status === "verified" ? "text-emerald-400" : "text-amber-400"}>{t(`office.status_${wp.verification_status || "pending"}`)}</b></span>
-                  {d.active_job && <span>{t("office.activeJob")}: <StatusBadge status={d.active_job.status} ns="offerStatus" /></span>}
+                  {d.active_job && <span>{t("office.activeJob")}: <StatusBadge kind="offer" status={d.active_job.status} /></span>}
                 </div>
               </div>
             );

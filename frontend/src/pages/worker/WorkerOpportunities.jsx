@@ -6,13 +6,17 @@ import api, { errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { sar } from "@/lib/constants";
+import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/i18n";
 
 function DetailsGrid({ r }) {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const wp = user?.worker_profile || {};
+  const hidePricing = wp.provider_type === "office" && wp.provider_status === "linked";
   const DURATION_LABEL = { one_day: t("wizard.duration_one_day"), several_days: t("wizard.duration_several_days"), week: t("wizard.duration_week"), month: t("wizard.duration_month") };
   const shipments = r.shipments_per_driver ?? (r.shipment_count ? Math.round(r.shipment_count / r.required_count) : null);
-  const perShipmentNet = shipments ? Math.round(((r.expected_earning || 0) / shipments) * 100) / 100 : 0;
+  const perShipmentNet = !hidePricing && shipments ? Math.round(((r.expected_earning || 0) / shipments) * 100) / 100 : 0;
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
       <div className="bg-navy-800/70 rounded-lg p-2.5 border border-navy-600/40">
@@ -27,11 +31,18 @@ function DetailsGrid({ r }) {
         <p className="text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3" /> {t("opp.timeDuration")}</p>
         <p className="font-semibold mt-1"><span className="num">{r.start_time}</span> · {DURATION_LABEL[r.duration_type] || r.duration_type}</p>
       </div>
-      <div className="bg-navy-800/70 rounded-lg p-2.5 border border-navy-600/40">
-        <p className="text-slate-500 flex items-center gap-1"><Users className="w-3 h-3" /> {t("opp.expectedEarnings")}</p>
-        <p className="font-semibold mt-1 text-brand num">{sar(r.expected_earning ?? 0)}</p>
-      </div>
-      {shipments && (
+      {!hidePricing ? (
+        <div className="bg-navy-800/70 rounded-lg p-2.5 border border-navy-600/40">
+          <p className="text-slate-500 flex items-center gap-1"><Users className="w-3 h-3" /> {t("opp.expectedEarnings")}</p>
+          <p className="font-semibold mt-1 text-brand num">{sar(r.expected_earning ?? 0)}</p>
+        </div>
+      ) : (
+        <div className="bg-navy-800/70 rounded-lg p-2.5 border border-navy-600/40" data-testid="office-pricing-hidden">
+          <p className="text-slate-500 flex items-center gap-1"><Users className="w-3 h-3" /> {t("office.shipments")}</p>
+          <p className="font-semibold mt-1 num">{shipments ?? "—"}</p>
+        </div>
+      )}
+      {shipments && !hidePricing && (
         <div className="col-span-2 bg-navy-800/70 rounded-lg p-2.5 border border-navy-600/40">
           <p className="text-slate-500">{t("opp.shipmentsLabel")}</p>
           <p className="font-semibold mt-1 num">{shipments} {t("opp.shipmentUnit")} × {sar(perShipmentNet)}</p>
@@ -50,9 +61,11 @@ function DetailsGrid({ r }) {
           <p className="font-semibold mt-1 leading-relaxed">{r.requirements}</p>
         </div>
       )}
-      <div className="col-span-2 sm:col-span-4 text-[11px] text-slate-500">
-        {t("opp.rateNote")}: <span className="num text-slate-300">{sar(perShipmentNet)}</span> {t("opp.perShipment")}
-      </div>
+      {!hidePricing && (
+        <div className="col-span-2 sm:col-span-4 text-[11px] text-slate-500">
+          {t("opp.rateNote")}: <span className="num text-slate-300">{sar(perShipmentNet)}</span> {t("opp.perShipment")}
+        </div>
+      )}
     </div>
   );
 }

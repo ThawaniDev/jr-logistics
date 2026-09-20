@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ClipboardList, UserPlus, ChevronDown, ChevronUp, X } from "lucide-react";
+import { ClipboardList, UserPlus, ChevronDown, ChevronUp, X, Sparkles, RefreshCcw } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
@@ -17,6 +17,8 @@ export default function AdminRequests() {
   const [detail, setDetail] = useState(null);
   const [matchWorker, setMatchWorker] = useState("");
   const [busy, setBusy] = useState(false);
+  const [suggestions, setSuggestions] = useState(null);
+  const [suggestBusy, setSuggestBusy] = useState(false);
 
   const load = () =>
     api.get("/admin/requests", { params: {
@@ -29,6 +31,7 @@ export default function AdminRequests() {
   useEffect(() => { load(); }, [filter, city, dateFrom, dateTo]);
 
   const openDetail = async (id) => {
+    setSuggestions(null);
     if (detail?.request._id === id) return setDetail(null);
     try {
       const { data } = await api.get(`/admin/requests/${id}`);
@@ -167,6 +170,93 @@ export default function AdminRequests() {
                       <button onClick={() => setDetail(null)} className="text-slate-500 hover:text-slate-300" data-testid={`match-close-${r._id}`}>
                         <X className="w-4 h-4" />
                       </button>
+                    </div>
+                  )}
+
+                  {detail.offers.some((o) => ["offered", "accepted", "confirmed", "attendance_confirmed"].includes(o.status)) && (
+                    <div className="flex flex-wrap gap-2 pt-2" data-testid={`replace-row-${r._id}`}>
+                      {detail.offers.filter((o) => ["offered", "accepted", "confirmed", "attendance_confirmed"].includes(o.status)).map((o) => (
+                        <button key={o._id} data-testid={`replace-${o._id}`}
+                          onClick={async () => {
+                            const reason = window.prompt(t("smart.replaceReason"));
+                            if (!reason) return;
+                            try {
+                              await api.post(`/admin/offers/${o._id}/replace`, { reason });
+                              toast.success(t("smart.replaced"));
+                              const { data } = await api.get(`/admin/requests/${r._id}`);
+                              setDetail(data);
+                              load();
+                            } catch (e) { toast.error(errMsg(e)); }
+                          }}
+                          className="flex items-center gap-1.5 text-[11px] border border-rose-500/40 text-rose-400 rounded-lg px-3 py-1.5 hover:bg-rose-500/10 transition-colors">
+                          <RefreshCcw className="w-3 h-3" /> {t("smart.replace")} — {o.worker?.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {["published", "filling", "confirmed", "in_progress"].includes(r.status) && (
+                    <div className="pt-2 border-t border-navy-600/40" data-testid={`smart-area-${r._id}`}>
+                      <button data-testid={`smart-suggest-${r._id}`} disabled={suggestBusy}
+                        onClick={async () => {
+                          setSuggestBusy(true);
+                          try {
+                            const { data } = await api.get(`/admin/requests/${r._id}/smart-suggest`);
+                            setSuggestions(data.suggestions);
+                          } catch (e) { toast.error(errMsg(e)); } finally { setSuggestBusy(false); }
+                        }}
+                        className="flex items-center gap-2 border border-brand/40 text-brand rounded-xl px-4 py-2 text-xs font-semibold hover:bg-brand/10 transition-colors">
+                        <Sparkles className="w-3.5 h-3.5" /> {suggestBusy ? t("smart.loading") : t("smart.suggest")}
+                      </button>
+                      {suggestions && (
+                        <div className="mt-3 space-y-2" data-testid={`smart-list-${r._id}`}>
+                          {suggestions.length === 0 && <p className="text-xs text-slate-500">{t("smart.noSuggest")}</p>}
+                          {suggestions.slice(0, 8).map((s) => (
+                            <div key={s.driver._id} data-testid={`suggest-${s.driver._id}`}
+                              className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 text-xs ${s.eligible ? "border-navy-600/50 bg-navy-800/60" : "border-navy-700/40 bg-navy-850/40 opacity-70"}`}>
+                              <span className="font-semibold">{s.driver.name}</span>
+                              <span className={`chip ${s.driver.affiliation === "office" ? "bg-blue-500/10 text-blue-400 border-blue-500/30" : "bg-brand/10 text-brand border-brand/30"}`}>
+                                {t(s.driver.affiliation === "office" ? "smart.officeDriver" : "smart.platformDriver")}
+                              </span>
+                              <span className="text-slate-500">{s.driver.city}</span>
+                              {s.driver.rating != null && <span className="num text-amber-400">{s.driver.rating}★</span>}
+                              <span className="chip bg-navy-700 text-slate-300 border-navy-600">{t("smart.score")}: <b className="num">{s.score}</b></span>
+                              {s.eligible ? (
+                                <button data-testid={`suggest-assign-${s.driver._id}`} disabled={busy}
+                                  onClick={async () => {
+                                    setBusy(true);
+                                    try {
+                                      await api.post(`/admin/requests/${r._id}/match`, { worker_id: s.driver._id });
+                                      toast.success(t("admin.sendOffer"));
+                                      const { data } = await api.get(`/admin/requests/${r._id}`);
+                                      setDetail(data);
+                                      load();
+                                    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+                                  }}
+                                  className="ms-auto bg-brand text-navy-900 font-bold rounded-lg px-3 py-1.5 hover:bg-brand-hover disabled:opacity-50">
+                                  {t("smart.pick")}
+                                </button>
+                              ) : (
+                                <span className="ms-auto text-rose-400/80">{s.reasons.map((rk) => t(`smart.r_${rk}`)).join(" · ")}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {detail.assignment_history?.length > 0 && (
+                    <div className="pt-2 border-t border-navy-600/40" data-testid={`assign-history-${r._id}`}>
+                      <p className="text-xs font-semibold text-slate-400 mb-2">{t("smart.history")}</p>
+                      <div className="space-y-1">
+                        {detail.assignment_history.slice(0, 10).map((h) => (
+                          <p key={h._id} className="text-[11px] text-slate-500">
+                            <span className="text-slate-300">{h.actor_name}</span> · {t(`smart.act_${h.action}`)}
+                            {h.reason ? ` — ${h.reason}` : ""} · <span className="num">{new Date(h.created_at).toLocaleString("ar-SA")}</span>
+                          </p>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

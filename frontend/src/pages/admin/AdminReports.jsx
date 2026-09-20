@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/i18n";
 
-const REPORT_TYPES = ["businesses", "drivers", "requests", "finance", "operations", "support", "staff"];
+const REPORT_TYPES = ["businesses", "drivers", "requests", "finance", "operations", "support", "staff", "offices", "agreements", "sla", "custody", "complaints"];
 
 export default function AdminReports() {
   const { t } = useI18n();

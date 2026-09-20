@@ -7,12 +7,16 @@ import { fmtDate } from "@/lib/constants";
 
 const TERM_FIELDS = [
   ["commercial_terms", "office.commercialTerms"],
+  ["provider_rate", "office.providerRate"],
   ["provider_rate_note", "office.providerRate"],
+  ["commission_pct", "office.jrFee"],
   ["settlement_terms", "office.settlementTerms"],
   ["payment_terms", "office.paymentTerms"],
   ["cancellation_rules", "reqDetail.cancelPolicy"],
   ["no_show_rules", "admin.noShowRules"],
   ["replacement_rules", "admin.replacementRules"],
+  ["responsibilities", "office.responsibilities"],
+  ["data_protection", "office.dataProtection"],
   ["dispute_rules", "admin.disputeRules"],
 ];
 

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from db import db
 from catalog import (DEFAULT_RATE, DEFAULT_COMMISSION_RATE,
                      DEFAULT_VEHICLE_TYPES, DEFAULT_SERVICE_AREAS)
@@ -23,6 +23,8 @@ DEFAULT_SETTINGS = {"key": "platform", "default_rate": DEFAULT_RATE,
                     "replacement_timeout_min": 30,
                     "settlement_pending_hours": 24,
                     "doc_expiry_warn_days": 30,
+                    "office_assignment_grace_min": 30,
+                    "settlement_period": "weekly",
                     "terms_version": "1.0",
                     "terms_business_text": "",
                     "terms_driver_text": ""}
@@ -56,6 +58,153 @@ async def log_event(request_id: str, offer_id, actor, event_type: str,
         "event_type": event_type, "old_status": old_status, "new_status": new_status,
         "notes": notes, "created_at": now_iso(),
     })
+    if event_type in WEBHOOK_EVENTS and request_id:
+        r = await db.requests.find_one({"_id": request_id}, {"business_id": 1})
+        if r:
+            await queue_webhook(r["business_id"], event_type, request_id)
+
+
+WEBHOOK_EVENTS = {
+    "request_published", "driver_accepted", "driver_arrived", "attendance_confirmed",
+    "driver_finished", "delivery_confirmed", "request_completed", "payout_executed",
+    "job_closed", "driver_cancelled", "driver_replaced",
+}
+
+
+async def queue_webhook(business_id: str, event_type: str, request_id: str):
+    b = await db.users.find_one({"_id": business_id}, {"business_profile.webhook_url": 1})
+    url = ((b or {}).get("business_profile") or {}).get("webhook_url")
+    if not url:
+        return
+    await db.webhook_deliveries.insert_one({
+        "_id": new_id(), "business_id": business_id, "event": event_type,
+        "request_id": request_id, "url": url, "status": "delivered",
+        "delivered_at": now_iso(), "created_at": now_iso()})
+
+
+async def record_assignment(request_id: str, offer_id, worker_id, action: str,
+                            actor: dict = None, reason: str = None):
+    await db.assignment_history.insert_one({
+        "_id": new_id(), "request_id": request_id, "offer_id": offer_id,
+        "worker_id": worker_id, "action": action,
+        "actor_id": (actor or {}).get("_id"),
+        "actor_name": (actor or {}).get("name", "النظام"),
+        "reason": reason, "created_at": now_iso()})
+
+
+def compute_offer_sla(offer: dict, request: dict, grace_min: int = 30) -> dict:
+    """SLA for pickup/start and delivery/completion based on existing timestamps."""
+    sla = {}
+    try:
+        sched_start = datetime.fromisoformat(
+            f"{request['start_date']}T{request.get('start_time') or '00:00'}").replace(tzinfo=timezone.utc)
+    except Exception:
+        return sla
+    sla["scheduled_start"] = sched_start.isoformat()
+    actual_start = offer.get("attended_at") or offer.get("checkin_at") or offer.get("arrived_at")
+    now = datetime.now(timezone.utc)
+    if actual_start:
+        delay = int((datetime.fromisoformat(actual_start) - sched_start).total_seconds() // 60)
+        sla.update(actual_start=actual_start, start_delay_min=delay,
+                   start_status="on_time" if delay <= grace_min else "late")
+    elif offer.get("status") == "no_show":
+        sla["start_status"] = "missed"
+    elif offer.get("status") in ("cancelled", "rejected", "offered"):
+        sla["start_status"] = "pending"
+    else:
+        sla["start_status"] = "at_risk" if now > sched_start + timedelta(minutes=grace_min) else "pending"
+    try:
+        end_date = date.fromisoformat(request["start_date"]) + timedelta(days=max(1, request.get("duration_days", 1)) - 1)
+        sched_end = datetime.fromisoformat(f"{end_date.isoformat()}T23:59").replace(tzinfo=timezone.utc)
+    except Exception:
+        return sla
+    sla["scheduled_end"] = sched_end.isoformat()
+    actual_end = offer.get("qty_confirmed_at") or offer.get("finished_at") or offer.get("paid_at")
+    if actual_end:
+        delay = int((datetime.fromisoformat(actual_end) - sched_end).total_seconds() // 60)
+        sla.update(actual_end=actual_end, end_delay_min=max(0, delay),
+                   end_status="on_time" if delay <= 0 else "late")
+    elif offer.get("status") in ("cancelled", "rejected", "offered", "no_show"):
+        sla["end_status"] = "pending"
+    else:
+        sla["end_status"] = "late" if now > sched_end else "on_track"
+    return sla
+
+
+def current_period_key(period: str) -> str:
+    today = date.today()
+    if period == "monthly":
+        return f"{today.year}-{today.month:02d}"
+    iso = today.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+BUSY_JOB_STATUSES = ["accepted", "confirmed", "attendance_confirmed", "attended", "driver_completed",
+                     "delivered_reported", "pending_settlement", "qty_disputed"]
+
+
+async def score_drivers_for_request(request: dict) -> list:
+    """Smart assignment scoring: availability, location, vehicle/temp compatibility,
+    workload, job-time overlap, provider eligibility. Returns ranked candidates."""
+    from routers.worker import find_overlapping_job
+    workers = await db.users.find({
+        "role": "worker", "status": "active",
+        "worker_profile.services": request["service_type"]}).to_list(500)
+    busy = set(await db.offers.distinct("worker_id", {"status": {"$in": BUSY_JOB_STATUSES}}))
+    existing = set(await db.offers.distinct("worker_id", {"request_id": request["_id"]}))
+    linked = {w["_id"]: (w.get("worker_profile") or {}).get("provider_id") for w in workers
+              if (w.get("worker_profile") or {}).get("provider_status") == "linked"
+              and (w.get("worker_profile") or {}).get("provider_id")}
+    ok_offices = set()
+    if linked:
+        async for off in db.users.find({"_id": {"$in": list(set(linked.values()))}, "role": "office"}):
+            if (off.get("office_profile") or {}).get("verification_status") in ("verified", "active") and \
+                    await db.agreements.find_one({"office_id": off["_id"], "status": "accepted"}):
+                ok_offices.add(off["_id"])
+    out = []
+    for w in workers:
+        wp = w.get("worker_profile") or {}
+        reasons = []
+        if wp.get("verification_status") != "verified":
+            reasons.append("not_verified")
+        if wp.get("availability") != "available":
+            reasons.append("unavailable")
+        if wp.get("suspended_until") and wp["suspended_until"] > now_iso():
+            reasons.append("suspended")
+        if w["_id"] in busy:
+            reasons.append("busy")
+        if w["_id"] in existing:
+            reasons.append("already_offered")
+        if request.get("vehicle_type") and wp.get("vehicle_type") not in (None, "", request["vehicle_type"]):
+            reasons.append("vehicle_mismatch")
+        if request.get("temperature_type") and wp.get("vehicle_temperature") not in (None, "", request["temperature_type"]):
+            reasons.append("temp_mismatch")
+        if w["_id"] in linked and linked[w["_id"]] not in ok_offices:
+            reasons.append("provider_ineligible")
+        if request.get("preferred_office_id") and linked.get(w["_id"]) != request["preferred_office_id"]:
+            reasons.append("different_office")
+        if "busy" not in reasons and await find_overlapping_job(w["_id"], request):
+            reasons.append("time_overlap")
+        score = 0
+        if not reasons:
+            score = 50
+            if (wp.get("city") or w.get("city")) == (request.get("pickup_city") or request.get("city")):
+                score += 20
+            score += min(round((wp.get("rating") or 0) * 4), 20)
+            score += min(wp.get("jobs_completed", 0), 10)
+            score -= min(wp.get("cancel_count", 0) * 3, 15)
+        out.append({
+            "driver": {"_id": w["_id"], "name": w.get("name"), "phone": w.get("phone"),
+                       "city": wp.get("city") or w.get("city"),
+                       "vehicle_type": wp.get("vehicle_type"),
+                       "vehicle_temperature": wp.get("vehicle_temperature"),
+                       "rating": wp.get("rating"), "jobs_completed": wp.get("jobs_completed", 0),
+                       "availability": wp.get("availability"),
+                       "verification_status": wp.get("verification_status"),
+                       "affiliation": "office" if w["_id"] in linked else "platform"},
+            "score": score, "eligible": not reasons, "reasons": reasons,
+        })
+    return sorted(out, key=lambda x: (-x["eligible"], -x["score"]))
 
 
 async def provider_blocks_paid_work(worker: dict) -> bool:

@@ -6,6 +6,7 @@ import api, { errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { sar } from "@/lib/constants";
+import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/i18n";
 import { Phone, MessageCircle } from "lucide-react";
 import { JobChat } from "@/components/JobChat";
@@ -23,8 +24,58 @@ function Stars({ value, onChange, testid }) {
   );
 }
 
+function WorkerCustody({ offerId, onChange }) {
+  const { t } = useI18n();
+  const [records, setRecords] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => api.get(`/custody/offer/${offerId}`).then(({ data }) => setRecords(data.custody)).catch(() => {});
+  useEffect(() => { load(); }, [offerId]);
+  if (!records || records.length === 0) return null;
+  const confirm = async (id) => {
+    setBusy(true);
+    try {
+      await api.post(`/custody/${id}/confirm`);
+      toast.success(t("cust.confirmDone"));
+      load(); onChange?.();
+    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-2" data-testid={`custody-w-${offerId}`}>
+      {records.map((c) => (
+        <div key={c._id} className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 text-xs space-y-2" data-testid={`custody-w-rec-${c._id}`}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-semibold text-slate-300">{t("cust.title")}</p>
+            <span className={`chip ${c.status === "issue" ? "bg-rose-500/10 text-rose-400 border-rose-500/30" : c.status === "returned" ? "bg-green-500/10 text-green-300 border-green-500/30" : c.status === "confirmed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-amber-500/10 text-amber-400 border-amber-500/30"}`}>
+              {t(`cust.st_${c.status}`)}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {c.items.map((it, i) => {
+              const retSt = (c.returns || []).find((x) => x.index === i);
+              return (
+                <span key={i} className="chip bg-navy-700 text-slate-300 border-navy-600">
+                  {t(`cust.it_${it.type}`)} ×<b className="num">{it.qty}</b>
+                  {retSt && <b className={retSt.status === "returned" ? "text-green-400" : "text-rose-400"}> · {t(`cust.${retSt.status === "not_returned" ? "notReturned" : retSt.status}`)}</b>}
+                </span>
+              );
+            })}
+          </div>
+          {c.status === "pending_confirm" && (
+            <button onClick={() => confirm(c._id)} disabled={busy} data-testid={`custody-confirm-${c._id}`}
+              className="bg-brand text-navy-900 font-bold rounded-lg px-4 py-1.5 text-xs hover:bg-brand-hover disabled:opacity-50 transition-colors">
+              {t("cust.confirm")}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function WorkerJobs() {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const hidePricing = user?.worker_profile?.provider_type === "office" && user?.worker_profile?.provider_status === "linked";
   const [jobs, setJobs] = useState(null);
   const [history, setHistory] = useState(null);
   const [ratedIds, setRatedIds] = useState([]);
@@ -131,7 +182,9 @@ export default function WorkerJobs() {
                 <div className="flex flex-wrap gap-4 text-xs text-slate-400">
                   <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-brand" /> {o.request?.city} — {o.request?.address}</span>
                   <span className="flex items-center gap-1 num"><Calendar className="w-3.5 h-3.5 text-brand" /> {o.request?.start_date} · {o.request?.start_time}</span>
-                  <span className="text-slate-500">{t("jobs.expectedEarnings")}: <span className="num text-brand font-semibold">{o.request && sar(o.request.expected_earning || 0)}</span></span>
+                  {!hidePricing && (
+                    <span className="text-slate-500">{t("jobs.expectedEarnings")}: <span className="num text-brand font-semibold">{o.request && sar(o.request.expected_earning || 0)}</span></span>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2 text-[11px]" data-testid={`qty-strip-${o._id}`}>
                   <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.expectedQty")}: <b className="num">{o.request?.shipments_per_driver ?? "—"}</b></span>
@@ -139,6 +192,9 @@ export default function WorkerJobs() {
                   {o.driver_reported_qty != null && <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.reportedQty")}: <b className="num text-blue-400">{o.driver_reported_qty}</b></span>}
                   {o.final_qty != null && <span className="chip bg-navy-800 border-navy-600 text-slate-300">{t("jobs.finalQty")}: <b className="num text-emerald-400">{o.final_qty}</b></span>}
                 </div>
+                {["attendance_confirmed", "attended", "delivered_reported", "pending_settlement"].includes(o.status) && (
+                  <WorkerCustody offerId={o._id} onChange={load} />
+                )}
                 {["accepted", "confirmed", "attendance_confirmed", "attended", "delivered_reported", "pending_settlement", "qty_disputed"].includes(o.status) && (
                   <div className="flex flex-wrap gap-2" data-testid={`contact-row-${o._id}`}>
                     <button data-testid={`call-warehouse-${o._id}`}
@@ -269,7 +325,7 @@ export default function WorkerJobs() {
                   <p className="font-semibold text-sm">{o.request?.title}</p>
                   <p className="text-xs text-slate-500 mt-1 num">{o.request?.start_date}</p>
                 </div>
-                {o.status === "paid" && <p className="text-sm font-bold text-green-300 num">+{sar(o.earning)}</p>}
+                {o.status === "paid" && !hidePricing && <p className="text-sm font-bold text-green-300 num">+{sar(o.earning)}</p>}
                 <StatusBadge kind="offer" status={o.status} />
                 {o.status === "paid" && !ratedIds.includes(o._id) && (
                   ratingFor === o._id ? (

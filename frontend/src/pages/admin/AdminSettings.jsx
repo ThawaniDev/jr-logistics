@@ -45,6 +45,7 @@ export default function AdminSettings() {
         cancel_days: String(s.cancel_suspend_days ?? 3),
         cancel_weekly: String(s.cancel_weekly_limit ?? 3),
         vat_pct: String(s.vat_pct ?? 15),
+        settlement_period: s.settlement_period || "weekly",
         vehicle_types: (s.vehicle_types || []).join("\n"),
         service_areas: (s.service_areas || []).join("\n"),
         enabled_pickup_cities: (s.enabled_pickup_cities || []).join("\n"),
@@ -74,6 +75,7 @@ export default function AdminSettings() {
         cancel_suspend_days: Number(form.cancel_days),
         cancel_weekly_limit: Number(form.cancel_weekly),
         vat_pct: Number(form.vat_pct),
+        settlement_period: form.settlement_period,
         vehicle_types: form.vehicle_types.split("\n").map((v) => v.trim()).filter(Boolean),
         service_areas: form.service_areas.split("\n").map((v) => v.trim()).filter(Boolean),
         enabled_pickup_cities: form.enabled_pickup_cities.split("\n").map((v) => v.trim()).filter(Boolean),
@@ -151,6 +153,15 @@ export default function AdminSettings() {
               onChange={(e) => setForm({ ...form, vat_pct: e.target.value })}
               className="bg-navy-800 border-navy-600 h-11 num max-w-xs" />
             <p className="text-[11px] text-slate-500 mt-1">{t("admin.vatNote")}</p>
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("finx.settlementPeriod")}</label>
+            <select data-testid="settings-settlement-period" value={form.settlement_period || "weekly"}
+              onChange={(e) => setForm({ ...form, settlement_period: e.target.value })}
+              className="bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm max-w-xs w-full focus:outline-none focus:ring-1 focus:ring-brand">
+              <option value="weekly">{t("finx.period_weekly")}</option>
+              <option value="monthly">{t("finx.period_monthly")}</option>
+            </select>
           </div>
         </div>
 

@@ -28,6 +28,7 @@ export default function AdminFinance() {
   const [invoices, setInvoices] = useState(null);
   const [platform, setPlatform] = useState(null);
   const [filter, setFilter] = useState("");
+  const [batches, setBatches] = useState(null);
   const [busy, setBusy] = useState("");
   const locale = lang === "ar" ? "ar-SA" : lang === "ur" ? "ur-PK" : "en-US";
 
@@ -37,6 +38,7 @@ export default function AdminFinance() {
     api.get("/admin/finance/platform").then(({ data }) => setPlatform(data)).catch(() => {});
     api.get("/admin/finance/ledger").then(({ data }) => setLedger(data.ledger)).catch(() => {});
     api.get("/admin/finance/invoices").then(({ data }) => setInvoices(data.invoices)).catch(() => {});
+    api.get("/admin/finance/payouts/batches").then(({ data }) => setBatches(data.batches)).catch(() => {});
   };
   useEffect(() => { load(); }, [filter]);
 
@@ -70,8 +72,31 @@ export default function AdminFinance() {
         </div>
       )}
 
+      {platform && (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="fin-separation-cards">
+          <StatCard testid="fin-customer-payments" icon={Wallet} label={t("finx.customerPayments")} value={sar(platform.customer_payments)} tone="blue" />
+          <StatCard testid="fin-platform-fees" icon={Banknote} label={t("finx.platformFees")} value={sar(platform.platform_fees)} tone="brand" />
+          <StatCard testid="fin-office-earnings" icon={Landmark} label={t("finx.officeEarnings")} value={sar(platform.office_earnings_paid)} tone="cyan" />
+          <StatCard testid="fin-driver-earnings" icon={Wallet} label={t("finx.driverEarnings")} value={sar(platform.driver_earnings_paid)} tone="gold" />
+        </div>
+      )}
+
+      {platform && (
+        <div className="card-surface p-4 flex flex-wrap items-center gap-3" data-testid="batch-bar">
+          <span className="text-xs text-slate-400">{t("finx.settlementPeriod")}: <b>{t(`finx.period_${platform.settlement_period || "weekly"}`)}</b> · <span className="num">{platform.settlement_period_key}</span></span>
+          <span className="text-xs text-amber-400">{t("finx.pendingApproved")}: <b className="num">{platform.pending_batches}</b></span>
+          {can("payout_execute") && (
+            <button data-testid="run-batch-btn" disabled={busy === "batch" || !platform.pending_batches}
+              onClick={() => act("batch", () => api.post("/admin/finance/payouts/run-batch", { method: "bank_transfer" }), t("finx.batchDone"))}
+              className="ms-auto flex items-center gap-1.5 bg-brand text-navy-900 font-bold rounded-xl px-4 py-2 text-xs hover:bg-brand-hover disabled:opacity-50 transition-colors">
+              <Banknote className="w-3.5 h-3.5" /> {t("finx.runBatch")}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2 flex-wrap" data-testid="finance-tabs">
-        {[["settlements", t("fin.tabSettlements")], ["ledger", t("fin.tabLedger")], ["invoices", t("fin.tabInvoices")]].map(([k, l]) => (
+        {[["settlements", t("fin.tabSettlements")], ["ledger", t("fin.tabLedger")], ["invoices", t("fin.tabInvoices")], ["batches", t("finx.tabBatches")]].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} data-testid={`fin-tab-${k}`}
             className={`chip ${tab === k ? "bg-brand/15 text-brand border-brand/40" : "bg-navy-800 text-slate-400 border-navy-600"}`}>
             {l}
@@ -228,6 +253,27 @@ export default function AdminFinance() {
                 <span className="text-sm">{inv.business?.business_profile?.company_name || inv.business?.name}</span>
                 <span className="text-xs text-slate-400">{t("fin.gross")}: <span className="num">{sar(inv.gross)}</span> · {t("fin.commission")}: <span className="num">{sar(inv.commission)}</span> · {t("fin.vat")}: <span className="num">{sar(inv.vat)}</span></span>
                 <span className="text-xs text-slate-500 num ms-auto">{new Date(inv.created_at).toLocaleDateString(locale)}</span>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {tab === "batches" && (
+        !batches ? (
+          <p className="text-slate-500 text-sm">{t("common.loading")}</p>
+        ) : batches.length === 0 ? (
+          <EmptyState icon={Banknote} title={t("finx.noBatches")} testid="batches-empty" />
+        ) : (
+          <div className="space-y-2" data-testid="batches-list">
+            {batches.map((b) => (
+              <div key={b._id} className="card-surface p-4 flex flex-wrap items-center gap-4" data-testid={`batch-${b._id}`}>
+                <Banknote className="w-5 h-5 text-brand shrink-0" />
+                <span className="font-heading font-bold num">{b.reference}</span>
+                <span className="chip bg-navy-800 text-slate-300 border-navy-600">{t(`finx.period_${b.period_type}`)} · <span className="num">{b.period_key}</span></span>
+                <span className="text-xs text-slate-400">{t("finx.countL")}: <span className="num">{b.count}</span></span>
+                <span className="text-sm font-bold text-brand num">{sar(b.total)}</span>
+                <span className="text-xs text-slate-500 ms-auto">{b.executed_by?.name} · <span className="num">{new Date(b.created_at).toLocaleString(locale)}</span></span>
               </div>
             ))}
           </div>

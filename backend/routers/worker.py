@@ -6,7 +6,7 @@ from datetime import date, timedelta, datetime, timezone
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP
-from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings, audit, log_event, provider_blocks_paid_work
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, pub, pub_list, get_settings, audit, log_event, provider_blocks_paid_work, record_assignment
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 wrk = Depends(require_roles("worker"))
@@ -15,13 +15,18 @@ ACTIVE_JOB_STATUSES = ["accepted", "confirmed", "attendance_confirmed", "attende
                        "delivered_reported", "pending_settlement", "qty_disputed"]
 
 
-async def enrich_offer(o: dict) -> dict:
+async def enrich_offer(o: dict, user: dict) -> dict:
     r = await db.requests.find_one({"_id": o["request_id"]})
     o["request"] = pub(r)
+    wp = user.get("worker_profile") or {}
+    office_linked = wp.get("provider_type") == "office" and wp.get("provider_status") == "linked"
+    if office_linked:
+        o.pop("earning", None)
     if o["request"]:
-        # driver financial privacy: never expose client price / commission / internal math
-        share = r["estimated_total"] / max(1, r["required_count"])
-        o["request"]["expected_earning"] = round(share * (1 - r.get("commission_rate", 0.10)), 2)
+        # driver financial privacy: office-linked drivers receive operational data only
+        if not office_linked:
+            share = r["estimated_total"] / max(1, r["required_count"])
+            o["request"]["expected_earning"] = round(share * (1 - r.get("commission_rate", 0.10)), 2)
         for f in ("rate", "estimated_total", "commission", "commission_rate",
                   "payout_total", "pricing_snapshot", "pricing_version"):
             o["request"].pop(f, None)
@@ -131,11 +136,13 @@ async def overview(user: dict = wrk):
     ).sort("created_at", -1).to_list(10)
     pending = 0.0
     for o in jobs:
-        await enrich_offer(o)
+        await enrich_offer(o, user)
         if o.get("request") and o["status"] in ("confirmed", "attendance_confirmed", "attended", "driver_completed"):
             pending += o["request"].get("expected_earning", 0)
-    pend_settlements = await db.settlements.find(
-        {"driver_id": user["_id"], "status": {"$in": ["pending_review", "under_review", "approved"]}}).to_list(500)
+    pend_settlements = []
+    if not (wp.get("provider_type") == "office" and wp.get("provider_status") == "linked"):
+        pend_settlements = await db.settlements.find(
+            {"driver_id": user["_id"], "status": {"$in": ["pending_review", "under_review", "approved"]}}).to_list(500)
     pending += sum(s["net"] for s in pend_settlements)
     earned = [t for t in await db.transactions.find(
         {"user_id": user["_id"], "type": "earning"}).to_list(500)]
@@ -176,7 +183,7 @@ async def my_offers(user: dict = wrk):
         return {"offers": [], "has_active_job": True}
     offers = await db.offers.find({"worker_id": user["_id"], "status": "offered"}).sort("created_at", -1).to_list(100)
     for o in offers:
-        await enrich_offer(o)
+        await enrich_offer(o, user)
     return {"offers": pub_list(offers), "has_active_job": False}
 
 
@@ -207,9 +214,11 @@ async def available_jobs(user: dict = wrk):
             continue
         b = await db.users.find_one({"_id": r["business_id"]}, {"business_profile.company_name": 1, "name": 1})
         r["business"] = pub(b)
-        # driver financial privacy — expose expected net earning only
-        share = r["estimated_total"] / max(1, r["required_count"])
-        r["expected_earning"] = round(share * (1 - r.get("commission_rate", 0.10)), 2)
+        # driver financial privacy — direct drivers see expected net earning; office-linked drivers receive operations only
+        linked_office = wp.get("provider_type") == "office" and wp.get("provider_status") == "linked"
+        if not linked_office:
+            share = r["estimated_total"] / max(1, r["required_count"])
+            r["expected_earning"] = round(share * (1 - r.get("commission_rate", 0.10)), 2)
         for f in ("rate", "estimated_total", "commission", "commission_rate",
                   "payout_total", "pricing_snapshot", "pricing_version"):
             r.pop(f, None)
@@ -238,6 +247,7 @@ async def respond(offer_id: str, body: RespondIn, user: dict = wrk):
         raise HTTPException(status_code=400, detail="تم حجز هذه الفرصة بالفعل — لم تعد متاحة")
     await audit(user, "driver_accepted", "offer", offer_id,
                 after={"request_id": r["_id"], "title": r["title"]})
+    await record_assignment(r["_id"], offer_id, user["_id"], "accepted", user)
     await log_event(r["_id"], offer_id, user, "driver_accepted",
                     old_status="offered", new_status="accepted")
     filled = await db.offers.count_documents({"request_id": r["_id"], "status": {"$in": ACTIVE_JOB_STATUSES}})
@@ -343,6 +353,7 @@ async def cancel_job(offer_id: str, body: CancelJobIn, user: dict = wrk):
                         "replacement", "/app/admin/requests")
     await audit(user, "driver_cancelled", "offer", offer_id,
                 after={"reason": reason, "request_id": r["_id"], "week_count": week_count})
+    await record_assignment(r["_id"], offer_id, user["_id"], "cancelled", user, reason)
     await log_event(r["_id"], offer_id, user, "driver_cancelled",
                     new_status="cancelled", notes=reason)
     return {"ok": True, "replacement_offers": matched}
@@ -550,7 +561,7 @@ async def my_jobs(user: dict = wrk):
         {"worker_id": user["_id"], "status": {"$in": ACTIVE_JOB_STATUSES}}
     ).sort("created_at", -1).to_list(100)
     for o in active:
-        await enrich_offer(o)
+        await enrich_offer(o, user)
     return {"jobs": pub_list(active)}
 
 
@@ -560,7 +571,7 @@ async def history(user: dict = wrk):
         {"worker_id": user["_id"], "status": {"$in": ["paid", "no_show", "rejected", "cancelled"]}}
     ).sort("created_at", -1).to_list(200)
     for o in done:
-        await enrich_offer(o)
+        await enrich_offer(o, user)
     rated = await db.ratings.distinct("offer_id", {"from_user": user["_id"]})
     return {"history": pub_list(done), "rated_offer_ids": rated}
 
@@ -588,6 +599,9 @@ async def rate_business(body: RateBizIn, user: dict = wrk):
 
 @router.post("/withdrawals")
 async def request_withdrawal(body: WithdrawalIn, user: dict = wrk):
+    wp = user.get("worker_profile") or {}
+    if wp.get("provider_type") == "office" and wp.get("provider_status") == "linked":
+        raise HTTPException(status_code=400, detail="مستحقاتك تُدار عبر مكتب التوصيل المرتبط بحسابك")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="مبلغ غير صالح")
     wallet = await get_wallet(user["_id"])

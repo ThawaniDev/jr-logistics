@@ -109,7 +109,7 @@ export default function AdminOperations() {
                     <td className="p-3 text-xs">{l.city}</td>
                     <td className="p-3 text-xs num">{l.start_time}</td>
                     <td className="p-3"><span className="num font-bold text-amber-400">{l.minutes_late}</span></td>
-                    <td className="p-3"><StatusBadge status={l.status} ns="offerStatus" /></td>
+                    <td className="p-3"><StatusBadge kind="offer" status={l.status} /></td>
                     <td className="p-3">
                       <div className="flex flex-wrap gap-1.5">
                         {l.driver_phone && (

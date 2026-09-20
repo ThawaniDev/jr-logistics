@@ -7,7 +7,8 @@ from db import db
 from deps import require_admin, require_staff
 from catalog import STAFF_ROLE_PRESETS
 from utils import (new_id, now_iso, notify, notify_staff, add_txn, get_wallet,
-                   pub, pub_list, get_settings, audit)
+                   pub, pub_list, get_settings, audit, record_assignment,
+                   score_drivers_for_request, log_event)
 from routers.documents import recompute_verification
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -55,6 +56,7 @@ class SettingsIn(BaseModel):
     terms_version: Optional[str] = None
     terms_business_text: Optional[str] = None
     terms_driver_text: Optional[str] = None
+    settlement_period: Optional[str] = None
 
 
 @router.patch("/settings")
@@ -119,6 +121,10 @@ async def update_platform_settings(body: SettingsIn, user: dict = adm):
         v = getattr(body, field)
         if v is not None and v.strip():
             updates[field] = v.strip()
+    if body.settlement_period is not None:
+        if body.settlement_period not in ("weekly", "monthly"):
+            raise HTTPException(status_code=400, detail="دورة التسوية يجب أن تكون أسبوعية أو شهرية")
+        updates["settlement_period"] = body.settlement_period
     if not updates:
         raise HTTPException(status_code=400, detail="لا توجد تغييرات")
     await db.settings.update_one({"key": "platform"}, {"$set": updates}, upsert=True)
@@ -202,6 +208,10 @@ async def list_users(role: Optional[str] = None, q: Optional[str] = None, user: 
                  or ql in ((u.get("business_profile") or {}).get("company_name") or "").lower()]
     for u in users:
         u["wallet"] = pub(await get_wallet(u["_id"]))
+        if u["role"] == "worker":
+            wp = u.get("worker_profile") or {}
+            u["affiliation"] = "office" if (wp.get("provider_type") == "office"
+                                            and wp.get("provider_status") == "linked") else "platform"
     return {"users": pub_list(users)}
 
 
@@ -285,7 +295,10 @@ async def request_detail(request_id: str, user: dict = p_req_view):
          "worker_profile.services": r["service_type"]}).to_list(50)
     offered_ids = await db.offers.distinct("worker_id", {"request_id": request_id})
     candidates = [c for c in candidates if c["_id"] not in offered_ids]
-    return {"request": pub(r), "business": pub(b), "offers": pub_list(offers), "candidates": pub_list(candidates)}
+    history = await db.assignment_history.find({"request_id": request_id}) \
+        .sort("created_at", -1).to_list(100)
+    return {"request": pub(r), "business": pub(b), "offers": pub_list(offers),
+            "candidates": pub_list(candidates), "assignment_history": pub_list(history)}
 
 
 class MatchIn(BaseModel):
@@ -307,10 +320,64 @@ async def manual_match(request_id: str, body: MatchIn, user: dict = p_req):
         "business_id": r["business_id"], "status": "offered", "is_replacement": True,
         "earning": 0, "created_at": now_iso(), "responded_at": None,
     })
+    await record_assignment(request_id, None, body.worker_id, "assigned", user)
     await audit(user, "manual_match", "request", request_id, after={"worker_id": body.worker_id})
     await notify(body.worker_id, "فرصة جديدة من فريق المنصة",
                  f"رشّحك فريق إسناد لطلب: {r['title']} في {r['city']}", "offer", "/app/worker/opportunities")
     return {"ok": True}
+
+
+# ---------- Smart assignment & driver replacement ----------
+
+@router.get("/requests/{request_id}/smart-suggest")
+async def smart_suggest(request_id: str, user: dict = p_req_view):
+    r = await db.requests.find_one({"_id": request_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="الطلب غير موجود")
+    suggestions = await score_drivers_for_request(r)
+    return {"suggestions": suggestions}
+
+
+class ReplaceIn(BaseModel):
+    reason: str
+
+
+@router.post("/offers/{offer_id}/replace")
+async def replace_driver(offer_id: str, body: ReplaceIn, user: dict = p_req):
+    o = await db.offers.find_one({"_id": offer_id})
+    if not o or o["status"] not in ("offered", "accepted", "confirmed", "attendance_confirmed"):
+        raise HTTPException(status_code=400, detail="لا يمكن استبدال هذا المندوب في حالته الحالية")
+    if not body.reason.strip():
+        raise HTTPException(status_code=400, detail="أدخل سبب الاستبدال")
+    r = await db.requests.find_one({"_id": o["request_id"]})
+    if not r or r["status"] in ("completed", "cancelled"):
+        raise HTTPException(status_code=400, detail="الطلب منتهي")
+    await db.offers.update_one({"_id": offer_id}, {"$set": {
+        "status": "cancelled", "cancelled_at": now_iso(),
+        "cancelled_by": "operations", "cancel_reason": body.reason.strip()}})
+    await db.cancellations.insert_one({
+        "_id": new_id(), "party": "platform", "kind": "replacement",
+        "request_id": r["_id"], "offer_id": offer_id, "worker_id": o["worker_id"],
+        "business_id": r["business_id"], "reason": body.reason.strip(),
+        "created_at": now_iso()})
+    await record_assignment(r["_id"], offer_id, o["worker_id"], "replaced", user, body.reason.strip())
+    await db.requests.update_one({"_id": r["_id"]},
+                                 {"$set": {"replacement_requested": True},
+                                  "$inc": {"replacement_count": 1}})
+    from routers.business import match_workers
+    matched = await match_workers({**r, "replacement_requested": True})
+    await log_event(r["_id"], offer_id, user, "driver_replaced",
+                    old_status=o["status"], new_status="cancelled",
+                    notes=f"reason={body.reason.strip()}, matched={matched}")
+    await notify(o["worker_id"], "تم استبدالك في مهمة",
+                 f"تم استبدالك في طلب: {r['title']} — السبب: {body.reason.strip()}",
+                 "general", "/app/worker/jobs")
+    await notify(r["business_id"], "جارٍ استبدال مندوب",
+                 f"أُلغي تعيين مندوب في طلب: {r['title']} وأُرسلت {matched} عروض بديلة",
+                 "replacement", f"/app/business/requests/{r['_id']}")
+    await audit(user, "driver_replaced", "offer", offer_id,
+                after={"reason": body.reason.strip(), "replacement_offers": matched})
+    return {"ok": True, "replacement_offers": matched}
 
 
 # ---------- Withdrawals (Finance) ----------
@@ -633,12 +700,21 @@ async def office_detail(oid: str, user: dict = p_offices):
     docs = await db.office_documents.find({"office_id": oid}).sort("uploaded_at", -1).to_list(50)
     agr = await db.agreements.find_one({"office_id": oid}, sort=[("created_at", -1)])
     settlements = await db.settlements.find({"office_id": oid}).sort("created_at", -1).to_list(100)
+    driver_ids = [d["_id"] for d in drivers]
+    offers = await db.offers.find({"worker_id": {"$in": driver_ids}}).to_list(500) if driver_ids else []
+    payments = await db.transactions.find({"user_id": oid, "type": "payout"}).sort("created_at", -1).to_list(100)
+    tickets = await db.tickets.find({"user_id": oid}).sort("created_at", -1).to_list(50)
+    audits = await db.audit_logs.find({"$or": [{"actor_id": oid}, {"entity_id": oid}]}).sort("created_at", -1).to_list(50)
     return {"office": pub(o), "drivers": pub_list(drivers), "documents": pub_list(docs),
-            "agreement": pub(agr) if agr else None, "settlements": pub_list(settlements)}
+            "agreement": pub(agr) if agr else None, "settlements": pub_list(settlements),
+            "jobs": pub_list(offers), "payments": pub_list(payments),
+            "tickets": pub_list(tickets), "audit_logs": pub_list(audits),
+            "stats": {"active_jobs": sum(1 for x in offers if x["status"] in ("accepted", "confirmed", "attendance_confirmed", "attended", "delivered_reported", "pending_settlement", "qty_disputed")),
+                      "completed_jobs": sum(1 for x in offers if x["status"] == "paid")}}
 
 
 class AccountVerifyIn(BaseModel):
-    action: Literal["approve", "reject", "suspend"]
+    action: Literal["approve", "reject", "suspend", "reactivate"]
     reason: Optional[str] = None
 
 
@@ -647,12 +723,12 @@ async def verify_office(oid: str, body: AccountVerifyIn, user: dict = p_offices_
     o = await db.users.find_one({"_id": oid, "role": "office"})
     if not o:
         raise HTTPException(status_code=404, detail="المكتب غير موجود")
-    status_map = {"approve": "verified", "reject": "rejected", "suspend": "suspended"}
+    status_map = {"approve": "verified", "reject": "rejected", "suspend": "suspended", "reactivate": "verified"}
     await db.users.update_one({"_id": oid}, {"$set": {
         "office_profile.verification_status": status_map[body.action],
         "office_profile.verified_by": user["_id"], "office_profile.verified_at": now_iso(),
         "office_profile.rejection_reason": body.reason}})
-    titles = {"approve": "تم توثيق مكتبك", "reject": "تم رفض توثيق مكتبك", "suspend": "تم تعليق مكتبك"}
+    titles = {"approve": "تم توثيق مكتبك", "reject": "تم رفض توثيق مكتبك", "suspend": "تم تعليق مكتبك", "reactivate": "تمت إعادة تفعيل مكتبك"}
     await notify(oid, titles[body.action],
                  body.reason or f"حالة التوثيق: {status_map[body.action]}", "general", "/app/office")
     await audit(user, f"office_{body.action}", "user", oid,
@@ -666,10 +742,10 @@ async def verify_business_account(uid: str, body: AccountVerifyIn, user: dict = 
     target = await db.users.find_one({"_id": uid, "role": "business"})
     if not target:
         raise HTTPException(status_code=404, detail="الحساب غير موجود")
-    status_map = {"approve": "verified", "reject": "rejected", "suspend": "suspended"}
+    status_map = {"approve": "verified", "reject": "rejected", "suspend": "suspended", "reactivate": "verified"}
     await db.users.update_one({"_id": uid},
                                {"$set": {"business_profile.verification_status": status_map[body.action]}})
-    titles = {"approve": "تم توثيق منشأتك", "reject": "تم رفض توثيق منشأتك", "suspend": "تم تعليق منشأتك"}
+    titles = {"approve": "تم توثيق منشأتك", "reject": "تم رفض توثيق منشأتك", "suspend": "تم تعليق منشأتك", "reactivate": "تمت إعادة تفعيل منشأتك"}
     await notify(uid, titles[body.action],
                  body.reason or f"حالة التوثيق: {status_map[body.action]}", "general", "/app/business")
     await audit(user, f"business_{body.action}", "user", uid,
@@ -683,6 +759,7 @@ class OfficeAgreementIn(BaseModel):
     effective_date: str
     expiry_date: Optional[str] = None
     commercial_terms: Optional[str] = None
+    provider_rate: Optional[float] = None
     provider_rate_note: Optional[str] = None
     commission_pct: Optional[float] = None
     settlement_terms: Optional[str] = None
@@ -711,6 +788,23 @@ async def upsert_office_agreement(oid: str, body: OfficeAgreementIn, user: dict 
                  "general", "/app/office/agreement")
     await audit(user, "office_agreement_issued", "agreement", doc["_id"], after={"version": body.version})
     return {"ok": True, "agreement": pub(doc)}
+
+
+@router.post("/offices/{oid}/drivers/{driver_id}/unlink")
+async def admin_unlink_office_driver(oid: str, driver_id: str, user: dict = p_offices_manage):
+    d = await db.users.find_one({"_id": driver_id, "role": "worker"})
+    if not d or (d.get("worker_profile") or {}).get("provider_id") != oid:
+        raise HTTPException(status_code=404, detail="المندوب غير مرتبط بهذا المكتب")
+    if await db.offers.find_one({"worker_id": driver_id, "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended", "delivered_reported", "pending_settlement", "qty_disputed"]}}):
+        raise HTTPException(status_code=400, detail="لا يمكن إلغاء الربط أثناء وجود مهمة نشطة")
+    await db.users.update_one({"_id": driver_id}, {"$set": {
+        "worker_profile.provider_status": "unlinked",
+        "worker_profile.provider_type": "direct",
+        "worker_profile.provider_ended_at": now_iso()}})
+    await notify(driver_id, "تم إلغاء ارتباطك بالمكتب",
+                 "قامت إدارة JR Logistics بإلغاء ارتباطك بالمكتب", "general", "/app/worker")
+    await audit(user, "admin_driver_unlinked", "user", driver_id, before={"office_id": oid})
+    return {"ok": True}
 
 
 @router.get("/verification-center")

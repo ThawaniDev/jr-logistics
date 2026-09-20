@@ -14,6 +14,8 @@ const BIZ_CATEGORIES = ["general", "wallet", "technical", "driver_no_show", "dri
 const WORKER_CATEGORIES = ["general", "wallet", "technical", "business_not_ready", "not_put_to_work",
   "shipment_count_differs", "location_issue", "task_issue", "attendance_issue", "payment_issue",
   "cancellation", "urgent", "other"];
+const OFFICE_CATEGORIES = ["general", "driver_assignment", "driver_availability", "settlement_issue",
+  "payment_issue", "agreement", "documents", "operations", "urgent", "other"];
 const ESC_LEVELS = ["support", "operations", "account_manager"];
 
 export default function Support() {
@@ -35,10 +37,13 @@ export default function Support() {
     } else if (user?.role === "worker") {
       api.get("/worker/jobs").then(({ data }) =>
         setRequests(data.jobs.filter((o) => o.request).map((o) => ({ id: o.request._id, title: o.request.title })))).catch(() => {});
+    } else if (user?.role === "office") {
+      api.get("/office/jobs").then(({ data }) =>
+        setRequests(data.jobs.filter((o) => o.request).map((o) => ({ id: o.request._id, title: o.request.title })))).catch(() => {});
     }
   }, [user?.role]);
 
-  const categories = user?.role === "worker" ? WORKER_CATEGORIES : BIZ_CATEGORIES;
+  const categories = user?.role === "worker" ? WORKER_CATEGORIES : user?.role === "office" ? OFFICE_CATEGORIES : BIZ_CATEGORIES;
   const locale = lang === "ar" ? "ar-SA" : lang === "ur" ? "ur-PK" : "en-US";
 
   const submit = async (e) => {

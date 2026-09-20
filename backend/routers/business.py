@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Literal, List
+from datetime import datetime, timezone, timedelta
 
 from db import db
 from deps import require_roles
 from catalog import SERVICE_MAP, DEFAULT_COMMISSION_RATE, DURATION_DAYS
-from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings, audit, get_client_pricing, ledger_entry, log_event, resolve_price
+from utils import new_id, now_iso, notify, notify_admins, notify_staff, add_txn, get_wallet, recalc_worker_rating, pub, pub_list, get_settings, audit, get_client_pricing, ledger_entry, log_event, resolve_price, record_assignment
 
 router = APIRouter(prefix="/api/business", tags=["business"])
 biz = Depends(require_roles("business"))
@@ -34,7 +35,7 @@ async def match_workers(request: dict) -> int:
         "worker_profile.availability": "available",
         "worker_profile.verification_status": "verified",
         "worker_profile.services": request["service_type"],
-    }).to_list(50)
+    }).to_list(500)
     # eligibility: no conflicting active job + vehicle compatibility
     busy_ids = set(await db.offers.distinct("worker_id", {"status": {"$in": BUSY_STATUSES}}))
     if request.get("vehicle_type"):
@@ -81,6 +82,8 @@ async def match_workers(request: dict) -> int:
         svc = SERVICE_MAP[request["service_type"]]
         city = request.get("pickup_city") or request.get("city")
         for o in offers:
+            await record_assignment(request["_id"], o["_id"], o["worker_id"],
+                                    "replacement_offered" if is_repl else "offered", None)
             await notify(
                 o["worker_id"],
                 "فرصة بديلة عاجلة — أول من يقبل يحصل عليها" if is_repl else f"فرصة عمل جديدة: {svc['name']}",
@@ -106,6 +109,32 @@ async def reserve_funds(user_id: str, r: dict):
     await add_txn(user_id, "reserve", r["estimated_total"], "debit",
                   f"حجز تكلفة الطلب: {r['title']}", r["_id"])
     await db.requests.update_one({"_id": r["_id"]}, {"$set": {"escrow_reserved": True}})
+
+
+async def offer_office_request(request: dict, actor: dict) -> int:
+    """Office-specific requests go to the office first; driver broadcast is the fallback."""
+    oid = request.get("preferred_office_id")
+    office = await db.users.find_one({"_id": oid, "role": "office", "status": "active"})
+    if not office or (office.get("office_profile") or {}).get("verification_status") not in ("verified", "active"):
+        raise HTTPException(status_code=400, detail="مكتب التوصيل المحدد غير مؤهل حالياً")
+    if not await db.agreements.find_one({"office_id": oid, "status": "accepted"}):
+        raise HTTPException(status_code=400, detail="مكتب التوصيل المحدد لا يملك اتفاقية سارية")
+    settings = await get_settings()
+    grace = settings.get("office_assignment_grace_min", 30)
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=grace)).isoformat()
+    await db.requests.update_one({"_id": request["_id"]}, {"$set": {
+        "office_assignment_status": "pending_office_assignment",
+        "office_assignment_expires_at": expires,
+    }})
+    request["office_assignment_status"] = "pending_office_assignment"
+    request["office_assignment_expires_at"] = expires
+    office_name = (office.get("office_profile") or {}).get("office_name") or office.get("name")
+    await notify(oid, "فرصة جديدة بانتظار تعيين مندوب",
+                 f"طلب: {request['title']} — عيّن مندوباً مؤهلاً من مكتبك خلال {grace} دقيقة أو عمّم الفرصة",
+                 "offer", "/app/office/opportunities")
+    await log_event(request["_id"], None, actor, "office_opportunity_offered",
+                    notes=f"office={office_name}")
+    return 0
 
 
 class EstimateIn(BaseModel):
@@ -275,6 +304,7 @@ async def create_request(body: RequestIn, user: dict = biz):
         "shipments_per_driver": body.shipments_per_driver,
         "vehicle_type": body.vehicle_type,
         "requirements": body.requirements,
+        "preferred_office_id": body.preferred_office_id,
         "estimated_total": total,
         "commission": commission,
         "payout_total": payout,
@@ -308,13 +338,19 @@ async def create_request(body: RequestIn, user: dict = biz):
         if bp.get("verification_status") not in ("verified", "active"):
             raise HTTPException(status_code=403,
                                 detail="حساب منشأتك بانتظار التحقق — أكمل البيانات وانتظر اعتماد الإدارة قبل نشر الطلبات")
+        if body.preferred_office_id:
+            office = await db.users.find_one({"_id": body.preferred_office_id, "role": "office", "status": "active"})
+            if not office or (office.get("office_profile") or {}).get("verification_status") not in ("verified", "active"):
+                raise HTTPException(status_code=400, detail="مكتب التوصيل المحدد غير مؤهل حالياً")
+            if not await db.agreements.find_one({"office_id": body.preferred_office_id, "status": "accepted"}):
+                raise HTTPException(status_code=400, detail="مكتب التوصيل المحدد لا يملك اتفاقية سارية")
         await reserve_funds(user["_id"], doc)
         updates = {"status": "published", "published_at": now_iso()}
         if body.terms:
             updates["biz_terms_accepted_at"] = now_iso()
         await db.requests.update_one({"_id": doc["_id"]}, {"$set": updates})
         doc["status"] = "published"
-        matched = await match_workers(doc)
+        matched = await offer_office_request(doc, user) if body.preferred_office_id else await match_workers(doc)
         await log_event(doc["_id"], None, user, "request_published",
                         old_status="draft", new_status="published",
                         notes=f"matched={matched}")
@@ -337,7 +373,7 @@ async def publish_request(request_id: str, body: PublishIn = None, user: dict = 
         updates["biz_terms_accepted_at"] = now_iso()
     await db.requests.update_one({"_id": request_id}, {"$set": updates})
     r["status"] = "published"
-    matched = await match_workers(r)
+    matched = await offer_office_request(r, user) if r.get("preferred_office_id") else await match_workers(r)
     await log_event(request_id, None, user, "request_published",
                     old_status="draft", new_status="published", notes=f"matched={matched}")
     await notify(user["_id"], "تم نشر طلبك",
@@ -429,6 +465,7 @@ async def mark_attendance(request_id: str, offer_id: str, body: AttendanceIn, us
         "request_id": request_id, "offer_id": offer_id, "worker_id": o["worker_id"],
         "business_id": user["_id"], "reason": body.reason or "لم يحضر في الموعد المحدد",
         "created_at": now_iso()})
+    await record_assignment(request_id, offer_id, o["worker_id"], "no_show", user, body.reason)
     await db.requests.update_one({"_id": request_id},
                                  {"$inc": {"replacement_count": 1}, "$set": {"replacement_requested": True}})
     w = await db.users.find_one({"_id": o["worker_id"]}, {"name": 1})
@@ -559,6 +596,20 @@ async def complete_request(request_id: str, user: dict = biz):
                                        {"worker_profile.provider_id": 1,
                                         "worker_profile.provider_status": 1}) or {}).get("worker_profile") or {})
         office_id = wp.get("provider_id") if wp.get("provider_status") == "linked" else None
+        provider_rate = None
+        if office_id:
+            agr = await db.agreements.find_one({"office_id": office_id, "status": "accepted"},
+                                               sort=[("created_at", -1)])
+            provider_rate = (agr or {}).get("provider_rate")
+        if office_id and provider_rate:
+            provider_amount = round(provider_rate * final_qty, 2) if expected_qty else round(provider_rate, 2)
+            if provider_amount > share:
+                raise HTTPException(status_code=400,
+                                    detail="قيمة المزود في الاتفاقية تتجاوز المبلغ المحجوز — راجع التسعير قبل إنشاء التسوية")
+            gross = provider_amount
+            commission = round(share - provider_amount, 2)
+            vat = round(commission * vat_pct / 100, 2)
+            net = provider_amount
         settlement = {
             "_id": new_id(), "request_id": request_id, "offer_id": o["_id"],
             "driver_id": o["worker_id"], "business_id": user["_id"],
@@ -568,6 +619,9 @@ async def complete_request(request_id: str, user: dict = biz):
             "final_qty": final_qty, "rate": rate, "commission_rate": commission_rate,
             "gross": gross, "commission": commission, "vat": vat, "vat_pct": vat_pct,
             "net": net, "reserved_share": share,
+            "provider_rate": provider_rate if office_id else None,
+            "provider_amount": net if office_id else None,
+            "adjustments": 0,
             "pricing_version": r.get("pricing_version"),
             "status": "pending_review",
             "is_demo": r.get("is_demo", False), "created_at": now_iso(),

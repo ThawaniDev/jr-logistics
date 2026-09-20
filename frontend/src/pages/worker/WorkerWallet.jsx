@@ -12,7 +12,7 @@ import { useI18n } from "@/i18n";
 
 export default function WorkerWallet() {
   const { t, lang } = useI18n();
-  const { refresh } = useAuth();
+  const { user, refresh } = useAuth();
   const [data, setData] = useState(null);
   const [withdrawals, setWithdrawals] = useState(null);
   const [form, setForm] = useState({ amount: "", bank_name: "مصرف الراجحي", iban: "" });
@@ -44,6 +44,7 @@ export default function WorkerWallet() {
 
   if (!data) return <p className="text-slate-500 text-sm">{t("common.loading")}</p>;
   const { wallet, transactions } = data;
+  const officeManaged = user?.worker_profile?.provider_type === "office" && user?.worker_profile?.provider_status === "linked";
   const locale = lang === "ar" ? "ar-SA" : lang === "ur" ? "ur-PK" : "en-US";
 
   return (
@@ -59,35 +60,41 @@ export default function WorkerWallet() {
         <StatCard testid="wallet-paid" icon={Banknote} label={t("wallet.paid")} value={sar(data.paid_earnings || 0)} tone="cyan" sub={t("wallet.paidNote")} />
       </div>
 
-      <form onSubmit={submit} className="card-surface p-6 space-y-4" data-testid="withdrawal-form">
-        <p className="font-heading font-bold flex items-center gap-2">
-          <Landmark className="w-4 h-4 text-brand" /> {t("wallet.withdrawTo")}
-          <span className="chip bg-amber-500/10 text-amber-400 border-amber-500/30 text-[10px]">{t("wallet.demoTransfer")}</span>
-        </p>
-        <div className="grid sm:grid-cols-3 gap-4">
-          <div>
-            <label className="text-xs text-slate-400 block mb-1.5">{t("wallet.amountW")}</label>
-            <Input data-testid="withdrawal-amount" type="number" min="1" value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })} className="bg-navy-800 border-navy-600 h-11 num" />
+      {!officeManaged ? (
+        <form onSubmit={submit} className="card-surface p-6 space-y-4" data-testid="withdrawal-form">
+          <p className="font-heading font-bold flex items-center gap-2">
+            <Landmark className="w-4 h-4 text-brand" /> {t("wallet.withdrawTo")}
+            <span className="chip bg-amber-500/10 text-amber-400 border-amber-500/30 text-[10px]">{t("wallet.demoTransfer")}</span>
+          </p>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("wallet.amountW")}</label>
+              <Input data-testid="withdrawal-amount" type="number" min="1" value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })} className="bg-navy-800 border-navy-600 h-11 num" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("wallet.bank")}</label>
+              <select data-testid="withdrawal-bank" value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })}
+                className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+                {["مصرف الراجحي", "البنك الأهلي السعودي", "بنك الرياض", "البنك السعودي الفرنسي", "STC Pay"].map((b) => <option key={b}>{b}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">{t("wallet.iban")}</label>
+              <Input data-testid="withdrawal-iban" dir="ltr" placeholder="SA.." value={form.iban}
+                onChange={(e) => setForm({ ...form, iban: e.target.value })} className="bg-navy-800 border-navy-600 h-11 text-left" />
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-slate-400 block mb-1.5">{t("wallet.bank")}</label>
-            <select data-testid="withdrawal-bank" value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })}
-              className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
-              {["مصرف الراجحي", "البنك الأهلي السعودي", "بنك الرياض", "البنك السعودي الفرنسي", "STC Pay"].map((b) => <option key={b}>{b}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 block mb-1.5">{t("wallet.iban")}</label>
-            <Input data-testid="withdrawal-iban" dir="ltr" placeholder="SA.." value={form.iban}
-              onChange={(e) => setForm({ ...form, iban: e.target.value })} className="bg-navy-800 border-navy-600 h-11 text-left" />
-          </div>
+          <button data-testid="withdrawal-submit-btn" disabled={busy}
+            className="bg-brand text-navy-900 font-bold rounded-xl px-6 py-2.5 text-sm hover:bg-brand-hover disabled:opacity-50 transition-colors">
+            {busy ? t("wallet.sending") : t("wallet.submitW")}
+          </button>
+        </form>
+      ) : (
+        <div className="card-surface p-5 border-cyan-500/25 bg-cyan-500/5 text-sm text-cyan-300" data-testid="office-managed-wallet-note">
+          {t("wallet.officeManaged")}
         </div>
-        <button data-testid="withdrawal-submit-btn" disabled={busy}
-          className="bg-brand text-navy-900 font-bold rounded-xl px-6 py-2.5 text-sm hover:bg-brand-hover disabled:opacity-50 transition-colors">
-          {busy ? t("wallet.sending") : t("wallet.submitW")}
-        </button>
-      </form>
+      )}
 
       {withdrawals && withdrawals.length > 0 && (
         <div>

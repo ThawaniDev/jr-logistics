@@ -101,6 +101,9 @@ async def onboarding_status(user: dict = Depends(get_current_user)):
         field("السجل التجاري", bool(op.get("cr_number")))
         field("المدينة", bool(op.get("city") or user.get("city")))
         field("العنوان", bool(op.get("address")))
+        field("البريد الإلكتروني", bool(user.get("email")))
+        field("اسم المسؤول", bool(op.get("responsible_person")))
+        field("اسم البنك", bool(op.get("bank_name")))
         field("الآيبان", bool(op.get("iban")))
         for dt in [d for d in OFFICE_DOC_TYPES if d["required"]]:
             total += 1
@@ -141,6 +144,11 @@ class ProfileIn(BaseModel):
     bank_name: Optional[str] = None
     iban: Optional[str] = None
     national_id: Optional[str] = None
+    responsible_person: Optional[str] = None
+    address: Optional[str] = None
+    tax_number: Optional[str] = None
+    compliance_notes: Optional[str] = None
+    webhook_url: Optional[str] = None
 
 
 @router.patch("/profile")
@@ -155,11 +163,20 @@ async def update_profile(body: ProfileIn, user: dict = Depends(get_current_user)
             v = getattr(body, f)
             if v is not None:
                 updates[f"business_profile.{f}"] = v
+        if body.webhook_url is not None:
+            updates["business_profile.webhook_url"] = body.webhook_url.strip()
     if user["role"] == "worker":
         for f in ("services", "bank_name", "iban", "national_id", "vehicle_type", "vehicle_temperature"):
             v = getattr(body, f)
             if v is not None:
                 updates[f"worker_profile.{f}"] = v
+    if user["role"] == "office":
+        for f in ("company_name", "cr_number", "responsible_person", "address",
+                  "bank_name", "iban", "tax_number", "compliance_notes"):
+            v = getattr(body, f)
+            if v is not None:
+                key = "office_name" if f == "company_name" else f
+                updates[f"office_profile.{key}"] = v
     if updates:
         await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
     return {"user": pub(await db.users.find_one({"_id": user["_id"]}))}
@@ -171,15 +188,18 @@ async def wallet(user: dict = Depends(get_current_user)):
     txns = await db.transactions.find({"user_id": user["_id"]}).sort("created_at", -1).to_list(200)
     result = {"wallet": pub(w), "transactions": pub_list(txns)}
     if user["role"] == "worker":
+        wp = user.get("worker_profile") or {}
+        linked_office = wp.get("provider_type") == "office" and wp.get("provider_status") == "linked"
         active = await db.offers.find(
             {"worker_id": user["_id"],
              "status": {"$in": ["confirmed", "attendance_confirmed", "attended"]}}).to_list(200)
         pending = 0.0
-        for o in active:
-            req = await db.requests.find_one({"_id": o["request_id"]})
-            if req:
-                share = req["estimated_total"] / req["required_count"]
-                pending += share * (1 - req.get("commission_rate", 0.10))
+        if not linked_office:
+            for o in active:
+                req = await db.requests.find_one({"_id": o["request_id"]})
+                if req:
+                    share = req["estimated_total"] / req["required_count"]
+                    pending += share * (1 - req.get("commission_rate", 0.10))
         result["pending_earnings"] = round(pending, 2)
         result["paid_earnings"] = round(
             sum(t["amount"] for t in txns if t["type"] == "earning"), 2)
@@ -243,9 +263,11 @@ async def list_tickets(user: dict = Depends(get_current_user)):
     for t in items:
         t["user"] = pub(await db.users.find_one({"_id": t["user_id"]}, {"name": 1, "role": 1, "phone": 1}))
         if t.get("request_id"):
+            projection = {"title": 1, "city": 1, "start_date": 1, "status": 1}
+            if user["role"] != "office":
+                projection["estimated_total"] = 1
             t["request"] = pub(await db.requests.find_one(
-                {"_id": t["request_id"]},
-                {"title": 1, "city": 1, "start_date": 1, "estimated_total": 1, "status": 1}))
+                {"_id": t["request_id"]}, projection))
     return {"tickets": pub_list(items)}
 
 

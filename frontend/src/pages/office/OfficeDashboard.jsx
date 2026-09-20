@@ -33,16 +33,16 @@ export default function OfficeDashboard() {
       {s && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="office-driver-stats">
-            <StatCard title={t("office.totalDrivers")} value={s.drivers_total} icon={Users} tone="brand" />
-            <StatCard title={t("office.activeDrivers")} value={s.drivers_available} icon={CircleCheck} tone="green" />
-            <StatCard title={t("office.busyDrivers")} value={s.drivers_busy} icon={Clock3} tone="blue" />
-            <StatCard title={t("office.unavailDrivers")} value={s.drivers_unavailable} icon={AlertTriangle} tone="amber" />
+            <StatCard label={t("office.totalDrivers")} value={s.drivers_total} icon={Users} tone="brand" />
+            <StatCard label={t("office.activeDrivers")} value={s.drivers_available} icon={CircleCheck} tone="green" />
+            <StatCard label={t("office.busyDrivers")} value={s.drivers_busy} icon={Clock3} tone="blue" />
+            <StatCard label={t("office.unavailDrivers")} value={s.drivers_unavailable} icon={AlertTriangle} tone="amber" />
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="office-job-stats">
-            <StatCard title={t("office.activeJobs")} value={s.active_jobs} icon={Briefcase} tone="blue" />
-            <StatCard title={t("office.completedJobs")} value={s.completed_jobs} icon={CircleCheck} tone="green" />
-            <StatCard title={t("office.pendingSettle")} value={sar(s.settlements_pending)} icon={Landmark} tone="amber" />
-            <StatCard title={t("office.totalRecv")} value={sar(s.total_receivables)} icon={Landmark} tone="brand" />
+            <StatCard label={t("office.activeJobs")} value={s.active_jobs} icon={Briefcase} tone="blue" />
+            <StatCard label={t("office.completedJobs")} value={s.completed_jobs} icon={CircleCheck} tone="green" />
+            <StatCard label={t("office.pendingSettle")} value={sar(s.settlements_pending)} icon={Landmark} tone="amber" />
+            <StatCard label={t("office.totalRecv")} value={sar(s.total_receivables)} icon={Landmark} tone="brand" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Link to="/app/office/settlements" className="card-surface p-5 hover:border-brand/40 transition-colors" data-testid="office-go-settlements">

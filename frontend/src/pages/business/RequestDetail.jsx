@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ArrowRight, MapPin, Calendar, Clock, Users, Star, CheckCircle2,
-  XCircle, Lock, Flag, UserCheck, RefreshCcw, Phone, MessageCircle, Siren,
+  XCircle, Lock, Flag, UserCheck, RefreshCcw, Phone, MessageCircle, Siren, Package,
 } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -21,6 +21,115 @@ function Stars({ value, onChange, testid }) {
           <Star className={`w-5 h-5 ${s <= value ? "fill-amber-400 text-amber-400" : "text-slate-600"}`} />
         </button>
       ))}
+    </div>
+  );
+}
+
+const CUSTODY_TYPES = ["pos_device", "network_device", "phone", "charger", "bag", "other"];
+
+function CustodyPanel({ offerId, offerStatus, onChange }) {
+  const { t } = useI18n();
+  const [records, setRecords] = useState(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [sel, setSel] = useState({});
+  const [ret, setRet] = useState({});
+  const [busy, setBusy] = useState(false);
+  const load = () => api.get(`/custody/offer/${offerId}`).then(({ data }) => setRecords(data.custody)).catch(() => {});
+  useEffect(() => { load(); }, [offerId]);
+  if (!records) return null;
+  const active = records.find((c) => ["pending_confirm", "confirmed"].includes(c.status));
+
+  const submitHandover = async () => {
+    const items = Object.entries(sel).filter(([, q]) => Number(q) > 0).map(([type, q]) => ({ type, qty: Number(q) }));
+    if (!items.length) return toast.error(t("cust.items"));
+    setBusy(true);
+    try {
+      await api.post("/custody/handover", { offer_id: offerId, items });
+      toast.success(t("cust.handoverDone"));
+      setFormOpen(false); setSel({}); load(); onChange?.();
+    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+  };
+
+  const submitReturn = async () => {
+    setBusy(true);
+    try {
+      const items = active.items.map((_, i) => ({ index: i, status: ret[i] || "returned" }));
+      await api.post(`/custody/${active._id}/return`, { items });
+      toast.success(t("cust.returnDone"));
+      load(); onChange?.();
+    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="pt-1 space-y-2" data-testid={`custody-${offerId}`}>
+      {records.map((c) => (
+        <div key={c._id} className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 text-xs space-y-1.5" data-testid={`custody-rec-${c._id}`}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-semibold text-slate-300">{t("cust.title")}</p>
+            <span className={`chip ${c.status === "issue" ? "bg-rose-500/10 text-rose-400 border-rose-500/30" : c.status === "returned" ? "bg-green-500/10 text-green-300 border-green-500/30" : c.status === "confirmed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-amber-500/10 text-amber-400 border-amber-500/30"}`}>
+              {t(`cust.st_${c.status}`)}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {c.items.map((it, i) => {
+              const retSt = (c.returns || []).find((x) => x.index === i);
+              return (
+                <span key={i} className="chip bg-navy-700 text-slate-300 border-navy-600">
+                  {t(`cust.it_${it.type}`)} ×<b className="num">{it.qty}</b>
+                  {retSt && <b className={retSt.status === "returned" ? "text-green-400" : "text-rose-400"}> · {t(`cust.${retSt.status === "not_returned" ? "notReturned" : retSt.status}`)}</b>}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {!active && ["attendance_confirmed", "attended"].includes(offerStatus) && (
+        formOpen ? (
+          <div className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 space-y-2" data-testid={`custody-form-${offerId}`}>
+            <p className="text-xs font-semibold text-slate-300">{t("cust.handover")}</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {CUSTODY_TYPES.map((tp) => (
+                <label key={tp} className="flex items-center gap-2 text-[11px] text-slate-300">
+                  <input type="number" min="0" placeholder="0" value={sel[tp] ?? ""} data-testid={`custody-qty-${tp}-${offerId}`}
+                    onChange={(e) => setSel({ ...sel, [tp]: e.target.value })}
+                    className="w-14 bg-navy-900 border border-navy-600 rounded-lg px-2 py-1 num focus:outline-none focus:ring-1 focus:ring-brand" />
+                  {t(`cust.it_${tp}`)}
+                </label>
+              ))}
+            </div>
+            <button onClick={submitHandover} disabled={busy} data-testid={`custody-submit-${offerId}`}
+              className="bg-brand text-navy-900 font-bold rounded-lg px-4 py-1.5 text-xs hover:bg-brand-hover disabled:opacity-50 transition-colors">
+              {t("cust.handover")}
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setFormOpen(true)} data-testid={`custody-open-${offerId}`}
+            className="flex items-center gap-1.5 text-[11px] border border-navy-600 text-slate-300 rounded-lg px-3 py-1.5 hover:border-brand/40 hover:text-brand transition-colors">
+            <Package className="w-3 h-3" /> {t("cust.handover")}
+          </button>
+        )
+      )}
+      {active && ["delivered_reported", "pending_settlement", "attended", "attendance_confirmed"].includes(offerStatus) && (
+        <div className="bg-navy-800/60 rounded-xl p-3 border border-navy-600/40 space-y-2" data-testid={`custody-return-${offerId}`}>
+          <p className="text-[11px] text-slate-400">{t("cust.returnHint")}</p>
+          {active.items.map((it, i) => (
+            <div key={i} className="flex items-center gap-2 text-[11px] flex-wrap">
+              <span className="text-slate-300 flex-1">{t(`cust.it_${it.type}`)} ×<span className="num">{it.qty}</span></span>
+              {["returned", "not_returned", "damaged"].map((st) => (
+                <button key={st} type="button" data-testid={`custody-ret-${st}-${i}-${offerId}`}
+                  onClick={() => setRet({ ...ret, [i]: st })}
+                  className={`chip text-[10px] ${(ret[i] || "returned") === st ? (st === "returned" ? "bg-green-500/15 text-green-300 border-green-500/40" : "bg-rose-500/15 text-rose-300 border-rose-500/40") : "bg-navy-900 text-slate-500 border-navy-600"}`}>
+                  {t(`cust.${st === "not_returned" ? "notReturned" : st}`)}
+                </button>
+              ))}
+            </div>
+          ))}
+          <button onClick={submitReturn} disabled={busy} data-testid={`custody-return-submit-${offerId}`}
+            className="bg-brand text-navy-900 font-bold rounded-lg px-4 py-1.5 text-xs hover:bg-brand-hover disabled:opacity-50 transition-colors">
+            {t("cust.recordReturn")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -328,6 +437,9 @@ export default function RequestDetail() {
                   <p className="text-[11px] text-rose-400 flex items-center gap-1.5 pt-1" data-testid={`qty-disputed-note-${o._id}`}>
                     <XCircle className="w-3.5 h-3.5" /> {t("reqDetail.qtyDisputedL")}
                   </p>
+                )}
+                {["attendance_confirmed", "attended", "delivered_reported", "pending_settlement"].includes(o.status) && (
+                  <CustodyPanel offerId={o._id} offerStatus={o.status} onChange={load} />
                 )}
 
                 {["accepted", "confirmed", "attendance_confirmed", "attended", "delivered_reported", "pending_settlement", "qty_disputed", "paid"].includes(o.status) && (

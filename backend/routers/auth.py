@@ -46,6 +46,8 @@ class RegisterIn(BaseModel):
     iban: Optional[str] = None
     responsible_person: Optional[str] = None
     address: Optional[str] = None
+    tax_number: Optional[str] = None
+    compliance_notes: Optional[str] = None
     vehicle_temperature: Optional[str] = None
     terms_accepted: bool = False
 
@@ -172,6 +174,8 @@ async def register(body: RegisterIn, response: Response, request: Request):
             "city": body.city or "",
             "bank_name": body.bank_name or "",
             "iban": body.iban or "",
+            "tax_number": body.tax_number or "",
+            "compliance_notes": body.compliance_notes or "",
             "verification_status": "pending",
         }
     if body.role == "business":

@@ -6,7 +6,8 @@ from typing import Optional
 from db import db
 from deps import require_staff
 from utils import (new_id, now_iso, pub, pub_list, audit, add_txn, get_wallet,
-                   get_settings, next_invoice_no, notify, ledger_entry, log_event)
+                   get_settings, next_invoice_no, notify, ledger_entry, log_event,
+                   current_period_key)
 
 router = APIRouter(prefix="/api/admin/finance", tags=["finance"])
 p_view = Depends(require_staff("settlements_view", "finance_view", "wallets"))
@@ -88,14 +89,11 @@ class PayoutIn(BaseModel):
     note: Optional[str] = None
 
 
-@router.post("/settlements/{settlement_id}/payout")
-async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payout):
-    s = await db.settlements.find_one({"_id": settlement_id})
-    if not s or s["status"] != "approved":
-        raise HTTPException(status_code=400, detail="يجب اعتماد التصفية قبل الصرف")
+async def _process_payout(s: dict, method: str, reference: Optional[str],
+                          note: Optional[str], user: dict) -> dict:
+    settlement_id = s["_id"]
     r = await db.requests.find_one({"_id": s["request_id"]})
-    o = await db.offers.find_one({"_id": s["offer_id"]})
-    payment_ref = body.reference or f"PAY-{new_id()[:10].upper()}"
+    payment_ref = reference or f"PAY-{new_id()[:10].upper()}"
     settings = await get_settings()
 
     # money movement: provider net (driver directly or linked courier office), platform commission, business reserved release/refund
@@ -135,14 +133,14 @@ async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payo
                     notes=f"invoice={invoice_no}, vat={s['vat']}")
 
     payout_rec = {"executed_by": {"id": user["_id"], "name": user["name"]},
-                  "method": body.method, "reference": payment_ref,
-                  "note": body.note, "at": now_iso()}
+                  "method": method, "reference": payment_ref,
+                  "note": note, "at": now_iso()}
     await db.settlements.update_one({"_id": settlement_id},
                                     {"$set": {"status": "paid", "payout": payout_rec,
                                               "invoice_no": invoice_no, "paid_at": now_iso()}})
     await audit(user, "payout_executed", "settlement", settlement_id,
-                after={"net": s["net"], "method": body.method, "reference": payment_ref},
-                note=body.note)
+                after={"net": s["net"], "method": method, "reference": payment_ref},
+                note=note)
     await log_event(s["request_id"], s.get("offer_id"), user, "payout_executed",
                     new_status="paid", notes=f"ref={payment_ref}")
     if s.get("office_id"):
@@ -163,7 +161,55 @@ async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payo
         await notify(s["business_id"], "اكتملت التسوية",
                      f"تمت تسوية طلب: {title} وصرف مستحقات المندوبين",
                      "completed", f"/app/business/requests/{s['request_id']}")
-    return {"ok": True, "reference": payment_ref, "invoice_no": invoice_no}
+    return {"reference": payment_ref, "invoice_no": invoice_no}
+
+
+@router.post("/settlements/{settlement_id}/payout")
+async def execute_payout(settlement_id: str, body: PayoutIn, user: dict = p_payout):
+    s = await db.settlements.find_one({"_id": settlement_id})
+    if not s or s["status"] != "approved":
+        raise HTTPException(status_code=400, detail="يجب اعتماد التصفية قبل الصرف")
+    res = await _process_payout(s, body.method, body.reference, body.note, user)
+    return {"ok": True, **res}
+
+
+# ---------- Settlement batches (configurable weekly/monthly periods) ----------
+
+class BatchPayoutIn(BaseModel):
+    method: str = "bank_transfer"
+    reference: Optional[str] = None
+    note: Optional[str] = None
+
+
+@router.post("/payouts/run-batch")
+async def run_payout_batch(body: BatchPayoutIn, user: dict = p_payout):
+    settings = await get_settings()
+    period = settings.get("settlement_period", "weekly")
+    approved = await db.settlements.find({"status": "approved"}).to_list(500)
+    if not approved:
+        raise HTTPException(status_code=400, detail="لا توجد تصفيات معتمدة بانتظار الصرف")
+    batch_ref = body.reference or f"BATCH-{new_id()[:8].upper()}"
+    total = 0.0
+    paid_ids = []
+    for i, s in enumerate(approved, 1):
+        await _process_payout(s, body.method, f"{batch_ref}-{i:03d}", body.note, user)
+        total += s["net"]
+        paid_ids.append(s["_id"])
+    batch = {"_id": new_id(), "period_type": period, "period_key": current_period_key(period),
+             "settlement_ids": paid_ids, "count": len(paid_ids), "total": round(total, 2),
+             "method": body.method, "reference": batch_ref,
+             "executed_by": {"id": user["_id"], "name": user["name"]},
+             "note": body.note, "created_at": now_iso()}
+    await db.payout_batches.insert_one(batch)
+    await audit(user, "payout_batch_executed", "payout_batch", batch["_id"],
+                after={"count": len(paid_ids), "total": batch["total"], "period": batch["period_key"]})
+    return {"ok": True, "batch": pub(batch)}
+
+
+@router.get("/payouts/batches")
+async def list_payout_batches(user: dict = p_view):
+    items = await db.payout_batches.find().sort("created_at", -1).to_list(100)
+    return {"batches": pub_list(items)}
 
 
 class RejectIn(BaseModel):
@@ -240,11 +286,19 @@ async def platform_account(user: dict = p_view):
     commission_total = round(sum(t["amount"] for t in commissions), 2)
     paid_drivers = await db.transactions.find({"type": "payout"}).to_list(5000)
     paid_total = round(sum(t["amount"] for t in paid_drivers), 2)
+    office_ids = set(await db.users.distinct("_id", {"role": "office"}))
+    office_paid = round(sum(t["amount"] for t in paid_drivers if t["user_id"] in office_ids), 2)
+    driver_paid = round(paid_total - office_paid, 2)
     owed = await db.settlements.find({"status": {"$in": ["pending_review", "under_review", "approved"]}}).to_list(1000)
     owed_total = round(sum(s["net"] for s in owed), 2)
+    owed_office = round(sum(s["net"] for s in owed if s.get("office_id")), 2)
+    owed_driver = round(owed_total - owed_office, 2)
+    topups = await db.transactions.find({"type": "topup"}).to_list(5000)
+    customer_payments = round(sum(t["amount"] for t in topups), 2)
     wallets = await db.wallets.find({}, {"available": 1, "reserved": 1}).to_list(2000)
     refunds = await db.transactions.find({"type": "refund"}).to_list(5000)
     comp = await db.transactions.find({"note": {"$regex": "تعويض"}}).to_list(5000)
+    settings = await get_settings()
     return {
         "commission_revenue": commission_total,
         "driver_payouts_paid": paid_total,
@@ -254,4 +308,14 @@ async def platform_account(user: dict = p_view):
         "refunds_total": round(sum(t["amount"] for t in refunds), 2),
         "compensation_total": round(sum(t["amount"] for t in comp), 2),
         "net_platform_revenue": commission_total,
+        # financial separation: customer payments vs platform fees vs office vs driver earnings
+        "customer_payments": customer_payments,
+        "platform_fees": commission_total,
+        "office_earnings_paid": office_paid,
+        "driver_earnings_paid": driver_paid,
+        "office_amounts_owed": owed_office,
+        "driver_amounts_owed_direct": owed_driver,
+        "settlement_period": settings.get("settlement_period", "weekly"),
+        "settlement_period_key": current_period_key(settings.get("settlement_period", "weekly")),
+        "pending_batches": await db.settlements.count_documents({"status": "approved"}),
     }

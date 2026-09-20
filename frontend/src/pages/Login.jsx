@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { ShieldCheck, Phone, ArrowRight, KeyRound } from "lucide-react";
@@ -20,6 +20,14 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const role = searchParams.get("role");
+    if (["business", "worker", "office"].includes(role)) {
+      sessionStorage.setItem("isnad_pre_role", role);
+    }
+  }, [searchParams]);
 
   const sendOtp = async (e) => {
     e?.preventDefault();

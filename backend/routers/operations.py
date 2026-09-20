@@ -77,13 +77,21 @@ async def operations_today(user: dict = p_ops):
                 counts["present"] += 1
             elif start and now > start + timedelta(minutes=grace):
                 counts["not_arrived"] += 1
-                w = await db.users.find_one({"_id": o["worker_id"]}, {"name": 1, "phone": 1})
+                w = await db.users.find_one({"_id": o["worker_id"]},
+                                            {"name": 1, "phone": 1, "worker_profile.provider_id": 1})
+                office = None
+                wp = (w or {}).get("worker_profile") or {}
+                if wp.get("provider_id"):
+                    office = await db.users.find_one({"_id": wp["provider_id"], "role": "office"},
+                                                     {"name": 1, "office_profile.office_name": 1})
                 b = await db.users.find_one({"_id": o["business_id"]},
                                             {"name": 1, "business_profile.company_name": 1})
                 late.append({
                     "offer_id": o["_id"], "request_id": o["request_id"],
                     "driver_name": (w or {}).get("name"), "driver_id": o["worker_id"],
                     "driver_phone": (w or {}).get("phone"),
+                    "office_id": wp.get("provider_id"),
+                    "office_name": ((office or {}).get("office_profile") or {}).get("office_name") or (office or {}).get("name"),
                     "business_name": ((b or {}).get("business_profile") or {}).get("company_name") or (b or {}).get("name"),
                     "city": r.get("pickup_city") or r.get("city"), "title": r.get("title"),
                     "start_time": r.get("start_time"), "status": st,
@@ -264,6 +272,10 @@ async def drivers_directory(city: Optional[str] = None, vehicle_type: Optional[s
     for w in workers:
         wp = w.get("worker_profile", {})
         out.append({**pub(w), "has_active_job": w["_id"] in busy_ids,
+                    "office_id": wp.get("provider_id"),
+                    "office_name": None,
+                    "affiliation": "office" if (wp.get("provider_type") == "office"
+                                                and wp.get("provider_status") == "linked") else "platform",
                     "eligible": wp.get("verification_status") == "verified"
                     and wp.get("availability") == "available" and w["_id"] not in busy_ids})
     return {"drivers": out}

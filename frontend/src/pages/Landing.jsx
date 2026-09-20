@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import {
-  ShieldCheck, Wallet, Users, Zap, ChevronLeft, Building2, UserCheck,
+  Truck, ShieldCheck, Wallet, Users, Zap, ChevronLeft, Building2, UserCheck,
   MapPin, Clock, BadgeCheck, ArrowLeft, Star, ClipboardList,
 } from "lucide-react";
 import { ACTIVE_SERVICES, COMING_SOON_SERVICES } from "@/lib/constants";
@@ -144,16 +144,21 @@ export default function Landing() {
               {t("landing.heroSub")}
             </motion.p>
             <motion.div variants={fadeUp} initial="hidden" animate="show" custom={3} className="mt-8 flex flex-wrap gap-4">
-              <Link to="/login" data-testid="hero-business-cta"
+              <Link to="/login?role=business" data-testid="hero-business-cta"
                 className="group flex items-center gap-2 bg-brand text-navy-900 font-bold rounded-2xl px-7 py-3.5 hover:bg-brand-hover transition-all shadow-[0_0_30px_rgba(0,229,163,0.3)]">
                 <Building2 className="w-5 h-5" />
                 {t("landing.bizCta")}
                 <ChevronLeft className="w-4 h-4 rtl:rotate-0 ltr:rotate-180 group-hover:-translate-x-1 rtl:group-hover:-translate-x-1 ltr:group-hover:translate-x-1 transition-transform" />
               </Link>
-              <Link to="/login" data-testid="hero-worker-cta"
+              <Link to="/login?role=worker" data-testid="hero-worker-cta"
                 className="flex items-center gap-2 border border-navy-600 bg-navy-800/60 text-slate-100 font-bold rounded-2xl px-7 py-3.5 hover:border-brand/50 hover:text-brand transition-all">
                 <UserCheck className="w-5 h-5" />
                 {t("landing.drvCta")}
+              </Link>
+              <Link to="/login?role=office" data-testid="hero-office-cta"
+                className="flex items-center gap-2 border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 font-bold rounded-2xl px-7 py-3.5 hover:border-cyan-400/60 hover:bg-cyan-500/15 transition-all">
+                <Truck className="w-5 h-5" />
+                {t("landing.officeCta")}
               </Link>
             </motion.div>
             <motion.div variants={fadeUp} initial="hidden" animate="show" custom={4}
@@ -288,13 +293,13 @@ export default function Landing() {
       </section>
 
       <section id="join" className="py-20 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-6">
+        <div className="max-w-7xl mx-auto grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }}
             className="card-surface card-surface-hover p-8 bg-gradient-to-bl from-brand/10 to-transparent">
             <Building2 className="w-10 h-10 text-brand mb-4" />
             <h3 className="heading text-2xl font-extrabold">{t("landing.joinBizT")}</h3>
             <p className="text-slate-400 mt-3 text-sm leading-relaxed">{t("landing.joinBizD")}</p>
-            <Link to="/login" data-testid="join-business-btn"
+            <Link to="/login?role=business" data-testid="join-business-btn"
               className="inline-flex items-center gap-2 mt-6 bg-brand text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-brand-hover transition-colors">
               {t("landing.joinBizBtn")} <ArrowLeft className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
             </Link>
@@ -304,9 +309,19 @@ export default function Landing() {
             <UserCheck className="w-10 h-10 text-amber-400 mb-4" />
             <h3 className="heading text-2xl font-extrabold">{t("landing.joinDrvT")}</h3>
             <p className="text-slate-400 mt-3 text-sm leading-relaxed">{t("landing.joinDrvD")}</p>
-            <Link to="/login" data-testid="join-worker-btn"
+            <Link to="/login?role=worker" data-testid="join-worker-btn"
               className="inline-flex items-center gap-2 mt-6 bg-amber-400 text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-amber-300 transition-colors">
               {t("landing.joinDrvBtn")} <ArrowLeft className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
+            </Link>
+          </motion.div>
+          <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={2}
+            className="card-surface card-surface-hover p-8 bg-gradient-to-bl from-cyan-500/10 to-transparent">
+            <Truck className="w-10 h-10 text-cyan-300 mb-4" />
+            <h3 className="heading text-2xl font-extrabold">{t("landing.joinOfficeT")}</h3>
+            <p className="text-slate-400 mt-3 text-sm leading-relaxed">{t("landing.joinOfficeD")}</p>
+            <Link to="/login?role=office" data-testid="join-office-btn"
+              className="inline-flex items-center gap-2 mt-6 bg-cyan-400 text-navy-900 font-bold rounded-xl px-6 py-3 text-sm hover:bg-cyan-300 transition-colors">
+              {t("landing.joinOfficeBtn")} <ArrowLeft className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
             </Link>
           </motion.div>
         </div>
