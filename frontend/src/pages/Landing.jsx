@@ -220,16 +220,16 @@ export default function Landing() {
                       <h3 className="heading font-extrabold text-xl">{t(`svc.${s.key}_name`)}</h3>
                       <span className="chip bg-brand/15 text-brand border-brand/30">{t("landing.availableNow")}</span>
                     </div>
-                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">{t("landing.svcDesc")}</p>
+                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">{t(`svc.${s.key}_desc`)}</p>
                     <div className="flex flex-wrap gap-4 mt-4 text-xs text-slate-500">
-                      <span>{t("landing.svcP1")}</span>
+                      <span className="chip bg-navy-800/60 border-navy-700 num">{t(`svc.${s.key}_unit`)}</span>
                       <span>{t("landing.svcP2")}</span>
                       <span>{t("landing.svcP3")}</span>
                     </div>
                   </div>
-                  <Link to="/login" data-testid="service-cta-delivery"
+                  <Link to="/login" data-testid={`service-cta-${s.key}`}
                     className="shrink-0 bg-brand text-navy-900 font-bold rounded-xl px-5 py-2.5 text-sm hover:bg-brand-hover transition-colors">
-                    {t("landing.orderDrivers")}
+                    {t(`svc.${s.key}_btn`)}
                   </Link>
                 </div>
               </motion.div>

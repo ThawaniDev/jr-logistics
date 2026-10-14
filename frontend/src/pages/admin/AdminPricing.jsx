@@ -80,6 +80,7 @@ export default function AdminPricing() {
         pickup_city: ruleForm.pickup_city, delivery_city: ruleForm.delivery_city,
         price: Number(ruleForm.price), effective_date: ruleForm.effective_date,
         expiry_date: ruleForm.expiry_date || null,
+        provider_cost: ruleForm.provider_cost ? Number(ruleForm.provider_cost) : null,
         version: ruleForm.version || undefined,
         agreement_ref: ruleForm.agreement_ref || undefined,
         notes: ruleForm.notes || undefined,
@@ -160,6 +161,13 @@ export default function AdminPricing() {
               className="bg-navy-800 border-navy-600 h-11 num" />
           </div>
           <div>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("rules.providerCost")}</label>
+            <Input data-testid="rule-provider-cost" type="number" min="0" step="0.01" value={ruleForm.provider_cost || ""}
+              onChange={(e) => setRuleForm({ ...ruleForm, provider_cost: e.target.value })}
+              placeholder={t("rules.providerCostPh")}
+              className="bg-navy-800 border-navy-600 h-11 num" />
+          </div>
+          <div>
             <label className="text-xs text-slate-400 block mb-1.5">{t("rules.pickup")}</label>
             <select data-testid="rule-pickup" value={ruleForm.pickup_city} onChange={(e) => setRuleForm({ ...ruleForm, pickup_city: e.target.value })}
               className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
@@ -217,7 +225,7 @@ export default function AdminPricing() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-navy-600/50 text-slate-400 text-xs">
-                    {[t("rules.business"), t("rules.vehicle"), t("rules.temp"), t("rules.pickup"), t("rules.delivery"), t("rules.price"), t("rules.effectiveDate"), t("rules.version"), ""].map((h, i) => (
+                    {[t("rules.business"), t("rules.vehicle"), t("rules.temp"), t("rules.pickup"), t("rules.delivery"), t("rules.price"), t("rules.providerCost"), t("rules.effectiveDate"), t("rules.version"), ""].map((h, i) => (
                       <th key={i} className="text-start p-4 font-semibold">{h}</th>
                     ))}
                   </tr>
@@ -231,6 +239,11 @@ export default function AdminPricing() {
                       <td className="p-4 text-xs">{x.pickup_city}</td>
                       <td className="p-4 text-xs">{x.delivery_city}</td>
                       <td className="p-4 num text-brand font-bold">{sar(x.price)}</td>
+                      <td className="p-4 num text-xs" data-testid={`rule-cost-${x._id}`}>
+                        {x.provider_cost != null
+                          ? <span>{sar(x.provider_cost)} <span className="text-emerald-400">({t("rules.expectedProfit")}: {sar(x.price - x.provider_cost)})</span></span>
+                          : "—"}
+                      </td>
                       <td className="p-4 num text-xs">{x.effective_date}</td>
                       <td className="p-4 text-xs text-slate-400">{x.version || "—"}</td>
                       <td className="p-4">

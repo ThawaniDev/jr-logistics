@@ -150,6 +150,13 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Verification: backend pytest iteration10/11/12/14/15 = **25/25 PASS** (test_iteration15.py: custody/complaints/smart-assign+replace/company-API/settlement-period); testing_agent iteration_14.json = **100%** on all new surfaces; frontend build PASS. Older test files (iter 3-9) fail on outdated auth patterns — pre-existing, not regressions.
 
 
+## Implemented (2026-06→10, iteration 17) — Finalization round 2 + operational reset
+- **Service cards redesigned**: per-service Arabic titles/descriptions/CTAs (svc.*_name/_desc/_btn keys in ar/en/ur) — Service A مندوب مع السيارة, Service B توفير سيارات بدون مندوب; raw svc.* keys never render (verified via screenshot).
+- **Commission = 0%**: DEFAULT_COMMISSION_RATE=0, settings DB updated; settlements net=gross; updated test_iteration10 assertions.
+- **Provider cost & profit**: pricing rules accept provider_cost (validated ≤ price); snapshot stores it; direct-driver settlements pay provider_cost from rule (office path unchanged); AdminPricing shows provider cost + expected profit (price − cost) per rule — admin-only.
+- **Operational reset executed 2026-10-14** (owner-approved, Preview DB test_database only): fresh backup /app/backups/pre_reset_final_20261014_131307 restore-verified (58,519 docs, 0 failures) BEFORE deletion; scripts/operational_reset.py cleared 52,893 operational docs (requests/offers/settlements/transactions/wallets/ledger/custody/complaints/events/history/cancellations/invoices/api_logs/notifications/pricing_rules/client_pricing); PRESERVED users(749)/agreements(77)/settings(9)/audit_logs(3097)/tickets/api_keys; zero-state verified (all balances 0, no orders); admin login re-verified post-reset; full suite re-run then test data re-cleared.
+- **Seed safety**: seed_admin never overwrites existing admin password (from iter16).
+
 ## Implemented (2026-06, iteration 16) — Platform finalization for launch
 - **Vehicle catalog expanded**: sedan + **dokker (دوكر)** + **hiace (هايس)** + van/dyna (dry/cold) across catalog, settings (seed_v8), registration validation, pricing rules, matching, translations (veh.* in ar/en/ur incl. van_dry/van_cold/dyna_dry/dyna_cold).
 - **Vehicle-only service enabled**: `car_with_driver` + `car_without_driver` now in ENABLED_SERVICES; driverless requests skip matching entirely (draft→confirmed on publish), no offers/offices, completion releases escrow to platform as rental_revenue with VAT breakdown; office picker hidden in wizard for driverless.

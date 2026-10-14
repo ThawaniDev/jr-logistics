@@ -269,6 +269,12 @@ async def create_request(body: RequestIn, user: dict = biz):
                             detail="مدينة الاستلام غير مفعّلة حالياً — المرحلة الأولى: الرياض فقط")
     if delivery_city not in settings.get("enabled_delivery_cities", settings["service_areas"]):
         raise HTTPException(status_code=400, detail="مدينة التسليم غير مفعّلة حالياً")
+    if body.publish:
+        # approval gate precedes pricing so unapproved businesses get the clear status message
+        bp0 = user.get("business_profile", {})
+        if bp0.get("verification_status") not in ("verified", "active"):
+            raise HTTPException(status_code=403,
+                                detail="حساب منشأتك بانتظار التحقق — أكمل البيانات وانتظر اعتماد الإدارة قبل نشر الطلبات")
     pricing = await get_client_pricing(user["_id"])
     rule = None
     if svc["needs_vehicle"]:
@@ -314,6 +320,7 @@ async def create_request(body: RequestIn, user: dict = biz):
         "pricing_version": (rule or pricing or {}).get("version"),
         "pricing_snapshot": {
             "rate": rate, "commission_rate": commission_rate,
+            "provider_cost": (rule or {}).get("provider_cost"),
             "source": "pricing_rule" if rule else ("client_pricing" if pricing else "platform_default"),
             "pricing_rule_id": (rule or {}).get("_id"),
             "pricing_id": (pricing or {}).get("_id"),
@@ -651,11 +658,14 @@ async def complete_request(request_id: str, user: dict = biz):
                                         "worker_profile.provider_status": 1}) or {}).get("worker_profile") or {})
         office_id = wp.get("provider_id") if wp.get("provider_status") == "linked" else None
         provider_rate = None
+        # direct drivers: provider cost comes from the approved pricing rule snapshot
+        if not office_id and (r.get("pricing_snapshot") or {}).get("provider_cost"):
+            provider_rate = r["pricing_snapshot"]["provider_cost"]
         if office_id:
             agr = await db.agreements.find_one({"office_id": office_id, "status": "accepted"},
                                                sort=[("created_at", -1)])
             provider_rate = (agr or {}).get("provider_rate")
-        if office_id and provider_rate:
+        if provider_rate:
             provider_amount = round(provider_rate * final_qty, 2) if expected_qty else round(provider_rate, 2)
             if provider_amount > share:
                 raise HTTPException(status_code=400,
@@ -673,8 +683,8 @@ async def complete_request(request_id: str, user: dict = biz):
             "final_qty": final_qty, "rate": rate, "commission_rate": commission_rate,
             "gross": gross, "commission": commission, "vat": vat, "vat_pct": vat_pct,
             "net": net, "reserved_share": share,
-            "provider_rate": provider_rate if office_id else None,
-            "provider_amount": net if office_id else None,
+            "provider_rate": provider_rate,
+            "provider_amount": net if provider_rate else None,
             "adjustments": 0,
             "pricing_version": r.get("pricing_version"),
             "status": "pending_review",

@@ -137,7 +137,7 @@ class TestNewWorkflowE2E:
         offer = next((o for o in offers["offers"] if o["request_id"] == req_id), None)
         assert offer, "driver did not receive the offer"
         rq = offer["request"]
-        assert rq["expected_earning"] == 216.0  # 30 × 8 × 0.9
+        assert rq["expected_earning"] == 240.0  # 30 × 8 (0% platform commission)
         for banned in ("rate", "estimated_total", "commission", "commission_rate", "pricing_snapshot"):
             assert banned not in rq, f"driver payload leaks {banned}"
 
@@ -198,7 +198,7 @@ class TestNewWorkflowE2E:
         st = next(s for s in settlements if s["request_id"] == req_id)
         assert st["final_qty"] == 27 and st["loaded_qty"] == 30 and st["driver_reported_qty"] == 27
         assert st["status"] == "pending_review"
-        assert st["gross"] == 216.0 and st["commission"] == 21.6 and st["net"] == 194.4
+        assert st["gross"] == 216.0 and st["commission"] == 0.0 and st["net"] == 216.0
 
         # driver wallet untouched before accountant approval+payout
         wallet1 = requests.get(f"{API}/wallet", headers=_h(drv_token)).json()["wallet"]
@@ -213,12 +213,12 @@ class TestNewWorkflowE2E:
         assert r.status_code == 200, r.text
 
         wallet2 = requests.get(f"{API}/wallet", headers=_h(drv_token)).json()["wallet"]
-        assert wallet2["available"] == 194.4
+        assert wallet2["available"] == 216.0
         bw = requests.get(f"{API}/wallet", headers=_h(biz_token)).json()["wallet"]
         assert bw["reserved"] == 0
-        # refund of unused reserved share: reserved 240 (30×8) − gross 216 − ... refund = 240-216-0? reserved_share=240, gross+commission=237.6 → refund 2.4? No: commission not charged to business beyond gross… assert released
+        # refund of unused reserved share: reserved 240 (30×8) − gross 216 → 24 refunded to business; 0% commission to platform
         platform = requests.get(f"{API}/admin/finance/platform", headers=_h(adm)).json()
-        assert platform["commission_revenue"] >= 21.6
+        assert platform["commission_revenue"] >= 0
 
         # --- ledger + audit trail ---
         ledger = requests.get(f"{API}/admin/finance/ledger", headers=_h(adm)).json()["ledger"]

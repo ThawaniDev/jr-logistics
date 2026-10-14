@@ -3,7 +3,7 @@ COMMISSION_RATE = 0.10
 # Platform defaults — the LIVE values live in db.settings ("platform") and are
 # editable from the Admin Dashboard without code changes. These are fallbacks.
 DEFAULT_RATE = 8
-DEFAULT_COMMISSION_RATE = 0.10
+DEFAULT_COMMISSION_RATE = 0.0  # platform commission removed — admin sets selling price & provider cost per business
 DEFAULT_VEHICLE_TYPES = ["sedan", "dokker", "hiace", "van", "dyna"]
 DEFAULT_SERVICE_AREAS = ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة",
                          "المدينة المنورة", "نيوم", "تبوك", "أبها", "بريدة"]

@@ -97,6 +97,7 @@ class PricingRuleIn(BaseModel):
     effective_date: str
     expiry_date: Optional[str] = None
     service_type: Optional[str] = None  # null = applies to all vehicle services
+    provider_cost: Optional[float] = None  # agreed payout to driver/provider per unit; profit = price - provider_cost
     notes: Optional[str] = None
     agreement_ref: Optional[str] = None
     version: Optional[str] = None
@@ -118,6 +119,8 @@ async def list_rules(business_id: Optional[str] = None, user: dict = p_view):
 async def create_rule(body: PricingRuleIn, user: dict = p_edit):
     if body.price <= 0:
         raise HTTPException(status_code=400, detail="السعر يجب أن يكون أكبر من صفر")
+    if body.provider_cost is not None and (body.provider_cost <= 0 or body.provider_cost > body.price):
+        raise HTTPException(status_code=400, detail="تكلفة المزود يجب أن تكون أكبر من صفر ولا تتجاوز سعر البيع")
     if body.vehicle_type not in ("sedan", "dokker", "hiace", "van", "dyna"):
         raise HTTPException(status_code=400, detail="نوع المركبة غير صالح")
     if body.vehicle_type in ("van", "dyna"):
