@@ -2,7 +2,7 @@
 Iteration 8: E2E flow using the REAL user accounts.
 - Business عماد   +966530534184
 - Driver   عماد   +966593603404
-- Super Admin     emadabuharb1993@gmail.com / Isnad-Dev-Admin-2026!
+- Super Admin     emadabuharb1993@gmail.com / Ee6211673
 
 Tests A→Q from the review request. Uses only the public preview URL.
 Ordered execution required — run serially (-p no:xdist or with LoadScopeScheduling on one file).
@@ -20,7 +20,7 @@ BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://tawazon.preview.emergent
 BIZ_PHONE = "+966530534184"
 DRV_PHONE = "+966593603404"
 ADMIN_EMAIL = "emadabuharb1993@gmail.com"
-ADMIN_PW = "Isnad-Dev-Admin-2026!"
+ADMIN_PW = "Ee6211673"
 
 STATE = {}  # cross-test mutable state
 

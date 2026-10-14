@@ -220,7 +220,7 @@ async def pricing_quote(vehicle_type: str, pickup_city: str, delivery_city: str,
     if pickup_city not in settings.get("enabled_pickup_cities", ["الرياض"]):
         return {"ok": False, "message": "مدينة الاستلام غير مفعّلة حالياً — المرحلة الأولى: الرياض فقط"}
     rule = await resolve_price(user["_id"], vehicle_type,
-                               temperature_type if vehicle_type != "sedan" else None,
+                               temperature_type if vehicle_type in ("van", "dyna") else None,
                                pickup_city, delivery_city)
     if not rule:
         return {"ok": False,
@@ -273,8 +273,8 @@ async def create_request(body: RequestIn, user: dict = biz):
     rule = None
     if svc["needs_vehicle"]:
         rule = await resolve_price(user["_id"], body.vehicle_type,
-                                   body.temperature_type if body.vehicle_type != "sedan" else None,
-                                   pickup_city, delivery_city)
+                                   body.temperature_type if body.vehicle_type in ("van", "dyna") else None,
+                                   pickup_city, delivery_city, service_type=body.service_type)
         if not rule:
             raise HTTPException(status_code=400,
                                 detail="لا يوجد سعر معتمد لهذا المسار والمركبة. يرجى التواصل مع JR Logistics Operations.")
@@ -310,7 +310,7 @@ async def create_request(body: RequestIn, user: dict = biz):
         "payout_total": payout,
         "pickup_city": pickup_city,
         "delivery_city": delivery_city,
-        "temperature_type": body.temperature_type if body.vehicle_type != "sedan" else None,
+        "temperature_type": body.temperature_type if body.vehicle_type in ("van", "dyna") else None,
         "pricing_version": (rule or pricing or {}).get("version"),
         "pricing_snapshot": {
             "rate": rate, "commission_rate": commission_rate,
@@ -318,7 +318,7 @@ async def create_request(body: RequestIn, user: dict = biz):
             "pricing_rule_id": (rule or {}).get("_id"),
             "pricing_id": (pricing or {}).get("_id"),
             "vehicle_type": body.vehicle_type,
-            "temperature_type": body.temperature_type if body.vehicle_type != "sedan" else None,
+            "temperature_type": body.temperature_type if body.vehicle_type in ("van", "dyna") else None,
             "pickup_city": pickup_city, "delivery_city": delivery_city,
             "business_id": user["_id"],
             "effective_date": (rule or {}).get("effective_date"),
@@ -345,9 +345,25 @@ async def create_request(body: RequestIn, user: dict = biz):
             if not await db.agreements.find_one({"office_id": body.preferred_office_id, "status": "accepted"}):
                 raise HTTPException(status_code=400, detail="مكتب التوصيل المحدد لا يملك اتفاقية سارية")
         await reserve_funds(user["_id"], doc)
-        updates = {"status": "published", "published_at": now_iso()}
+        updates = {"published_at": now_iso()}
         if body.terms:
             updates["biz_terms_accepted_at"] = now_iso()
+        if svc.get("driverless"):
+            # vehicle-only booking: no driver assignment anywhere in the lifecycle
+            updates["status"] = "confirmed"
+            await db.requests.update_one({"_id": doc["_id"]}, {"$set": updates})
+            doc["status"] = "confirmed"
+            await log_event(doc["_id"], None, user, "request_published",
+                            old_status="draft", new_status="confirmed",
+                            notes="vehicle_only booking — no driver assignment")
+            await notify(user["_id"], "تم تأكيد حجز المركبة",
+                         f"طلب: {doc['title']} — حُجز {doc['estimated_total']} ر.س والمركبة محجوزة لفترة الخدمة",
+                         "request", f"/app/business/requests/{doc['_id']}")
+            await notify_staff("operations", "حجز مركبة بدون سائق",
+                               f"طلب مركبة فقط: {doc['title']} — رتّبوا التسليم مع المنشأة",
+                               "general", "/app/admin/requests")
+            return {"request": doc, "matched_workers": 0}
+        updates["status"] = "published"
         await db.requests.update_one({"_id": doc["_id"]}, {"$set": updates})
         doc["status"] = "published"
         matched = await offer_office_request(doc, user) if body.preferred_office_id else await match_workers(doc)
@@ -368,6 +384,17 @@ async def publish_request(request_id: str, body: PublishIn = None, user: dict = 
         raise HTTPException(status_code=400, detail="يمكن نشر المسودات فقط")
     if not r.get("escrow_reserved"):
         await reserve_funds(user["_id"], r)
+    svc = SERVICE_MAP.get(r["service_type"], {})
+    if svc.get("driverless"):
+        await db.requests.update_one({"_id": request_id}, {"$set": {
+            "status": "confirmed", "published_at": now_iso()}})
+        await log_event(request_id, None, user, "request_published",
+                        old_status="draft", new_status="confirmed",
+                        notes="vehicle_only booking — no driver assignment")
+        await notify(user["_id"], "تم تأكيد حجز المركبة",
+                     f"طلب: {r['title']} — المركبة محجوزة لفترة الخدمة",
+                     "request", f"/app/business/requests/{request_id}")
+        return {"ok": True, "matched_workers": 0}
     updates = {"status": "published", "published_at": now_iso()}
     if body.terms:
         updates["biz_terms_accepted_at"] = now_iso()
@@ -563,6 +590,33 @@ async def complete_request(request_id: str, user: dict = biz):
     r = await get_owned_request(request_id, user)
     if r["status"] not in ("confirmed", "in_progress"):
         raise HTTPException(status_code=400, detail="لا يمكن إنهاء هذا الطلب في حالته الحالية")
+    if r.get("service_type") == "car_without_driver":
+        # vehicle-only booking: no drivers, no settlements — escrow becomes platform rental revenue
+        settings = await get_settings()
+        vat_pct = settings.get("vat_pct", 15)
+        total = r["estimated_total"]
+        vat = round(total * vat_pct / (100 + vat_pct), 2)
+        await db.wallets.update_one({"user_id": user["_id"]},
+                                    {"$inc": {"reserved": -total}})
+        await add_txn(user["_id"], "release", total, "debit",
+                      f"تسوية حجز مركبة بدون سائق: {r['title']}", request_id)
+        await add_txn("platform", "rental_revenue", total, "credit",
+                      f"إيراد تأجير مركبة: {r['title']}", request_id)
+        await ledger_entry("rental_settled", total, "credit", user, user_id="platform",
+                           request_id=request_id, note=f"تأجير مركبة {r['title']}")
+        await db.requests.update_one({"_id": request_id}, {"$set": {
+            "status": "completed", "completed_at": now_iso(), "settlement_status": "settled",
+            "escrow_reserved": False,
+            "rental_summary": {"total": total, "vat_included": vat, "vat_pct": vat_pct,
+                               "settled_at": now_iso()}}})
+        await log_event(request_id, None, user, "request_completed",
+                        new_status="completed", notes="vehicle_only rental settled to platform")
+        await notify(user["_id"], "اكتمل حجز المركبة",
+                     f"اكتمل طلب: {r['title']} وسُوّي المبلغ المحجوز", "completed",
+                     f"/app/business/requests/{request_id}")
+        await audit(user, "vehicle_booking_completed", "request", request_id,
+                    after={"total": total})
+        return {"ok": True, "settlements_created": 0, "rental_total": total}
     unresolved = await db.offers.count_documents(
         {"request_id": request_id,
          "status": {"$in": ["accepted", "confirmed", "attendance_confirmed", "attended",

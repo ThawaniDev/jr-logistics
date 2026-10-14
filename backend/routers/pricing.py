@@ -6,6 +6,7 @@ from typing import Optional
 from db import db
 from deps import require_staff
 from utils import new_id, now_iso, pub, pub_list, audit, get_client_pricing
+from catalog import SERVICE_MAP
 
 router = APIRouter(prefix="/api/admin/pricing", tags=["pricing"])
 p_view = Depends(require_staff("pricing_view", "pricing"))
@@ -94,6 +95,8 @@ class PricingRuleIn(BaseModel):
     delivery_city: str
     price: float
     effective_date: str
+    expiry_date: Optional[str] = None
+    service_type: Optional[str] = None  # null = applies to all vehicle services
     notes: Optional[str] = None
     agreement_ref: Optional[str] = None
     version: Optional[str] = None
@@ -115,19 +118,30 @@ async def list_rules(business_id: Optional[str] = None, user: dict = p_view):
 async def create_rule(body: PricingRuleIn, user: dict = p_edit):
     if body.price <= 0:
         raise HTTPException(status_code=400, detail="السعر يجب أن يكون أكبر من صفر")
-    if body.vehicle_type not in ("sedan", "van", "dyna"):
+    if body.vehicle_type not in ("sedan", "dokker", "hiace", "van", "dyna"):
         raise HTTPException(status_code=400, detail="نوع المركبة غير صالح")
-    if body.vehicle_type == "sedan":
+    if body.vehicle_type in ("van", "dyna"):
+        if body.temperature_type not in ("dry", "cold"):
+            raise HTTPException(status_code=400, detail="حدد نوع الحرارة (جاف/مبرد) لمركبات الفان والدينا")
+    else:
         body.temperature_type = None
-    elif body.temperature_type not in ("dry", "cold"):
-        raise HTTPException(status_code=400, detail="حدد نوع الحرارة (جاف/مبرد) لمركبات الفان والدينا")
+    if body.service_type and body.service_type not in SERVICE_MAP:
+        raise HTTPException(status_code=400, detail="نوع الخدمة غير صالح")
+    if body.expiry_date:
+        from datetime import date as _date
+        try:
+            if _date.fromisoformat(body.expiry_date) < _date.fromisoformat(body.effective_date):
+                raise ValueError
+        except ValueError:
+            raise HTTPException(status_code=400, detail="تاريخ الانتهاء يجب أن يكون بعد تاريخ السريان")
     if body.business_id:
         biz = await db.users.find_one({"_id": body.business_id, "role": "business"})
         if not biz:
             raise HTTPException(status_code=404, detail="المنشأة غير موجودة")
     dup_q = {"business_id": body.business_id, "vehicle_type": body.vehicle_type,
              "temperature_type": body.temperature_type, "pickup_city": body.pickup_city,
-             "delivery_city": body.delivery_city, "status": "active"}
+             "delivery_city": body.delivery_city, "service_type": body.service_type,
+             "status": "active"}
     await db.pricing_rules.update_many(dup_q, {"$set": {"status": "superseded", "superseded_at": now_iso()}})
     doc = {"_id": new_id(), **body.model_dump(), "status": "active",
            "version": body.version or f"v-{now_iso()[:10]}",

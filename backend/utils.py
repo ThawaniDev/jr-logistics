@@ -223,14 +223,28 @@ async def provider_blocks_paid_work(worker: dict) -> bool:
 
 
 async def resolve_price(business_id: str, vehicle_type: str, temperature_type,
-                        pickup_city: str, delivery_city: str):
+                        pickup_city: str, delivery_city: str, service_type: str = None):
+    temp = temperature_type if vehicle_type in ("van", "dyna") else None
     q = {"vehicle_type": vehicle_type, "pickup_city": pickup_city,
          "delivery_city": delivery_city, "status": "active",
-         "temperature_type": temperature_type if vehicle_type != "sedan" else None}
-    rule = await db.pricing_rules.find_one({**q, "business_id": business_id}, sort=[("created_at", -1)])
-    if not rule:
-        rule = await db.pricing_rules.find_one({**q, "business_id": None}, sort=[("created_at", -1)])
-    return rule
+         "temperature_type": temp}
+    today = date.today().isoformat()
+    candidates = await db.pricing_rules.find({**q, "business_id": business_id}).to_list(50)
+    if not candidates:
+        candidates = await db.pricing_rules.find({**q, "business_id": None}).to_list(50)
+
+    def usable(rule):
+        if rule.get("expiry_date") and rule["expiry_date"] < today:
+            return False
+        st = rule.get("service_type")
+        return not st or st == service_type
+
+    valid = [r for r in candidates if usable(r)]
+    if not valid:
+        return None
+    # most specific (service-matched) first, then newest
+    valid.sort(key=lambda r: (bool(r.get("service_type")), r.get("created_at", "")), reverse=True)
+    return valid[0]
 
 
 def new_id() -> str:

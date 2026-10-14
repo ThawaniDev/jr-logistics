@@ -714,7 +714,7 @@ async def office_detail(oid: str, user: dict = p_offices):
 
 
 class AccountVerifyIn(BaseModel):
-    action: Literal["approve", "reject", "suspend", "reactivate"]
+    action: Literal["approve", "reject", "suspend", "reactivate", "request_info"]
     reason: Optional[str] = None
 
 
@@ -742,9 +742,21 @@ async def verify_business_account(uid: str, body: AccountVerifyIn, user: dict = 
     target = await db.users.find_one({"_id": uid, "role": "business"})
     if not target:
         raise HTTPException(status_code=404, detail="الحساب غير موجود")
+    if body.action == "request_info":
+        if not (body.reason or "").strip():
+            raise HTTPException(status_code=400, detail="حدد المعلومات المطلوبة")
+        await db.users.update_one({"_id": uid}, {"$set": {
+            "business_profile.info_requested": body.reason.strip(),
+            "business_profile.info_requested_at": now_iso(),
+            "business_profile.info_requested_by": user["_id"]}})
+        await notify(uid, "مطلوب معلومات إضافية لتوثيق منشأتك", body.reason.strip(),
+                     "general", "/app/business/profile")
+        await audit(user, "business_request_info", "user", uid, note=body.reason)
+        return {"ok": True, "verification_status": "pending"}
     status_map = {"approve": "verified", "reject": "rejected", "suspend": "suspended", "reactivate": "verified"}
     await db.users.update_one({"_id": uid},
-                               {"$set": {"business_profile.verification_status": status_map[body.action]}})
+                               {"$set": {"business_profile.verification_status": status_map[body.action],
+                                         "business_profile.info_requested": None}})
     titles = {"approve": "تم توثيق منشأتك", "reject": "تم رفض توثيق منشأتك", "suspend": "تم تعليق منشأتك", "reactivate": "تمت إعادة تفعيل منشأتك"}
     await notify(uid, titles[body.action],
                  body.reason or f"حالة التوثيق: {status_map[body.action]}", "general", "/app/business")

@@ -78,6 +78,12 @@ export default function AdminVerification() {
                   className="chip bg-emerald-500/10 border-emerald-500/30 text-emerald-300 text-[11px]">
                   <CheckCircle2 className="w-3 h-3" /> {t("vc.approve")}
                 </button>
+                {kind === "business" && (
+                  <button onClick={() => verifyAccount(u._id, "request_info", kind)} disabled={busy} data-testid={`vc-info-${u._id}`}
+                    className="chip bg-blue-500/10 border-blue-500/30 text-blue-300 text-[11px]">
+                    <FileCheck className="w-3 h-3" /> {t("vc.requestInfo")}
+                  </button>
+                )}
                 <button onClick={() => verifyAccount(u._id, "reject", kind)} disabled={busy} data-testid={`vc-reject-${u._id}`}
                   className="chip bg-rose-500/10 border-rose-500/30 text-rose-300 text-[11px]">
                   <XCircle className="w-3 h-3" /> {t("vc.reject")}

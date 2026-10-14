@@ -195,7 +195,7 @@ export default function AdminRequests() {
                     </div>
                   )}
 
-                  {["published", "filling", "confirmed", "in_progress"].includes(r.status) && (
+                  {["published", "filling", "confirmed", "in_progress"].includes(r.status) && r.service_type !== "car_without_driver" && (
                     <div className="pt-2 border-t border-navy-600/40" data-testid={`smart-area-${r._id}`}>
                       <button data-testid={`smart-suggest-${r._id}`} disabled={suggestBusy}
                         onClick={async () => {

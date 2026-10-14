@@ -4,7 +4,7 @@ COMMISSION_RATE = 0.10
 # editable from the Admin Dashboard without code changes. These are fallbacks.
 DEFAULT_RATE = 8
 DEFAULT_COMMISSION_RATE = 0.10
-DEFAULT_VEHICLE_TYPES = ["sedan", "van", "dyna"]
+DEFAULT_VEHICLE_TYPES = ["sedan", "dokker", "hiace", "van", "dyna"]
 DEFAULT_SERVICE_AREAS = ["الرياض", "جدة", "الدمام", "الخبر", "مكة المكرمة",
                          "المدينة المنورة", "نيوم", "تبوك", "أبها", "بريدة"]
 
@@ -164,6 +164,7 @@ SERVICES = [
         "desc": "تأجير سيارات تشغيلية لفريق عملك",
         "has_shipments": False,
         "needs_vehicle": True,
+        "driverless": True,
         "ref_rate": 200,
     },
     {
@@ -194,8 +195,8 @@ SERVICES = [
 
 SERVICE_MAP = {s["key"]: s for s in SERVICES}
 
-# MVP scope: only delivery drivers are visible/active. Other categories stay in
-# the catalog and can be enabled by adding their keys here — no schema changes.
-ENABLED_SERVICES = ["delivery_driver"]
+# Active scope: delivery drivers + vehicle services (with/without driver).
+# Other categories stay in the catalog and can be enabled by adding their keys here.
+ENABLED_SERVICES = ["delivery_driver", "car_with_driver", "car_without_driver"]
 
 ACTIVE_SERVICES = [s for s in SERVICES if s["key"] in ENABLED_SERVICES]

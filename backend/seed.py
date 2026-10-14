@@ -201,13 +201,9 @@ async def seed_admin():
         await db.users.insert_one({**base, "password_hash": hash_password(password),
                                    "must_change_password": False, "created_at": now_iso()})
     else:
-        updates = {}
-        if not verify_password(password, existing.get("password_hash") or ""):
-            updates["password_hash"] = hash_password(password)
+        # never overwrite an existing admin password — owner resets/changes it via the app
         if existing.get("phone") != base["phone"]:
-            updates["phone"] = base["phone"]
-        if updates:
-            await db.users.update_one({"_id": existing["_id"]}, {"$set": updates})
+            await db.users.update_one({"_id": existing["_id"]}, {"$set": {"phone": base["phone"]}})
 
 
 def worker_doc(w):
@@ -354,6 +350,13 @@ async def seed_all():
                 await db.users.update_one({"_id": s["_id"]},
                                           {"$set": {"password_hash": hash_password(staff_pw),
                                                     "must_change_password": True}})
+    if not await db.settings.find_one({"key": "seed_v8"}):
+        from utils import get_settings
+        s8 = await get_settings()
+        if s8.get("vehicle_types") != ["sedan", "dokker", "hiace", "van", "dyna"]:
+            await db.settings.update_one({"key": "platform"},
+                                         {"$set": {"vehicle_types": ["sedan", "dokker", "hiace", "van", "dyna"]}})
+        await db.settings.insert_one({"key": "seed_v8", "at": now_iso()})
     if not await db.settings.find_one({"key": "seed_v7"}):
         from utils import get_settings
         s7 = await get_settings()

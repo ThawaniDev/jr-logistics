@@ -24,7 +24,7 @@ def _admin():
     global ADM
     if not ADM:
         r = requests.post(f"{API}/auth/admin/login",
-                          json={"email": "emadabuharb1993@gmail.com", "password": "Isnad-Dev-Admin-2026!"})
+                          json={"email": "emadabuharb1993@gmail.com", "password": "Ee6211673"})
         assert r.status_code == 200, r.text
         ADM = r.json()["token"]
     return ADM

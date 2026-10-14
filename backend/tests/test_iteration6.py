@@ -28,7 +28,7 @@ def _otp_login(phone: str) -> dict:
 
 def _admin_pwd_login() -> dict:
     r = requests.post(f"{API}/auth/admin/login",
-                      json={"email": "emadabuharb1993@gmail.com", "password": "Isnad-Dev-Admin-2026!"})
+                      json={"email": "emadabuharb1993@gmail.com", "password": "Ee6211673"})
     assert r.status_code == 200, r.text
     return r.json()
 

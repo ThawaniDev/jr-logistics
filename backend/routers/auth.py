@@ -128,6 +128,9 @@ async def register(body: RegisterIn, response: Response, request: Request):
     if body.role == "worker" and body.vehicle_type in ("van", "dyna") and \
             body.vehicle_temperature not in ("dry", "cold"):
         raise HTTPException(status_code=400, detail="حدد نوع الحرارة (جاف/مبرد) للمركبة")
+    if body.role == "worker" and body.vehicle_type and \
+            body.vehicle_type not in ("sedan", "dokker", "hiace", "van", "dyna"):
+        raise HTTPException(status_code=400, detail="نوع المركبة غير صالح")
     if body.role == "office" and not (body.company_name or "").strip():
         raise HTTPException(status_code=400, detail="أدخل اسم مكتب/شركة التوصيل")
     if await db.users.find_one({"phone": phone}):

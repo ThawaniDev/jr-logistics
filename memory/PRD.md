@@ -150,11 +150,28 @@ Build a modern Arabic RTL web platform for a Saudi logistics and workforce marke
 - Verification: backend pytest iteration10/11/12/14/15 = **25/25 PASS** (test_iteration15.py: custody/complaints/smart-assign+replace/company-API/settlement-period); testing_agent iteration_14.json = **100%** on all new surfaces; frontend build PASS. Older test files (iter 3-9) fail on outdated auth patterns — pre-existing, not regressions.
 
 
+## Implemented (2026-06, iteration 16) — Platform finalization for launch
+- **Vehicle catalog expanded**: sedan + **dokker (دوكر)** + **hiace (هايس)** + van/dyna (dry/cold) across catalog, settings (seed_v8), registration validation, pricing rules, matching, translations (veh.* in ar/en/ur incl. van_dry/van_cold/dyna_dry/dyna_cold).
+- **Vehicle-only service enabled**: `car_with_driver` + `car_without_driver` now in ENABLED_SERVICES; driverless requests skip matching entirely (draft→confirmed on publish), no offers/offices, completion releases escrow to platform as rental_revenue with VAT breakdown; office picker hidden in wizard for driverless.
+- **Pricing rules extended**: optional `service_type` (most-specific match wins) + `expiry_date` (expired rules never resolve); clear 400 when no approved rule; snapshot immutability re-verified.
+- **Approval workflow**: added `request_info` action (admin asks for more info; business notified, stays pending); verification-center UI button.
+- **Admin password reset**: existing admin (emadabuharb1993@gmail.com) reset to requested password via bcrypt, `must_change_password=True`, single account preserved, login verified. **Bug found & fixed**: seed_admin was overwriting the admin password on every restart — now never touches an existing admin's password (production-safe).
+- **Language audit**: i18n has ar fallback chain (no raw keys); veh/rules/vc keys synced across ar/en/ur; UR missing 15 admin/office namespaces (fall back to Arabic — documented, not raw keys).
+- **Tests**: test_iteration16.py (6 tests: approval gate+pricing requirement, snapshot immutability, driver gate, all 7 vehicle categories, vehicle-only lifecycle, admin password reset) — full suite iteration10/11/12/14/15/16 = **31/31 PASS**; frontend build PASS.
+- **Docs**: /app/memory/DEPLOYMENT.md (owner deployment/rollback/secrets/integrations guide).
+
+## Remaining before public launch
+- SMS OTP is simulated (demo_otp) — needs real provider (Twilio).
+- Wallet top-up is simulated ledger — needs real payment gateway.
+- Cloud object storage needs Universal Key balance (local fallback works).
+- VAT invoice PDF generation not built (VAT % configurable; invoices recorded on payout).
+- Urdu translations for admin/office namespaces fall back to Arabic.
+
 ## Backlog
 - **P0 (OWNER ACCEPTANCE)**: Owner-controlled E2E pass on Preview using the accounts in /app/memory/test_credentials.md
 - **P0 (EXTERNAL/OPTIONAL)**: Universal Key balance inactive for cloud object storage; local persistent fallback at /app/backend/uploads remains functional. Owner can top up via Profile → Manage plan → Universal Key → Add Balance
 - **P1**: VAT configuration + PDF invoice generation; real payment gateway; real SMS (Twilio); OTP rate-limiting
-- **P2**: shadcn Calendar/TimePicker polish; push notifications; masked-call relay provider (hook exists at /api/jobs/{id}/contact)
+- **P2**: shadcn Calendar/TimePicker polish; push notifications; masked-call relay provider (hook exists at /api/jobs/{id}/contact); full Urdu translation pass
 
 ## Next Tasks
 1. Owner validates the complete platform flow on Preview

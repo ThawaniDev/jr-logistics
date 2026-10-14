@@ -15,7 +15,7 @@ import requests
 
 API = os.environ.get("API_URL", "http://localhost:8001/api")
 ADMIN_EMAIL = os.environ.get("SUPER_ADMIN_EMAIL", "emadabuharb1993@gmail.com")
-ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "Isnad-Dev-Admin-2026!")
+ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "Ee6211673")
 
 
 def _h(token):

@@ -10,16 +10,15 @@ export const SERVICES = [
   { key: "sorting_packing", name: "عمال فرز وتغليف", short: "فرز وتغليف", icon: PackageCheck, unit: "worker_day", unit_label: "للعامل / اليوم", desc: "فرز الشحنات وتغليفها وتجهيزها للشحن", has_shipments: false, needs_vehicle: false, ref_rate: 230 },
   { key: "inventory_counting", name: "عمال جرد المخزون", short: "جرد المخزون", icon: ClipboardList, unit: "worker_day", unit_label: "للعامل / اليوم", desc: "طواقم جرد دورية وسنوية للمخزون والأصول", has_shipments: false, needs_vehicle: false, ref_rate: 260 },
   { key: "car_with_driver", name: "سيارات مع سائق", short: "سيارة مع سائق", icon: CarFront, unit: "vehicle_day", unit_label: "للسيارة / اليوم", desc: "سيارات وسائقون لمهام النقل والتوصيل التشغيلي", has_shipments: false, needs_vehicle: true, ref_rate: 350 },
-  { key: "car_without_driver", name: "سيارات بدون سائق", short: "سيارة بدون سائق", icon: Car, unit: "vehicle_day", unit_label: "للسيارة / اليوم", desc: "تأجير سيارات تشغيلية لفريق عملك", has_shipments: false, needs_vehicle: true, ref_rate: 200 },
+  { key: "car_without_driver", name: "سيارات بدون سائق", short: "سيارة بدون سائق", icon: Car, unit: "vehicle_day", unit_label: "للسيارة / اليوم", desc: "تأجير سيارات تشغيلية لفريق عملك", has_shipments: false, needs_vehicle: true, driverless: true, ref_rate: 200 },
   { key: "events_staff", name: "طاقم فعاليات ومؤتمرات", short: "طاقم فعاليات", icon: Users, unit: "worker_day", unit_label: "للفرد / اليوم", desc: "كوادر مؤقتة للفعاليات والمعارض والمؤتمرات", has_shipments: false, needs_vehicle: false, ref_rate: 180 },
   { key: "other_service", name: "خدمات لوجستية وتشغيلية أخرى", short: "خدمة أخرى", icon: Boxes, unit: "worker_day", unit_label: "للوحدة / اليوم", desc: "أي احتياج تشغيلي أو لوجستي مؤقت آخر", has_shipments: false, needs_vehicle: false, ref_rate: 200 },
 ];
 
 export const SERVICE_MAP = Object.fromEntries(SERVICES.map((s) => [s.key, s]));
 
-// MVP scope: delivery drivers only. Architecture stays intact — enable more
-// categories later by adding their keys here.
-export const ENABLED_SERVICE_KEYS = ["delivery_driver"];
+// Active scope: delivery drivers + vehicle services (with / without driver).
+export const ENABLED_SERVICE_KEYS = ["delivery_driver", "car_with_driver", "car_without_driver"];
 export const ACTIVE_SERVICES = SERVICES.filter((s) => ENABLED_SERVICE_KEYS.includes(s.key));
 export const COMING_SOON_SERVICES = SERVICES.filter((s) => !ENABLED_SERVICE_KEYS.includes(s.key));
 
@@ -88,7 +87,7 @@ export const TICKET_STATUS = {
 
 export const sar = (n) => `${Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 2 })} ر.س`;
 
-export const DEFAULT_VEHICLE_TYPES = ["sedan", "van", "dyna"];
+export const DEFAULT_VEHICLE_TYPES = ["sedan", "dokker", "hiace", "van", "dyna"];
 export const TEMP_TYPES = ["dry", "cold"];
 
 export const roleHome = (role) =>

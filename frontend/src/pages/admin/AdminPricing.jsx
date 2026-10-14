@@ -4,7 +4,7 @@ import { Tag, PlusCircle, History, Ban } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import api, { errMsg } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
-import { sar, CITIES, DEFAULT_VEHICLE_TYPES, TEMP_TYPES } from "@/lib/constants";
+import { sar, CITIES, DEFAULT_VEHICLE_TYPES, TEMP_TYPES, ACTIVE_SERVICES } from "@/lib/constants";
 import { useI18n } from "@/i18n";
 
 export default function AdminPricing() {
@@ -13,7 +13,7 @@ export default function AdminPricing() {
   const [businesses, setBusinesses] = useState([]);
   const [form, setForm] = useState({ business_id: "", rate: "", commission_pct: "", effective_date: "", version: "", notes: "", reason: "" });
   const [rules, setRules] = useState(null);
-  const [ruleForm, setRuleForm] = useState({ business_id: "", vehicle_type: "sedan", temperature_type: "", pickup_city: "الرياض", delivery_city: "جدة", price: "", effective_date: "", version: "", agreement_ref: "", notes: "" });
+  const [ruleForm, setRuleForm] = useState({ business_id: "", vehicle_type: "sedan", temperature_type: "", service_type: "", pickup_city: "الرياض", delivery_city: "جدة", price: "", effective_date: "", expiry_date: "", version: "", agreement_ref: "", notes: "" });
   const [cities, setCities] = useState(CITIES);
   const [ruleBusy, setRuleBusy] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -76,14 +76,16 @@ export default function AdminPricing() {
         business_id: ruleForm.business_id || null,
         vehicle_type: ruleForm.vehicle_type,
         temperature_type: ["van", "dyna"].includes(ruleForm.vehicle_type) ? ruleForm.temperature_type : null,
+        service_type: ruleForm.service_type || null,
         pickup_city: ruleForm.pickup_city, delivery_city: ruleForm.delivery_city,
         price: Number(ruleForm.price), effective_date: ruleForm.effective_date,
+        expiry_date: ruleForm.expiry_date || null,
         version: ruleForm.version || undefined,
         agreement_ref: ruleForm.agreement_ref || undefined,
         notes: ruleForm.notes || undefined,
       });
       toast.success(t("rules.saved"));
-      setRuleForm({ business_id: "", vehicle_type: "sedan", temperature_type: "", pickup_city: "الرياض", delivery_city: "جدة", price: "", effective_date: "", version: "", agreement_ref: "", notes: "" });
+      setRuleForm({ business_id: "", vehicle_type: "sedan", temperature_type: "", service_type: "", pickup_city: "الرياض", delivery_city: "جدة", price: "", effective_date: "", expiry_date: "", version: "", agreement_ref: "", notes: "" });
       load();
     } catch (err) {
       toast.error(errMsg(err));
@@ -142,6 +144,21 @@ export default function AdminPricing() {
               </select>
             </div>
           )}
+          <div>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("rules.service")}</label>
+            <select data-testid="rule-service" value={ruleForm.service_type}
+              onChange={(e) => setRuleForm({ ...ruleForm, service_type: e.target.value })}
+              className="w-full bg-navy-800 border border-navy-600 rounded-md px-3 h-11 text-sm focus:outline-none focus:ring-1 focus:ring-brand">
+              <option value="">{t("rules.allServices")}</option>
+              {ACTIVE_SERVICES.map((s) => <option key={s.key} value={s.key}>{t(`svc.${s.key}`) !== `svc.${s.key}` ? t(`svc.${s.key}`) : s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1.5">{t("rules.expiryDate")}</label>
+            <Input data-testid="rule-expiry" type="date" value={ruleForm.expiry_date}
+              onChange={(e) => setRuleForm({ ...ruleForm, expiry_date: e.target.value })}
+              className="bg-navy-800 border-navy-600 h-11 num" />
+          </div>
           <div>
             <label className="text-xs text-slate-400 block mb-1.5">{t("rules.pickup")}</label>
             <select data-testid="rule-pickup" value={ruleForm.pickup_city} onChange={(e) => setRuleForm({ ...ruleForm, pickup_city: e.target.value })}

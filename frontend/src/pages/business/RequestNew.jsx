@@ -272,6 +272,7 @@ export default function RequestNew() {
                   {defaults.enabled_delivery_cities.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
+              {!svc?.driverless && (
               <div>
                 <label className="text-xs text-slate-400 block mb-1.5">{t("office.prefOffice")}</label>
                 <select data-testid="req-preferred-office" value={preferredOffice} onChange={(e) => setPreferredOffice(e.target.value)}
@@ -284,6 +285,7 @@ export default function RequestNew() {
                   ))}
                 </select>
               </div>
+              )}
               <div className="sm:col-span-2">
                 <label className="text-xs text-slate-400 block mb-1.5">{t("wizard.area")} *</label>
                 <Input data-testid="req-address" value={form.address} onChange={set("address")} placeholder={t("wizard.areaPh")} className="bg-navy-800 border-navy-600 h-11" />
