@@ -26,8 +26,16 @@ async def catalog_defaults():
     s = await get_settings()
     return {"default_rate": s["default_rate"], "commission_rate": s["commission_rate"],
             "vehicle_types": s["vehicle_types"], "service_areas": s["service_areas"],
+            "enabled_services": s.get("enabled_services", ENABLED_SERVICES),
             "enabled_pickup_cities": s.get("enabled_pickup_cities", ["الرياض"]),
             "enabled_delivery_cities": s.get("enabled_delivery_cities", s["service_areas"])}
+
+
+@router.get("/catalog/services")
+async def catalog_services():
+    s = await get_settings()
+    keys = s.get("enabled_services", ENABLED_SERVICES)
+    return {"services": [x for x in SERVICES if x["key"] in keys]}
 
 
 @router.get("/catalog/terms")

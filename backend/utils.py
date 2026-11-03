@@ -25,6 +25,7 @@ DEFAULT_SETTINGS = {"key": "platform", "default_rate": DEFAULT_RATE,
                     "doc_expiry_warn_days": 30,
                     "office_assignment_grace_min": 30,
                     "settlement_period": "weekly",
+                    "enabled_services": ["delivery_driver", "car_with_driver", "car_without_driver"],
                     "terms_version": "1.0",
                     "terms_business_text": "",
                     "terms_driver_text": ""}
