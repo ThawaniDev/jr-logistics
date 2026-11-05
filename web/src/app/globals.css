@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/*
+ * JR Logistics design tokens — single source of truth for color.
+ * Components must use these semantic classes (bg-bg, bg-card, text-muted, border-line, text-accent …),
+ * never raw hex values.
+ */
+:root {
+  --jr-bg: #0b132b;          /* primary background — deep navy */
+  --jr-bg-2: #111932;        /* secondary background — dark navy */
+  --jr-card: #151d34;        /* card / surface */
+  --jr-accent: #05e5a3;      /* primary accent — emerald */
+  --jr-accent-ink: #04221a;  /* text on emerald */
+  --jr-cyan: #00c5d5;        /* secondary accent */
+  --jr-text: #f8fafc;        /* primary text */
+  --jr-muted: #94a3b8;       /* secondary text */
+  --jr-line: #26334d;        /* borders */
+  --jr-gold: #f59e0b;        /* financial / security indicators — use sparingly */
+  --jr-danger: #f87171;      /* errors & destructive (status only) */
+  --jr-radius: 14px;
+}
+
+@theme inline {
+  --color-bg: var(--jr-bg);
+  --color-bg2: var(--jr-bg-2);
+  --color-card: var(--jr-card);
+  --color-accent: var(--jr-accent);
+  --color-accent-ink: var(--jr-accent-ink);
+  --color-cyan: var(--jr-cyan);
+  --color-ink: var(--jr-text);
+  --color-muted: var(--jr-muted);
+  --color-line: var(--jr-line);
+  --color-gold: var(--jr-gold);
+  --color-danger: var(--jr-danger);
+  --font-sans: var(--font-plex), var(--font-tajawal), system-ui, sans-serif;
+  --radius-card: var(--jr-radius);
+}
+
+html { color-scheme: dark; }
+body { background: var(--jr-bg); color: var(--jr-text); font-family: var(--font-plex), var(--font-tajawal), system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+::selection { background: color-mix(in srgb, var(--jr-accent) 35%, transparent); }
+* { scrollbar-width: thin; scrollbar-color: var(--jr-line) transparent; }
+
+.text-gradient { background: linear-gradient(90deg, var(--jr-accent), var(--jr-cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bg-brand-gradient { background: linear-gradient(135deg, var(--jr-accent), var(--jr-cyan)); }
+.bg-hero { background: radial-gradient(900px 400px at 80% -10%, color-mix(in srgb, var(--jr-cyan) 14%, transparent), transparent), radial-gradient(700px 380px at 10% 0%, color-mix(in srgb, var(--jr-accent) 12%, transparent), transparent), var(--jr-bg); }
+
+/* numbers, phones, IBANs, refs always render LTR inside RTL text */
+.ltr-num { direction: ltr; unicode-bidi: isolate; }
+span.ltr-num, p.ltr-num, code.ltr-num, b.ltr-num { display: inline-block; }
+
+dialog.jr-modal { background: var(--jr-card); color: var(--jr-text); border: 1px solid var(--jr-line); border-radius: 18px; padding: 0; max-width: min(560px, calc(100vw - 2rem)); width: 100%; margin: auto; }
+dialog.jr-modal::backdrop { background: rgb(5 10 25 / 0.7); backdrop-filter: blur(3px); }
+
+:focus-visible { outline: 2px solid var(--jr-accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* custom select arrow, direction aware */
+select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-size: 16px; background-position: right 0.75rem center; padding-inline-end: 2.25rem; }
+[dir="rtl"] select { background-position: left 0.75rem center; }
+select option { background: var(--jr-card); color: var(--jr-text); }

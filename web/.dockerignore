@@ -1,0 +1,10 @@
+node_modules
+.next
+.next-e2e
+.next-live
+.env.local
+.env.test
+uploads
+test-results
+playwright-report
+coverage

@@ -89,6 +89,30 @@ export default function AdminLogin() {
           >
             {busy ? t("adminAuth.signingIn") : t("adminAuth.signIn")}
           </button>
+          <div className="pt-2 border-t border-navy-700/60">
+            <p className="text-[11px] text-slate-400 mb-2 font-semibold">حسابات تجريبية للإدارة والموظفين (تعبئة سريعة):</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: "مدير المنصة", email: "admin@isnad.sa", pw: "Isnad-Dev-Admin-2026!" },
+                { label: "نائب المدير", email: "ops-admin@isnad.sa", pw: "Isnad-Dev-Admin-2026!" },
+                { label: "أمل (دعم)", email: "amal@isnad.sa", pw: "Isnad-Dev-Staff-2026!" },
+                { label: "بدر (عمليات)", email: "bader@isnad.sa", pw: "Isnad-Dev-Staff-2026!" },
+                { label: "سارة (مالية)", email: "sara@isnad.sa", pw: "Isnad-Dev-Staff-2026!" },
+              ].map((adm) => (
+                <button
+                  key={adm.email}
+                  type="button"
+                  onClick={() => {
+                    setEmail(adm.email);
+                    setPassword(adm.pw);
+                  }}
+                  className="text-[11px] px-2.5 py-1 rounded-lg bg-navy-800 hover:bg-navy-700 text-slate-300 hover:text-brand border border-navy-600 transition-colors"
+                >
+                  {adm.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <Link to="/login" data-testid="admin-back-to-user-login"
             className="flex items-center justify-center gap-2 text-sm text-slate-400 hover:text-brand transition-colors">
             <ArrowLeft className="w-4 h-4 rtl:rotate-180" /> {t("adminAuth.backToUser")}

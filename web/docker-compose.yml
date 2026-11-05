@@ -1,0 +1,26 @@
+# Local/staging stack: PostgreSQL + the Next.js app. For real production use a managed Postgres, a durable object
+# store, an SMS provider and a payment provider (see ../memory/DECISIONS.md) and set strong secrets.
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: jr, POSTGRES_PASSWORD: jr_dev_password, POSTGRES_DB: jr_logistics }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U jr -d jr_logistics"], interval: 5s, timeout: 3s, retries: 10 }
+  app:
+    build: .
+    depends_on: { db: { condition: service_healthy } }
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: postgres://jr:jr_dev_password@db:5432/jr_logistics
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (32+ random chars)}
+      CRON_SECRET: ${CRON_SECRET:?set CRON_SECRET}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@jrlogistics.local}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?set SUPER_ADMIN_PASSWORD}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      STORAGE_DRIVER: local
+      UPLOAD_DIR: /data/uploads
+      # Uncomment ONLY for a demo/staging stack (exposes OTP codes and demo accounts):
+      # DEMO_MODE: "true"
+      # ALLOW_DEMO_IN_PRODUCTION: yes-this-is-a-demo-deployment
+    volumes: [uploads:/data/uploads]
+volumes: { pgdata: {}, uploads: {} }

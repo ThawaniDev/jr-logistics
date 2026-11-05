@@ -8,8 +8,7 @@ from fastapi import HTTPException
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 APP_NAME = "isnad"
-LOCAL_DIR = pathlib.Path("/app/backend/uploads")
-
+LOCAL_DIR = pathlib.Path(os.environ.get("UPLOADS_DIR", pathlib.Path(__file__).parent / "uploads"))
 _storage_key = None
 
 

@@ -276,3 +276,94 @@ async def change_password(body: ChangePasswordIn, user: dict = Depends(get_curre
                                         "password_changed_at": now_iso()}})
     await audit(user, "password_changed", "user", user["_id"])
     return {"ok": True}
+
+
+class DemoLoginIn(BaseModel):
+    user_id: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+
+@router.get("/demo-accounts")
+async def get_demo_accounts():
+    """Returns available demo accounts organized by user type for rapid testing/prototyping."""
+    users = await db.users.find({"$or": [{"is_demo": True}, {"_id": {"$regex": "^u_"}}]},
+                                 {"password_hash": 0}).sort("role", 1).to_list(100)
+    categories = {
+        "business": [],
+        "worker": [],
+        "office": [],
+        "admin": [],
+        "staff": [],
+    }
+    for u in users:
+        role = u.get("role")
+        if role not in categories:
+            continue
+        info = {
+            "_id": u["_id"],
+            "name": u.get("name"),
+            "role": role,
+            "phone": u.get("phone"),
+            "email": u.get("email"),
+            "city": u.get("city", "الرياض"),
+            "status": u.get("status", "active"),
+        }
+        if role == "business":
+            bp = u.get("business_profile") or {}
+            info["title"] = bp.get("company_name") or u.get("name")
+            info["subtitle"] = f"{bp.get('industry', 'خدمات لوجستية')} • {u.get('city', 'الرياض')}"
+            info["badge"] = "منشأة أعمال"
+        elif role == "worker":
+            wp = u.get("worker_profile") or {}
+            vt = wp.get("vehicle_type", "مركبة")
+            rating = wp.get("rating", 4.8)
+            info["title"] = u.get("name")
+            info["subtitle"] = f"{vt} • {rating} ⭐"
+            info["badge"] = "سائق / مندوب"
+        elif role == "office":
+            op = u.get("office_profile") or {}
+            info["title"] = op.get("office_name") or u.get("name")
+            info["subtitle"] = f"مكتب موثق • {u.get('city', 'الرياض')}"
+            info["badge"] = "مكتب توصيل"
+        elif role == "staff":
+            sp = u.get("staff_profile") or {}
+            sr = sp.get("staff_role", "support")
+            role_names = {"support": "الدعم وخدمة العملاء", "operations": "مشرف العمليات", "finance": "المحاسبة والمالية"}
+            info["title"] = u.get("name")
+            info["subtitle"] = role_names.get(sr, sr)
+            info["badge"] = "موظف منصة"
+            info["staff_role"] = sr
+        elif role == "admin":
+            info["title"] = u.get("name")
+            info["subtitle"] = "صلاحيات كاملة على النظام"
+            info["badge"] = "مدير المنصة"
+
+        categories[role].append(info)
+    return {"demo_accounts": categories}
+
+
+@router.post("/demo-login")
+async def demo_login(body: DemoLoginIn, response: Response):
+    """Direct 1-click login for any demo account to streamline prototyping."""
+    query = {}
+    if body.user_id:
+        query["_id"] = body.user_id
+    elif body.phone:
+        query["phone"] = normalize_phone(body.phone)
+    elif body.email:
+        query["email"] = body.email.lower().strip()
+    else:
+        raise HTTPException(status_code=400, detail="حدد الحساب التجريبي")
+
+    user = await db.users.find_one(query)
+    if not user:
+        raise HTTPException(status_code=404, detail="الحساب التجريبي غير موجود")
+
+    if not user.get("is_demo") and not user.get("_id", "").startswith("u_"):
+        raise HTTPException(status_code=403, detail="هذه الخاصية للحسابات التجريبية فقط")
+
+    token = create_access_token(user)
+    set_auth_cookie(response, token)
+    await audit(user, "demo_quick_login", "user", user["_id"])
+    return {"token": token, "user": pub(user)}

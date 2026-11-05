@@ -4,13 +4,71 @@ from db import db
 ADMIN = {
     "_id": "u_admin",
     "phone": "+966500000001",
-    "email": "emadabuharb1993@gmail.com",
-    "name": "مدير المنصة",
+    "email": "admin@isnad.sa",
+    "name": "مدير المنصة الرئيسي",
     "role": "admin",
     "city": "الرياض",
     "status": "active",
-    "is_demo": False,
+    "is_demo": True,
 }
+
+ADMIN2 = {
+    "_id": "u_admin2",
+    "phone": "+966500000002",
+    "email": "ops-admin@isnad.sa",
+    "name": "م. أحمد الشريف (نائب مدير المنصة)",
+    "role": "admin",
+    "city": "الرياض",
+    "status": "active",
+    "is_demo": True,
+}
+
+OFFICES = [
+    {
+        "_id": "u_off1",
+        "phone": "+966500000401",
+        "name": "عبدالعزيز الغامدي",
+        "email": "ops@alrowad-logistics.sa",
+        "role": "office",
+        "city": "الرياض",
+        "status": "active",
+        "is_demo": True,
+        "office_profile": {
+            "office_name": "مكتب الرواد للخدمات اللوجستية",
+            "cr_number": "1010888999",
+            "responsible_person": "عبدالعزيز الغامدي",
+            "address": "طريق الملك فهد، حي الصحافة",
+            "city": "الرياض",
+            "bank_name": "مصرف الراجحي",
+            "iban": "SA44 8000 0000 6080 1016 7520",
+            "tax_number": "300011122233303",
+            "compliance_notes": "أسطول نشط من 25 مركبة موثقة",
+            "verification_status": "verified",
+        },
+    },
+    {
+        "_id": "u_off2",
+        "phone": "+966500000402",
+        "name": "فهد الحربي",
+        "email": "info@masar-express.sa",
+        "role": "office",
+        "city": "جدة",
+        "status": "active",
+        "is_demo": True,
+        "office_profile": {
+            "office_name": "مؤسسة مسار النقل والتوزيع",
+            "cr_number": "4030777888",
+            "responsible_person": "فهد الحربي",
+            "address": "شارع الأمير سلطان، حي الروضة",
+            "city": "جدة",
+            "bank_name": "البنك الأهلي السعودي",
+            "iban": "SA12 1000 0000 1234 5678 9001",
+            "tax_number": "300044455566603",
+            "compliance_notes": "أسطول فانات وشاحنات مبردة وجافة",
+            "verification_status": "verified",
+        },
+    },
+]
 
 BUSINESSES = [
     {"_id": "u_b1", "phone": "+966500000101", "name": "م. سعود العتيبي", "email": "ops@imdad-demo.sa",
@@ -196,14 +254,24 @@ async def seed_admin():
         raise RuntimeError("SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD must be set to initialize the Super Admin")
     email = email.lower()
     base = {**ADMIN, "email": email}
-    existing = await db.users.find_one({"role": "admin", "email": email})
+    existing = await db.users.find_one({"_id": "u_admin"})
     if not existing:
         await db.users.insert_one({**base, "password_hash": hash_password(password),
                                    "must_change_password": False, "created_at": now_iso()})
     else:
-        # never overwrite an existing admin password — owner resets/changes it via the app
-        if existing.get("phone") != base["phone"]:
-            await db.users.update_one({"_id": existing["_id"]}, {"$set": {"phone": base["phone"]}})
+        await db.users.update_one({"_id": "u_admin"},
+                                  {"$set": {"phone": base["phone"], "email": email, "is_demo": True,
+                                            "password_hash": hash_password(password)}})
+
+    # Super Admin 2 (نائب مدير المنصة)
+    existing2 = await db.users.find_one({"_id": "u_admin2"})
+    if not existing2:
+        await db.users.insert_one({**ADMIN2, "password_hash": hash_password(password),
+                                   "must_change_password": False, "created_at": now_iso()})
+    else:
+        await db.users.update_one({"_id": "u_admin2"},
+                                  {"$set": {"phone": ADMIN2["phone"], "email": ADMIN2["email"], "is_demo": True,
+                                            "password_hash": hash_password(password)}})
 
 
 def worker_doc(w):
@@ -389,3 +457,70 @@ async def seed_all():
         await db.settings.update_one({"key": "seed_v8"}, {"$set": {"key": "seed_v8", "at": now_iso()}}, upsert=True)
 
     await db.settings.update_one({"key": "seed_v6"}, {"$set": {"key": "seed_v6", "at": now_iso()}}, upsert=True)
+
+    if demo:
+        # Seed Offices
+        for off in OFFICES:
+            await db.users.replace_one({"_id": off["_id"]}, {**off, "created_at": now_iso()}, upsert=True)
+            await db.wallets.update_one(
+                {"user_id": off["_id"]},
+                {"$setOnInsert": {
+                    "_id": f"wal_{off['_id']}",
+                    "user_id": off["_id"],
+                    "available": 12000.0 if off["_id"] == "u_off1" else 8500.0,
+                    "reserved": 0.0,
+                    "currency": "SAR"
+                }},
+                upsert=True
+            )
+            await db.agreements.update_one(
+                {"office_id": off["_id"]},
+                {"$setOnInsert": {
+                    "_id": f"agr_{off['_id']}",
+                    "office_id": off["_id"],
+                    "provider_rate": 7.0,
+                    "status": "accepted",
+                    "terms_accepted_at": now_iso(),
+                    "created_at": now_iso(),
+                    "is_demo": True
+                }},
+                upsert=True
+            )
+
+        # Link demo drivers to offices
+        await db.users.update_one({"_id": "u_w5"},
+                                  {"$set": {"worker_profile.provider_type": "office",
+                                            "worker_profile.provider_id": "u_off1",
+                                            "worker_profile.provider_status": "linked"}})
+        await db.users.update_one({"_id": "u_w6"},
+                                  {"$set": {"worker_profile.provider_type": "office",
+                                            "worker_profile.provider_id": "u_off2",
+                                            "worker_profile.provider_status": "linked"}})
+
+        # Seed & ensure Staff accounts have emails, active status and dev passwords
+        import os
+        from security import hash_password
+        staff_pw = os.environ.get("STAFF_DEV_PASSWORD", "Isnad-Dev-Staff-2026!")
+        from catalog import STAFF_ROLE_PRESETS
+        staff_data = [
+            ("u_s1", "+966500000301", "amal@isnad.sa", "أمل الزهراني", "support"),
+            ("u_s2", "+966500000302", "bader@isnad.sa", "بدر العنزي", "operations"),
+            ("u_s3", "+966500000303", "sara@isnad.sa", "سارة القحطاني", "finance"),
+        ]
+        for sid, sphone, semail, sname, srole in staff_data:
+            await db.users.update_one(
+                {"_id": sid},
+                {"$set": {
+                    "phone": sphone,
+                    "email": semail,
+                    "name": sname,
+                    "role": "staff",
+                    "status": "active",
+                    "city": "الرياض",
+                    "is_demo": True,
+                    "password_hash": hash_password(staff_pw),
+                    "must_change_password": False,
+                    "staff_profile": {"staff_role": srole, "permissions": STAFF_ROLE_PRESETS.get(srole, [])},
+                }},
+                upsert=True
+            )

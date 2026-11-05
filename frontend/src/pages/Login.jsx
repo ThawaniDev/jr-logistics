@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/i18n";
 import { roleHome } from "@/lib/constants";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import DemoAccountsCard from "@/components/DemoAccountsCard";
 
 export default function Login() {
   const { t } = useI18n();
@@ -69,25 +70,28 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-navy-900 text-slate-100 flex items-center justify-center px-4 hero-grid relative">
+    <div className="min-h-screen bg-navy-900 text-slate-100 flex items-center justify-center px-4 py-10 hero-grid relative">
       <div className="absolute -top-24 start-1/3 w-96 h-96 rounded-full bg-brand/10 blur-[130px] pointer-events-none" />
       <div className="absolute top-4 end-4 z-10">
         <LanguageSwitcher />
       </div>
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-        className="w-full max-w-md">
-        <Link to="/" className="flex items-center justify-center gap-3 mb-8" data-testid="login-logo">
-          <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-11 h-11 rounded-xl object-cover shadow-[0_0_25px_rgba(0,229,163,0.4)]" />
-          <span className="font-heading font-extrabold text-2xl">JR Logistics</span>
-        </Link>
-        <div className="glass rounded-3xl p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <ShieldCheck className="w-6 h-6 text-brand shrink-0" />
-            <div>
-              <h1 className="heading font-extrabold text-xl">{t("auth.loginTitle")}</h1>
-              <p className="text-xs text-slate-400 mt-0.5">{t("auth.loginSub")}</p>
+
+      <div className="w-full max-w-5xl mx-auto flex flex-col lg:flex-row items-center lg:items-start justify-center gap-8 z-10">
+        {/* Left: Login Form */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+          className="w-full max-w-md shrink-0">
+          <Link to="/" className="flex items-center justify-center gap-3 mb-6" data-testid="login-logo">
+            <img src="/assets/jr-logo-mark.png" alt="JR Logistics" className="w-11 h-11 rounded-xl object-cover shadow-[0_0_25px_rgba(0,229,163,0.4)]" />
+            <span className="font-heading font-extrabold text-2xl">JR Logistics</span>
+          </Link>
+          <div className="glass rounded-3xl p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <ShieldCheck className="w-6 h-6 text-brand shrink-0" />
+              <div>
+                <h1 className="heading font-extrabold text-xl">{t("auth.loginTitle")}</h1>
+                <p className="text-xs text-slate-400 mt-0.5">{t("auth.loginSub")}</p>
+              </div>
             </div>
-          </div>
           <AnimatePresence mode="wait">
             {step === "phone" ? (
               <motion.form key="phone" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
@@ -161,6 +165,13 @@ export default function Login() {
           </Link>
         </p>
       </motion.div>
+
+      {/* Right: Demo Accounts Panel */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}
+        className="w-full max-w-lg">
+        <DemoAccountsCard onSelectPhone={(p) => { setPhone(p); setStep("phone"); }} />
+      </motion.div>
     </div>
-  );
+  </div>
+);
 }
