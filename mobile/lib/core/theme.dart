@@ -16,6 +16,10 @@ class JR {
   static const radius = 14.0;
 }
 
+/// Cairo is bundled (assets/fonts); the fallbacks only matter for glyphs Cairo lacks.
+const _family = 'Cairo';
+const _fallback = ['IBM Plex Sans Arabic', 'Tajawal', 'Noto Sans Arabic', 'Arial'];
+
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: JR.accent, brightness: Brightness.dark,
@@ -46,7 +50,9 @@ ThemeData buildTheme() {
     snackBarTheme: SnackBarThemeData(backgroundColor: JR.card, contentTextStyle: const TextStyle(color: JR.text), behavior: SnackBarBehavior.floating, shape: shape),
     dialogTheme: DialogThemeData(backgroundColor: JR.card, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: JR.line))),
     bottomSheetTheme: const BottomSheetThemeData(backgroundColor: JR.card, shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24)))),
-    textTheme: Typography.whiteMountainView.apply(bodyColor: JR.text, displayColor: JR.text),
-    fontFamilyFallback: const ['IBM Plex Sans Arabic', 'Tajawal', 'Noto Sans Arabic', 'Arial'],
+    // `Typography.whiteMountainView` carries its own family (Roboto), which wins over ThemeData.fontFamily — so Cairo is applied to the text theme itself.
+    textTheme: Typography.whiteMountainView.apply(fontFamily: _family, fontFamilyFallback: _fallback, bodyColor: JR.text, displayColor: JR.text),
+    fontFamily: _family,
+    fontFamilyFallback: _fallback,
   );
 }

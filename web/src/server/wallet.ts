@@ -1,7 +1,8 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, type Exec } from "@/db";
-import { ledgerEntries, walletAccounts } from "@/db/schema";
-import { err } from "@/lib/errors";
+import { ledgerEntries, walletAccounts, requests } from "@/db/schema";
+import { err, AppError } from "@/lib/errors";
+import { logError } from "@/lib/log";
 import { env } from "@/lib/env";
 
 export type Account = typeof walletAccounts.$inferSelect;
@@ -72,24 +73,40 @@ export async function post(x: Exec, p: Posting): Promise<{ applied: boolean }> {
   return { applied: true };
 }
 
+/**
+ * Credits a wallet through the payment provider. Idempotent per (user, key): a retried call — a lost response, a double tap, two tabs —
+ * charges the provider ONCE. The key is serialised with an advisory lock and the ledger is consulted BEFORE the provider is called
+ * (calling the provider first double-charged real cards on every retry).
+ */
 export async function topUp(userId: string, amountCents: number, idempotencyKey: string, maxCents: number) {
   if (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > maxCents) throw err("VALIDATION", "Invalid top-up amount");
   const provider = paymentProvider();
-  const { providerRef } = await provider.charge(amountCents, idempotencyKey);
+  const key = `topup:${userId}:${idempotencyKey}`;
   return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
     const acct = await ensureAccount(userId, tx);
-    await post(tx, {
-      accountId: acct.id, kind: "topup", available: amountCents, idempotencyKey: `topup:${userId}:${idempotencyKey}`,
-      simulated: provider.simulated, note: providerRef, actorId: userId,
-    });
+    const [prior] = await tx.select().from(ledgerEntries).where(eq(ledgerEntries.idempotencyKey, key));
+    if (prior) {
+      if (prior.availableDeltaCents !== amountCents) throw err("CONFLICT", "This idempotency key was already used for a different amount");
+    } else {
+      let providerRef: string;
+      try { ({ providerRef } = await provider.charge(amountCents, idempotencyKey)); }
+      catch (e) { if (e instanceof AppError) throw e; logError(e, { correlationId: "topup" }); throw err("DEPENDENCY_UNAVAILABLE", "The payment service is unavailable right now — nothing was charged, please try again"); }
+      await post(tx, { accountId: acct.id, kind: "topup", available: amountCents, idempotencyKey: key, simulated: provider.simulated, note: providerRef, actorId: userId });
+    }
     const [fresh] = await tx.select().from(walletAccounts).where(eq(walletAccounts.id, acct.id));
-    return { ...fresh, simulated: provider.simulated };
+    return { ...fresh, simulated: prior ? prior.simulated : provider.simulated };
   });
 }
 
-export async function walletView(userId: string) {
+/** `kinds` narrows the statement to some ledger kinds (the wallet page's filter); the total follows the same filter. */
+export async function walletView(userId: string, page = 1, pageSize = 50, kinds?: string[]) {
   const a = await ensureAccount(userId);
-  const entries = await db.select().from(ledgerEntries).where(eq(ledgerEntries.accountId, a.id))
-    .orderBy(sql`${ledgerEntries.createdAt} desc`).limit(100);
-  return { account: a, entries };
+  const p = Math.max(page, 1);
+  const where = and(eq(ledgerEntries.accountId, a.id), kinds?.length ? inArray(ledgerEntries.kind, kinds) : undefined);
+  const [entries, [{ n }]] = await Promise.all([
+    db.select({ e: ledgerEntries, requestRef: requests.ref }).from(ledgerEntries).leftJoin(requests, eq(requests.id, ledgerEntries.requestId)).where(where).orderBy(sql`${ledgerEntries.createdAt} desc`).limit(pageSize).offset((p - 1) * pageSize),
+    db.select({ n: sql<number>`count(*)::int` }).from(ledgerEntries).where(where),
+  ]);
+  return { account: a, entries: entries.map(({ e, requestRef }) => ({ ...e, requestRef })), page: p, pageSize, total: Number(n) };
 }

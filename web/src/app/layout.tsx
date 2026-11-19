@@ -22,9 +22,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const locale = await getLocale();
   const dir = dirOf(locale);
   return (
-    <html lang={locale} dir={dir} className={`${plex.variable} ${tajawal.variable}`}>
-      <body>
-        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-accent focus:px-4 focus:py-2 focus:text-accent-ink">Skip to content</a>
+    <html lang={locale} dir={dir} className={`${plex.variable} ${tajawal.variable}`} suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-accent focus:px-4 focus:py-2 focus:text-accent-ink">{dictionaries[locale]["a11y.skip"] ?? dictionaries.en["a11y.skip"]}</a>
         <HydrationFlag />
         <I18nProvider locale={locale} dict={dictionaries[locale]} fallback={dictionaries.en}>
           {children}

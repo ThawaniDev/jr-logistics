@@ -1,0 +1,39 @@
+# UI redesign — admin, company (business) and courier-office portals (decisions F1–F12)
+
+Request (2026-11-19): restructure all Admin pages and the Company (business) and Courier-office portals "as views", make the sidebars better and more reliable, and redesign the stat cards / KPIs / tables / tab bars / other components for better UX. Example given: **Finance must be several pages under a Finance group in the sidebar, not tabs inside one Finance page.**
+
+## F-decisions (taken as the recommended defaults)
+| # | Decision |
+|---|---|
+| F1 | **Function → page.** Anything that is a different job (finance sub-areas, verification queues, support, settings areas) is its own sidebar entry / route. No tab bars that switch between different functions inside one page. |
+| F2 | **State of one list → filter.** Status / role / period switches of the *same* list use `<Segmented>` (pill filter with counts) + `<SearchBox>` in a `<Toolbar>`, never `<Tabs>`. |
+| F3 | **Entity → list view + detail view.** Companies, offices, drivers, orders each get a list page (KPI row, toolbar, table) and a detail page (`<DetailHeader>` + `<LinkTabs>` whose tabs are real routes, e.g. `/admin/companies/:id/orders`). Modals stay only for small confirmations/forms (reason, adjust, send agreement), never for "review an account". |
+| F4 | **`<Tabs>`** remains only for in-page content of one record (rare). Route sections use `<LinkTabs>`. |
+| F5 | **Sidebar.** Grouped, collapsible (state saved per role), icon-rail mode on desktop, live counters (verification queue, support cases, complaints, withdrawals, held settlements, notifications, orders awaiting the warehouse), longest-prefix active state, ⌘K/Ctrl+K "jump to a page", breadcrumb in the top bar. Items are filtered by the same permissions the pages/APIs enforce. Definition: `components/layout/nav.ts`; unit test `tests/unit/nav.test.ts`. |
+| F6 | **Admin IA.** (top) Dashboard · Operations · Live map — **Orders:** Requests · Cancellations — **Partners:** Companies · Courier offices · Drivers · Users · Verification — **Finance:** Overview · Settlements · Withdrawals · Wallet ledger · Invoices · Cash on delivery · Pricing — **Support:** Cases · Complaints — **Insights:** Reports · Ratings — **System:** Integrations · Staff · Settings · Audit log · Scenarios · Notifications. |
+| F7 | **Company (business) IA.** Dashboard — **Orders:** New order · Orders — **Finance:** Wallet · Cash on delivery — **Company:** Profile & warehouse · Documents · Integrations · API access — **Help:** Support · Notifications. |
+| F8 | **Office IA.** Dashboard — **Fleet:** Drivers · Opportunities · Jobs — **Finance:** Settlements · Payouts · Reports · Agreement — **Account:** Documents · Profile · Support · Notifications. Driver portal keeps its pages (shared components restyle it) with groups Main / Finance / Account. |
+| F9 | **KPI cards** (`<Stat>`/`<StatGrid>`): icon chip, label, value, hint, optional trend pill and link. Every list/detail view starts with a KPI row that answers "what needs attention?" and links to the filtered list. |
+| F10 | **Tables** (`<Table>`): sticky-quality header, hover rows, right-aligned numbers (`align="end"`/`num`), `<CellPair>` for name + sub-line, toolbar and pagination inside the card, row actions at the end, empty/error/loading states always present. Phones: `stack` mode with `<Td label>`. |
+| F11 | **Old URLs keep working** (redirect pages): `/admin/cod`, `/admin/pricing`, `/admin/finance?tab=…`, `/admin/verification?tab=…` etc. |
+| F12 | **Compatibility.** `data-testid`s, aria labels and permission checks that tests rely on are preserved; new views add their own testids (`<area>-<thing>`). Arabic/Urdu (RTL) must work: logical properties only (`ms-/me-/ps-/pe-/start-/end-`), `rtl:rotate-180` on directional icons, numbers in `ltr-num`. |
+
+## Shared components (`@/components/ui`) — API cheat sheet
+- `PageHeader({ title, subtitle?, actions?, breadcrumbs?: [{label, href?}], badges?, icon? })` — **every page; every detail page passes `breadcrumbs`**.
+- `Stat({ label, value, hint?, tone?: accent|cyan|gold|muted|danger, icon?, href?, delta?: {label, dir?: up|down|flat, good?}, loading? })`, `StatGrid({ cols?: 2..6 })`, `ProgressBar({ value, max, tone, label })`.
+- `Section({ title?, description?, actions?, flush? })` card with header; `flush` + `<Table bare>` for edge-to-edge tables.
+- `DetailHeader({ name, subtitle?, badges?, avatar?, facts?: [{label,value}], actions? })`, `Avatar`, `InfoGrid({ items, cols })`, `KV`.
+- `Table({ head: (string | {label, align?, className?, srOnly?})[], toolbar?, footer?, empty?, stack?, bare?, dense?, label? })`, `Td({ label?, align?, num? })`, `CellPair({ title, sub?, href? })`, `Pagination` (shows "1–25 of 140").
+- `Toolbar({ end? })`, `SearchBox({ value, onChange, placeholder, label })`, `Segmented({ options: [{key,label,count?,icon?}], value, onChange, label })`.
+- `LinkTabs({ tabs: [{href,label,count?,icon?}], label })` (route-based), `Tabs` (in-page), `Badge`, `StatusBadge`, `Notice`, `Modal`, `EmptyState`, `ErrorState`, `PageLoading`, `Skeleton`, `useAction`, `useApi` (`@/components/ui/data`).
+- Page skeleton: `PageHeader` → `StatGrid` → `Toolbar` (SearchBox + Segmented/Select) → `Table`/cards → `Pagination`. Loading = `PageLoading` or `Stat loading`; error = `ErrorState` with retry; empty = `EmptyState` with a next action.
+
+## Ownership (parallel workstreams; nobody edits another's files)
+Shared, owned by the lead: `components/ui/*`, `components/layout/*`, `app/globals.css`, `i18n/fragments/redesign-core.ts` and `index.ts`, `server/api/routes/index.ts`. Need a change there? Say so in your final report.
+
+## As built (2026-11-19) — verified: tsc clean, Vitest 626, Playwright 82, Flutter 527 (i18n export re-run)
+- **Shared:** `components/ui/*` (Stat/StatGrid with container-query compaction, PageHeader+Breadcrumbs, Section, DetailHeader, Table toolbar/footer, Toolbar/SearchBox/Segmented, Tabs + route-based LinkTabs), `components/ui/data.ts` (`useApi`, `useUrlState`, `useUrlPatch` — same-tick filter changes are batched into one URL update), `components/layout/{nav,shell}.tsx` (grouped collapsible sidebar, icon rail, live counters, ⌘K switcher). Unit test `tests/unit/nav.test.ts`, e2e `e2e/sidebar.spec.ts`.
+- **Admin:** Finance is 7 pages (`/admin/finance`, `/settlements`, `/withdrawals`, `/ledger`, `/invoices`, `/cod`, `/cod/remittances`, `/pricing`; old `/admin/cod`, `/admin/pricing`, `/admin/finance?tab=` redirect). New views: `/admin/companies(/:id…)`, `/admin/offices/:id…`, `/admin/drivers/:id…`, `/admin/cases/:id`, `/admin/complaints/:id`, `/admin/verification/(documents|drivers)`, `/admin/settings/(jobs|field-operations|finance|security|terms)`. New read APIs: `admin-companies.ts`, `admin-offices.ts`, `admin-finance-views.ts` (+ `server/{companies,offices,finance}-…ts`), `GET /business/invoices`, `?kind=` on `/wallet`, multi-status on request lists.
+- **Company portal:** `/business/requests/:id` is a layout with section routes (`/parcels`, `/money`, `/activity`); integrations got real routes (`/business/integrations/:id`, `/activity`, `/failed`; old `?c=` redirects).
+- **Office portal:** new `/office/drivers/:id`; lists with counts live in the URL (`?scope=`, `?ref=` still work). Driver portal pages only restyled (Tabs → Segmented).
+- **Test infrastructure:** the server rate-limits sign-ins (staff 10/15 min per email, OTP 20/10 min per IP). `e2e/helpers.ts` therefore reuses a signed-in session per account within a run (`e2e/.auth`, wiped by global-setup; pass `{ fresh: true }` to force a real sign-in) and exports one shared `apiLogin`. Specs share one database: assert relative to a baseline and fund what you spend (e.g. platform account before a manual credit).

@@ -6,12 +6,13 @@ import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, mkOffice, pub
 import * as jobs from "@/server/jobs";
 import * as settle from "@/server/settlement";
 import { ensureAccount } from "@/server/wallet";
-import { createDraft, publishRequest, listRequests } from "@/server/requests";
+import { createDraft, listRequests } from "@/server/requests";
 import { runMaintenance } from "@/server/maintenance";
 import { processWebhookQueue, signPayload } from "@/server/integrations";
 import { updateSettings, clearSettingsCache } from "@/server/settings";
 import { call } from "../helpers/api";
 import { createSession } from "@/server/auth/session";
+import { work } from "../helpers/work";
 
 beforeEach(resetDb);
 afterAll(shutdown);
@@ -20,11 +21,10 @@ const bal = async (id: string) => (await db.select().from(walletAccounts).where(
 async function completeJob(biz: any, driver: any, offerId: string, units = 10) {
   await jobs.acceptOffer(driver, offerId, true);
   await jobs.confirmAttendance(biz, offerId, true);
-  await jobs.reportDelivered(driver, offerId, units);
-  await jobs.confirmDelivery(biz, offerId, { action: "confirm" });
+  await work(biz, driver, offerId, units); // finishing the route confirms and pays (E16/E18)
 }
 
-describe("settlement routing & batches", () => {
+describe("settlement routing (office / driver wallet) — paid automatically", () => {
   it("office-affiliated work pays the office wallet, not the driver", async () => {
     const admin = await mkAdmin(); await mkRule(admin);
     const office = await mkOffice(); const d = await mkDriver({ officeId: office.id });
@@ -34,14 +34,12 @@ describe("settlement routing & batches", () => {
     expect(o.officeId).toBe(office.id);
     await completeJob(biz, d, o.id);
     const [s] = await db.select().from(settlements);
-    expect(s.officeId).toBe(office.id);
-    const fin1 = await mkStaff(["settlements.review"]), fin2 = await mkStaff(["settlements.approve", "payouts.execute"]);
-    await settle.reviewSettlement(fin1, s.id); await settle.approveSettlement(fin2, s.id); await settle.payoutSettlement(fin2, s.id);
-    expect((await bal(office.id)).availableCents).toBe(70_00);
+    expect(s.officeId).toBe(office.id); expect(s.status).toBe("paid");
+    expect((await bal(office.id)).availableCents).toBe(70_00); // straight into the office wallet — no approval, no batch
     expect((await bal(d.id)).availableCents).toBe(0);
   });
 
-  it("batch pays approved items, isolates failures, and failed items are retry-safe", async () => {
+  it("a payment that fails is isolated and retried by the next housekeeping tick", async () => {
     const admin = await mkAdmin(); await mkRule(admin);
     const biz = await mkBusiness({ fundsCents: 1000_00 });
     const ds = await Promise.all([mkDriver(), mkDriver()]);
@@ -52,43 +50,23 @@ describe("settlement routing & batches", () => {
       await completeJob(biz, ds.find((x) => x.id === o.driverId)!, o.id);
     }
     const all = await db.select().from(settlements);
-    expect(all).toHaveLength(2);
-    const fin1 = await mkStaff(["settlements.review"]), fin2 = await mkStaff(["settlements.approve", "payouts.execute"]);
-    for (const s of all) { await settle.reviewSettlement(fin1, s.id); await settle.approveSettlement(fin2, s.id); sIds.push(s.id); }
-    // starve the business wallet so the 2nd item cannot be charged beyond its reserve (simulate overcharge)
-    await db.update(settlements).set({ customerCents: 100_000_00 }).where(eq(settlements.id, sIds[1]));
-    const batch = await settle.runPayoutBatch(fin2);
-    expect(batch.paidCount).toBe(1); expect(batch.failedCount).toBe(1);
-    const failed = (await db.select().from(settlements).where(eq(settlements.id, sIds[1])))[0];
-    expect(failed.status).toBe("failed");
-    // fix the cause and retry
-    await db.update(settlements).set({ customerCents: 100_00 }).where(eq(settlements.id, sIds[1]));
-    await settle.retryFailed(fin2, sIds[1]);
-    const batch2 = await settle.runPayoutBatch(fin2);
-    expect(batch2.paidCount).toBe(1);
-    expect((await db.select().from(settlements)).every((s) => s.status === "paid")).toBe(true);
-    // running again does nothing (idempotent)
-    expect((await settle.runPayoutBatch(fin2)).itemCount).toBe(0);
-  });
-
-  it("a held complaint blocks approval; rejecting a settlement returns the escrow", async () => {
-    const admin = await mkAdmin(); await mkRule(admin);
-    const biz = await mkBusiness({ fundsCents: 500_00 }); const d = await mkDriver();
-    const r = await publishedRequest(biz);
-    const [o] = await db.select().from(offers).where(eq(offers.requestId, r.id));
-    await completeJob(biz, d, o.id);
-    const [s] = await db.select().from(settlements);
+    expect(all).toHaveLength(2); expect(all.every((s) => s.status === "paid")).toBe(true);
+    // a settlement that could not be paid (left unpaid, with an impossible charge) fails on its own and leaves the others untouched
+    const r3 = await publishedRequest(biz, { startsAt: new Date(Date.now() + 9 * 864e5) });
+    const o3 = (await db.select().from(offers).where(eq(offers.requestId, r3.id)))[0];
     const { complaints } = await import("@/db/schema");
-    await db.insert(complaints).values({ ref: "CP-X", filedBy: biz.id, filedByRole: "business", requestId: r.id, offerId: o.id, category: "damage", description: "damaged goods reported", holdsSettlement: true });
-    const fin = await mkStaff(["settlements.review", "settlements.approve", "payouts.execute"]);
-    await expect(settle.approveSettlement(fin, s.id)).rejects.toMatchObject({ code: "DISPUTE_BLOCKS" });
+    await db.insert(complaints).values({ ref: "CP-F", filedBy: biz.id, filedByRole: "business", requestId: r3.id, offerId: o3.id, category: "other", description: "hold it for the test", holdsSettlement: true });
+    await completeJob(biz, ds.find((x) => x.id === o3.driverId)!, o3.id);
+    const held = (await db.select().from(settlements).where(eq(settlements.offerId, o3.id)))[0]; sIds.push(held.id);
     await db.delete(complaints);
-    const before = await bal(biz.id);
-    expect(before.reservedCents).toBe(100_00);
-    await settle.rejectSettlement(fin, s.id, "evidence invalid");
-    const after = await bal(biz.id);
-    expect(after.reservedCents).toBe(0); expect(after.availableCents).toBe(500_00);
-    await expect(settle.payoutSettlement(fin, s.id)).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
+    await db.update(settlements).set({ customerCents: 100_000_00 }).where(eq(settlements.id, held.id)); // more than the business can be charged
+    expect(await settle.paySettlementsDue()).toBe(0);
+    expect((await db.select().from(settlements).where(eq(settlements.id, held.id)))[0].status).toBe("failed");
+    // fix the cause: the next tick pays it
+    await db.update(settlements).set({ customerCents: 100_00 }).where(eq(settlements.id, held.id));
+    expect(await settle.paySettlementsDue()).toBe(1);
+    expect((await db.select().from(settlements)).every((s) => s.status === "paid")).toBe(true);
+    expect(await settle.paySettlementsDue()).toBe(0); // nothing left
   });
 
   it("money is conserved across the ledger for the whole scenario", async () => {
@@ -97,9 +75,6 @@ describe("settlement routing & batches", () => {
     const r = await publishedRequest(biz, { shipmentsPerDriver: 20 });
     const [o] = await db.select().from(offers).where(eq(offers.requestId, r.id));
     await completeJob(biz, d, o.id, 17);
-    const [s] = await db.select().from(settlements);
-    const fin1 = await mkStaff(["settlements.review"]), fin2 = await mkStaff(["settlements.approve", "payouts.execute"]);
-    await settle.reviewSettlement(fin1, s.id); await settle.approveSettlement(fin2, s.id); await settle.payoutSettlement(fin2, s.id);
     const entries = await db.select().from(ledgerEntries);
     const net = entries.reduce((a, e) => a + e.availableDeltaCents + e.reservedDeltaCents + e.heldDeltaCents, 0);
     expect(net).toBe(1000_00); // only the top-up created money
@@ -152,18 +127,6 @@ describe("maintenance & policy", () => {
     expect((await bal(biz.id)).availableCents).toBe(500_00);
     expect((await bal(biz.id)).reservedCents).toBe(0);
     expect((await runMaintenance()).expiredRequests).toBe(0); // idempotent
-  });
-
-  it("office window elapses → system broadcast to everyone", async () => {
-    const admin = await mkAdmin(); await mkRule(admin);
-    const office = await mkOffice(); const biz = await mkBusiness({ fundsCents: 500_00 }); const d = await mkDriver();
-    const dr = await createDraft(biz, reqInput({ preferredOfficeId: office.id }));
-    const r = await publishRequest(biz, dr.id, { termsAccepted: true });
-    expect(await db.select().from(offers).where(eq(offers.requestId, r.id))).toHaveLength(0);
-    await db.update(requests).set({ officeWindowEndsAt: new Date(Date.now() - 1000) }).where(eq(requests.id, r.id));
-    const out = await runMaintenance();
-    expect(out.broadcast).toBe(1);
-    expect((await db.select().from(offers).where(eq(offers.requestId, r.id)))[0].driverId).toBe(d.id);
   });
 
   it("repeated driver cancellations trigger a warning then a suspension (configurable)", async () => {

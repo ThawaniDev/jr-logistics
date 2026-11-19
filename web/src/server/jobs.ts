@@ -1,18 +1,20 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, type Exec } from "@/db";
 import {
-  offers, requests, driverProfiles, users, termsConsents, tickets, complaints, jobEvents, ratings, businessProfiles,
+  offers, requests, driverProfiles, termsConsents, tickets, complaints, jobEvents, ratings, businessProfiles, shipments,
   type Offer, type Request, type User,
 } from "@/db/schema";
 import { err } from "@/lib/errors";
 import { OFFER_BUSY, OFFER_DEAD, SERVICE_MAP, URGENT_TICKET_CATEGORIES, type ServiceKey } from "./catalog";
 import { getSettings } from "./settings";
 import { logEvent } from "./events";
-import { notify, notifyMany } from "./notify";
+import { notify, notifyMany, notifyOps } from "./notify";
 import { audit } from "./audit";
 import { lockRequest, releaseReserve } from "./requests";
-import { dispatchOffers, driverHasConflict, evaluateCandidates, readyOfficeIds, earningFor } from "./matching";
-import { createSettlement } from "./settlement";
+import { activeJobs, backfillOffersForDriver, dispatchOffers, driverHasConflict, evaluateCandidates, readyOfficeIds, earningFor } from "./matching";
+import { settleOffer, unpaidOfferIds } from "./settlement";
+import { assertAtWarehouse, effectiveOps } from "./warehouse";
+import { isManifestJob, allocateToOffer, markLoaded, markRouteFinished, releaseOfferShipments } from "./shipments";
 import { nextRef } from "./counters";
 import { can } from "./auth/permissions";
 
@@ -22,7 +24,7 @@ const actorOf = (u: User) => ({ id: u.id, name: u.name, role: u.role });
  * Lock order is ALWAYS request → offer. Without this, a winner updating sibling offers can deadlock
  * against a loser that already holds its own offer row and waits for the request row.
  */
-async function lockOffer(tx: Exec, id: string): Promise<Offer> {
+export async function lockOffer(tx: Exec, id: string): Promise<Offer> {
   const [peek] = await tx.select({ requestId: offers.requestId }).from(offers).where(eq(offers.id, id));
   if (!peek) throw err("NOT_FOUND", "Offer not found");
   await lockRequest(tx, peek.requestId);
@@ -30,17 +32,17 @@ async function lockOffer(tx: Exec, id: string): Promise<Offer> {
   if (!o) throw err("NOT_FOUND", "Offer not found");
   return o;
 }
-function expect(o: Offer, ...states: string[]) {
+export function expect(o: Offer, ...states: string[]) {
   if (!states.includes(o.status)) throw err("INVALID_TRANSITION", `Offer is ${o.status}; expected ${states.join(" or ")}`, { status: o.status });
 }
-async function setOffer(tx: Exec, id: string, patch: Partial<typeof offers.$inferInsert>) {
+export async function setOffer(tx: Exec, id: string, patch: Partial<typeof offers.$inferInsert>) {
   const [u] = await tx.update(offers).set({ ...patch, updatedAt: new Date() }).where(eq(offers.id, id)).returning();
   return u;
 }
-const forDriver = (u: User, o: Offer) => { if (u.id !== o.driverId) throw err("NOT_FOUND", "Offer not found"); };
+export const forDriver = (u: User, o: Offer) => { if (u.id !== o.driverId) throw err("NOT_FOUND", "Offer not found"); };
 
 /** Business-side authority over a job: the owner, or staff with edit rights (audited by caller). */
-async function authorizeBusinessSide(tx: Exec, u: User, o: Offer): Promise<Request> {
+export async function authorizeBusinessSide(tx: Exec, u: User, o: Offer): Promise<Request> {
   const r = await lockRequest(tx, o.requestId);
   if (u.id !== r.businessId && !can(u, "requests.edit")) throw err("NOT_FOUND", "Offer not found");
   return r;
@@ -61,12 +63,18 @@ async function fillSlot(tx: Exec, driver: User, o: Offer, termsAccepted: boolean
   if (s.requireDriverVerification && p.verificationStatus !== "verified") throw err("VERIFICATION_REQUIRED", "Your documents are not verified");
   if (p.suspendedUntil && p.suspendedUntil > new Date()) throw err("NOT_ELIGIBLE", "Your account is temporarily suspended", { until: p.suspendedUntil });
   if (p.officeId && !(await readyOfficeIds(tx, [p.officeId])).has(p.officeId)) throw err("NOT_ELIGIBLE", "Your office is not active");
+  if (s.driverSingleActiveJob) {
+    const act = (await activeJobs(tx, [driver.id])).get(driver.id);
+    if (act && act.offerId !== o.id) throw err("OVERLAPPING_JOB", "Finish your current job before taking another", { activeJob: act });
+  }
   if (await driverHasConflict(tx, driver.id, r, s.overlapPolicy)) throw err("OVERLAPPING_JOB", "You already have a job at this time");
   const cands = await evaluateCandidates(tx, r, { driverIds: [driver.id] });
   const c = cands[0];
-  const hard = (c?.reasons ?? ["service_mismatch"]).filter((x) => !["already_offered", "unavailable", "time_overlap"].includes(x));
+  const hard = (c?.reasons ?? ["service_mismatch"]).filter((x) => !["already_offered", "unavailable", "time_overlap", "busy"].includes(x));
   if (hard.length) throw err("NOT_ELIGIBLE", "You are not eligible for this job", { reasons: hard });
   await tx.insert(termsConsents).values({ userId: driver.id, role: "driver", termsVersion: s.termsVersion, context: "offer_accept" });
+  // Per-parcel jobs: the winner receives their balanced share of the manifest (throws SLOT_TAKEN when nothing is left to carry).
+  if (await isManifestJob(tx, r.id)) await allocateToOffer(tx, r, o, r.quantity - r.slotsFilled);
   const filled = r.slotsFilled + 1;
   const newStatus = filled >= r.quantity ? "assigned" : "filling";
   await tx.update(requests).set({ slotsFilled: filled, status: newStatus, updatedAt: new Date() }).where(eq(requests.id, r.id));
@@ -77,7 +85,7 @@ async function fillSlot(tx: Exec, driver: User, o: Offer, termsAccepted: boolean
   }
   const u = await setOffer(tx, o.id, { status: "accepted", acceptedAt: new Date() });
   await logEvent(tx, { requestId: r.id, offerId: o.id, actor: actorOf(driver), type: "driver_accepted", oldStatus: o.status, newStatus: "accepted", payload: { requestStatus: newStatus } });
-  await notify(r.businessId, "driver_accepted", { ref: r.ref, driver: driver.name }, tx);
+  await notify(r.businessId, "driver_accepted", { requestId: r.id, ref: r.ref, driver: driver.name }, tx);
   if (o.officeId) await notify(o.officeId, "office_driver_accepted", { ref: r.ref, driver: driver.name }, tx);
   return u;
 }
@@ -136,11 +144,28 @@ export async function checkIn(driver: User, offerId: string, loc?: { lat?: numbe
     const r = await lockRequest(tx, o.requestId);
     const s = await getSettings(tx);
     if (r.startsAt.getTime() - Date.now() > s.checkinEarlyMin * 60_000) throw err("INVALID_TRANSITION", "Too early to check in", { opensAt: new Date(r.startsAt.getTime() - s.checkinEarlyMin * 60_000) });
-    const u = await setOffer(tx, offerId, { status: "arrived", arrivedAt: new Date(), arrivedLat: loc?.lat ?? null, arrivedLng: loc?.lng ?? null });
-    await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: "driver_arrived", oldStatus: "accepted", newStatus: "arrived", payload: loc ?? {} });
-    await notify(r.businessId, "driver_arrived", { ref: r.ref, driver: driver.name }, tx);
+    // E1: the driver must really be at the warehouse (GPS within the platform radius of its pin).
+    const where = await assertAtWarehouse(tx, r, loc);
+    const now = new Date();
+    const ops = await effectiveOps(r.businessId, tx, s);
+    const auto = !ops.requireArrivalConfirmation; // E2: this warehouse does not confirm arrivals — a verified check-in is the attendance
+    let u = await setOffer(tx, offerId, { status: "arrived", arrivedAt: now, arrivedLat: loc?.lat ?? null, arrivedLng: loc?.lng ?? null });
+    await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: "driver_arrived", oldStatus: "accepted", newStatus: "arrived", payload: { ...(loc ?? {}), distanceM: where.distanceM } });
+    if ("unknownPin" in where && where.unknownPin) await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: "arrival_unverified", payload: { ...(loc ?? {}) } });
+    await notify(r.businessId, "driver_arrived", { requestId: r.id, ref: r.ref, driver: driver.name }, tx);
+    if (auto) u = await markAttendance(tx, r, u, null, { auto: true });
     return u;
   });
+}
+
+/** Attendance confirmed (by the warehouse, or by the system when the warehouse does not require it). */
+async function markAttendance(tx: Exec, r: Request, o: Offer, by: User | null, opts: { auto?: boolean } = {}) {
+  const u = await setOffer(tx, o.id, { status: "attendance_confirmed", attendanceAt: new Date(), attendanceBy: by?.id ?? null });
+  // Only a fully staffed request moves to in_progress: while slots are still open (`filling`) other drivers must remain able to accept.
+  if (r.status === "assigned" || r.status === "confirmed") await tx.update(requests).set({ status: "in_progress", updatedAt: new Date() }).where(eq(requests.id, r.id));
+  await logEvent(tx, { requestId: r.id, offerId: o.id, actor: by ? actorOf(by) : null, type: "attendance_confirmed", oldStatus: o.status, newStatus: "attendance_confirmed", payload: opts.auto ? { auto: true } : undefined });
+  if (by) await notify(o.driverId, "attendance_confirmed", { offerId: o.id, ref: r.ref }, tx);
+  return u;
 }
 
 export async function confirmAttendance(actor: User, offerId: string, present: boolean, reason?: string) {
@@ -148,45 +173,58 @@ export async function confirmAttendance(actor: User, offerId: string, present: b
     const o = await lockOffer(tx, offerId);
     const r = await authorizeBusinessSide(tx, actor, o);
     expect(o, "accepted", "arrived");
-    if (present) {
-      const u = await setOffer(tx, offerId, { status: "attendance_confirmed", attendanceAt: new Date(), attendanceBy: actor.id });
-      if (r.status === "assigned" || r.status === "filling" || r.status === "confirmed") await tx.update(requests).set({ status: "in_progress", updatedAt: new Date() }).where(eq(requests.id, r.id));
-      await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(actor), type: "attendance_confirmed", oldStatus: o.status, newStatus: "attendance_confirmed" });
-      await notify(o.driverId, "attendance_confirmed", { ref: r.ref }, tx);
-      return u;
-    }
+    if (present) return markAttendance(tx, r, o, actor);
     if (!reason?.trim()) throw err("VALIDATION", "A reason is required to record a no-show", { field: "reason" });
+    // Nobody can fail to show up before the job has started.
+    if (r.startsAt.getTime() > Date.now()) throw err("INVALID_TRANSITION", "The job has not started yet — a no-show can only be recorded from the start time", { startsAt: r.startsAt });
     const u = await setOffer(tx, offerId, { status: "no_show", cancelReason: reason, cancelledAt: new Date() });
+    await releaseOfferShipments(tx, o, "driver_no_show", { loadedToPool: true });
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(actor), type: "driver_no_show", oldStatus: o.status, newStatus: "no_show", payload: { reason } });
-    await notify(o.driverId, "no_show_recorded", { ref: r.ref }, tx);
+    await notify(o.driverId, "no_show_recorded", { offerId: o.id, ref: r.ref }, tx);
     await freeSlotAndReplace(tx, r, o, "no_show");
     return u;
   });
 }
 
 /** Free a slot after cancel/no-show/replacement and look for a replacement. */
-async function freeSlotAndReplace(tx: Exec, r: Request, o: Offer, why: string) {
+async function freeSlotAndReplace(tx: Exec, r: Request, o: Offer, why: string, onlyOfficeId?: string) {
   const [u] = await tx.update(requests).set({ slotsFilled: sql`greatest(${requests.slotsFilled} - 1, 0)`, status: sql`case when ${requests.status} in ('in_progress','assigned','confirmed') then 'filling' else ${requests.status} end`, updatedAt: new Date() }).where(eq(requests.id, r.id)).returning();
-  const n = await dispatchOffers(tx, u, { replacement: true, replacesOfferId: o.id });
+  let n = await dispatchOffers(tx, u, { replacement: true, replacesOfferId: o.id, onlyOfficeId });
+  if (n === 0 && onlyOfficeId) n = await dispatchOffers(tx, u, { replacement: true, replacesOfferId: o.id }); // office has nobody → open to all
   await logEvent(tx, { requestId: r.id, offerId: o.id, type: "replacement_requested", payload: { why, offers: n } });
   if (n === 0) {
-    const staff = await tx.select({ id: users.id }).from(users).where(and(eq(users.role, "admin"), eq(users.status, "active")));
-    await notifyMany(staff.map((s) => s.id), "no_replacement_available", { ref: r.ref }, tx);
+    await notifyOps("replacements.manage", "no_replacement_available", { ref: r.ref }, tx);
   }
 }
 
 // ───────── Loading, delivery, quantity ─────────
-export async function recordLoading(actor: User, offerId: string, units: number) {
-  if (!Number.isInteger(units) || units < 0) throw err("VALIDATION", "Invalid quantity", { field: "units" });
+export async function recordLoading(actor: User, offerId: string, units?: number, sel: { codes?: string[]; all?: boolean } = {}) {
+  const res = await recordLoadingTx(actor, offerId, units, sel);
+  // Parcels are on the vehicle: plan the best route now so it is ready when the driver opens the job (best effort — never fails the hand-over).
+  if (res.manifest) await (await import("./route-plan")).autoPlanRoute(offerId);
+  return res.offer;
+}
+
+async function recordLoadingTx(actor: User, offerId: string, units?: number, sel: { codes?: string[]; all?: boolean } = {}): Promise<{ offer: Offer; manifest: boolean }> {
   return db.transaction(async (tx) => {
     const o = await lockOffer(tx, offerId);
     const r = await authorizeBusinessSide(tx, actor, o);
     expect(o, "attendance_confirmed");
     if (!SERVICE_MAP[r.service as ServiceKey].hasShipments) throw err("INVALID_TRANSITION", "Loading applies to delivery jobs only");
-    const u = await setOffer(tx, offerId, { loadedUnits: units, loadedAt: new Date(), loadedAckByDriver: null });
+    if (await isManifestJob(tx, r.id)) {
+      // Parcel by parcel: the warehouse scans / ticks exactly what goes onto the vehicle. Anything not handed over returns to the pool.
+      if (o.routeApprovedAt) throw err("INVALID_TRANSITION", "The driver has already started the route");
+      const res = await markLoaded(tx, r, o, sel);
+      const m = await setOffer(tx, offerId, { loadedUnits: res.loaded, loadedAt: new Date(), loadedAckByDriver: null });
+      await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(actor), type: "loading_recorded", payload: { units: res.loaded, released: res.released, manifest: true } });
+      await notify(o.driverId, "loading_recorded", { offerId: o.id, ref: r.ref, units: res.loaded }, tx);
+      return { offer: m, manifest: true };
+    }
+    if (!Number.isInteger(units) || (units as number) < 0) throw err("VALIDATION", "Invalid quantity", { field: "units" });
+    const u = await setOffer(tx, offerId, { loadedUnits: units as number, loadedAt: new Date(), loadedAckByDriver: null });
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(actor), type: "loading_recorded", payload: { units } });
-    await notify(o.driverId, "loading_recorded", { ref: r.ref, units }, tx);
-    return u;
+    await notify(o.driverId, "loading_recorded", { offerId: o.id, ref: r.ref, units }, tx);
+    return { offer: u, manifest: false };
   });
 }
 
@@ -201,49 +239,109 @@ export async function acknowledgeLoading(driver: User, offerId: string, ok: bool
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: ok ? "loading_confirmed" : "loading_disputed", payload: { units: o.loadedUnits, note } });
     if (!ok) {
       await openTicket(tx, driver, { category: "shipment_count_differs", subject: `Loaded quantity disputed (${r.ref})`, requestId: r.id, offerId, body: note });
-      await notify(r.businessId, "loading_disputed", { ref: r.ref }, tx);
+      await notify(r.businessId, "loading_disputed", { requestId: r.id, ref: r.ref }, tx);
     }
     return u;
   });
 }
 
-export async function reportDelivered(driver: User, offerId: string, units: number) {
-  if (!Number.isInteger(units) || units < 0) throw err("VALIDATION", "Invalid quantity", { field: "units" });
+/**
+ * Upper bound for what can be reported: never more than was loaded and never more than was booked. The escrow only covers the
+ * booked quantity, so billing above it could strand a payout; extra work needs a new request.
+ */
+export function maxBillableUnits(o: Offer) {
+  return Math.min(o.loadedUnits ?? o.expectedUnits, o.expectedUnits);
+}
+
+export async function reportDelivered(driver: User, offerId: string, unitsIn?: number) {
+  const done = await reportDeliveredTx(driver, offerId, unitsIn);
+  // The driver is free again: offers that were held back (or published while he was busy) reach him now.
+  await backfillOffersForDriver(driver.id).catch(() => {});
+  return done;
+}
+
+async function reportDeliveredTx(driver: User, offerId: string, unitsIn?: number) {
   return db.transaction(async (tx) => {
     const o = await lockOffer(tx, offerId);
     forDriver(driver, o);
     expect(o, "attendance_confirmed");
     const r = await lockRequest(tx, o.requestId);
+    if (await isManifestJob(tx, r.id)) {
+      // The count is not typed in: it IS the number of parcels delivered with a valid proof. Every stop must be resolved first.
+      if (!o.routeApprovedAt) throw err("INVALID_TRANSITION", "Approve the route and work through the stops first");
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(shipments).where(and(eq(shipments.offerId, offerId), eq(shipments.status, "loaded")));
+      if (n > 0) throw err("STOPS_PENDING", `${n} stop(s) are still open`, { remaining: n });
+      const { delivered } = await markRouteFinished(tx, o, "delivery_reported", actorOf(driver));
+      await notify(r.businessId, "delivery_reported", { requestId: r.id, ref: r.ref, units: delivered }, tx);
+      return autoConfirmDelivery(tx, offerId); // E16/E18: no warehouse confirmation — confirmed and paid now
+    }
+    if (!Number.isInteger(unitsIn) || (unitsIn as number) < 0) throw err("VALIDATION", "Invalid quantity", { field: "units" });
+    const units = unitsIn as number;
     const hasShipments = SERVICE_MAP[r.service as ServiceKey].hasShipments;
     if (hasShipments && o.loadedUnits != null && o.loadedAckByDriver !== true) throw err("INVALID_TRANSITION", "Confirm the loaded quantity first");
-    if (hasShipments && o.loadedUnits != null && units > o.loadedUnits) throw err("VALIDATION", "Delivered cannot exceed loaded quantity", { max: o.loadedUnits });
-    const u = await setOffer(tx, offerId, { status: "delivered_reported", deliveredUnits: units, deliveredAt: new Date() });
+    const ceiling = maxBillableUnits(o);
+    if (units > ceiling) throw err("VALIDATION", hasShipments && o.loadedUnits != null ? "Delivered cannot exceed loaded quantity" : "Quantity is higher than this job allows", { max: ceiling });
+    await setOffer(tx, offerId, { status: "delivered_reported", deliveredUnits: units, deliveredAt: new Date() });
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: "delivery_reported", oldStatus: "attendance_confirmed", newStatus: "delivered_reported", payload: { units } });
-    await notify(r.businessId, "delivery_reported", { ref: r.ref, units }, tx);
-    return u;
+    await notify(r.businessId, "delivery_reported", { requestId: r.id, ref: r.ref, units }, tx);
+    return autoConfirmDelivery(tx, offerId);
   });
 }
 
-/** Business confirms the final quantity, or disputes it (which holds settlement). */
-export async function confirmDelivery(actor: User, offerId: string, decision: { action: "confirm"; units?: number } | { action: "dispute"; note: string }) {
+/**
+ * E16/E18 — the driver's work is over (route finished, or ended early): the delivery is confirmed BY THE SYSTEM from the delivered parcels
+ * (nothing for the warehouse to confirm or dispute) and the settlement is paid straight away. Undelivered parcels are received back by the
+ * warehouse separately (`confirm_returns`) and never block the money. Safe to call for an offer already completed (returns it).
+ */
+export async function autoConfirmDelivery(tx: Exec, offerId: string, actor: User | null = null) {
+  const o = await lockOffer(tx, offerId);
+  if (o.status === "completed") return o;
+  expect(o, "delivered_reported", "pending_settlement");
+  const r = await lockRequest(tx, o.requestId);
+  let ready = o;
+  if (o.status === "delivered_reported") {
+    const units = Math.min(o.deliveredUnits ?? 0, o.expectedUnits); // the escrow only covers the booked quantity
+    ready = await setOffer(tx, offerId, { status: "pending_settlement", finalUnits: units, finalAt: new Date() });
+    await logEvent(tx, { requestId: r.id, offerId, actor: actor ? actorOf(actor) : null, type: "delivery_confirmed", oldStatus: o.status, newStatus: "pending_settlement", payload: { units, auto: true } });
+  }
+  const done = await finishOffer(tx, r, ready);
+  await completeIfReady(tx, r.id, actor);
+  return done;
+}
+
+/** One driver's settlement: created, paid (unless a complaint holds it) and the offer closed. */
+async function finishOffer(tx: Exec, r: Request, o: Offer) {
+  await settleOffer(tx, r, o);
+  const done = await setOffer(tx, o.id, { status: "completed" });
+  await notify(o.driverId, "job_completed", { offerId: o.id, ref: r.ref }, tx);
+  return done;
+}
+
+/** Driver reports they were not put to work (business never responded / no work on site). One open report per job. */
+export async function reportNoWork(driver: User, offerId: string, note?: string) {
   return db.transaction(async (tx) => {
     const o = await lockOffer(tx, offerId);
-    const r = await authorizeBusinessSide(tx, actor, o);
-    expect(o, "delivered_reported");
-    if (decision.action === "dispute") {
-      if (!decision.note?.trim()) throw err("VALIDATION", "Dispute note required", { field: "note" });
-      const u = await setOffer(tx, offerId, { status: "qty_disputed" });
-      await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(actor), type: "delivery_disputed", oldStatus: o.status, newStatus: "qty_disputed", payload: { note: decision.note } });
-      await openComplaint(tx, actor, { category: "service_quality", description: decision.note, requestId: r.id, offerId, priority: "urgent", holdsSettlement: true });
-      await notify(o.driverId, "delivery_disputed", { ref: r.ref }, tx);
-      return u;
-    }
-    const units = decision.units ?? o.deliveredUnits ?? 0;
-    if (!Number.isInteger(units) || units < 0) throw err("VALIDATION", "Invalid quantity", { field: "units" });
-    const u = await setOffer(tx, offerId, { status: "pending_settlement", finalUnits: units, finalAt: new Date() });
-    await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(actor), type: "delivery_confirmed", oldStatus: o.status, newStatus: "pending_settlement", payload: { units } });
-    await completeIfReady(tx, r.id, actor);
-    return u;
+    forDriver(driver, o);
+    expect(o, "arrived", "attendance_confirmed");
+    const r = await lockRequest(tx, o.requestId);
+    const [dup] = await tx.select({ id: tickets.id }).from(tickets).where(and(eq(tickets.offerId, offerId), eq(tickets.category, "not_put_to_work")));
+    if (dup) throw err("CONFLICT", "You already reported this job");
+    await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: "no_work_reported", payload: { note } });
+    return openTicket(tx, driver, { category: "not_put_to_work", subject: `${r.ref}: not put to work`, requestId: r.id, offerId, body: note });
+  });
+}
+
+/** Driver could not reach the recipient. Only while the job is active; one report per reason keeps ops free of duplicates. */
+export async function reportContactException(driver: User, offerId: string, reason: string, note?: string) {
+  return db.transaction(async (tx) => {
+    const o = await lockOffer(tx, offerId);
+    forDriver(driver, o);
+    expect(o, "accepted", "arrived", "attendance_confirmed");
+    const r = await lockRequest(tx, o.requestId);
+    const [dup] = await tx.select({ id: jobEvents.id }).from(jobEvents).where(and(eq(jobEvents.offerId, offerId), eq(jobEvents.type, "contact_exception"), sql`${jobEvents.payload}->>'reason' = ${reason}`));
+    if (dup) throw err("CONFLICT", "You already reported this problem");
+    await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: "contact_exception", payload: { reason, note } });
+    return openTicket(tx, driver, { category: "attendance_issue", subject: `${r.ref}: contact problem (${reason})`, requestId: r.id, offerId, body: note });
   });
 }
 
@@ -256,7 +354,11 @@ export async function resolveDispute(staff: User, offerId: string, finalUnits: n
     const o = await lockOffer(tx, offerId);
     expect(o, "qty_disputed");
     const r = await lockRequest(tx, o.requestId);
+    const cap = o.expectedUnits; // what the escrow covers
+    if (finalUnits > cap) throw err("VALIDATION", "Quantity is higher than this job allows", { field: "finalUnits", max: cap });
     const u = await setOffer(tx, offerId, { status: "pending_settlement", finalUnits, finalAt: new Date() });
+    // Parcels still unaccounted for after the platform's decision are recorded as missing (visible to both sides, never silently dropped).
+    await tx.update(shipments).set({ status: "missing", updatedAt: new Date() }).where(and(eq(shipments.offerId, offerId), eq(shipments.status, "failed")));
     await tx.update(complaints).set({ status: "resolved", resolution, resolvedAt: new Date(), handlerId: staff.id, holdsSettlement: false, updatedAt: new Date() })
       .where(and(eq(complaints.offerId, offerId), eq(complaints.holdsSettlement, true), inArray(complaints.status, ["open", "in_progress"])));
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(staff), type: "dispute_resolved", oldStatus: "qty_disputed", newStatus: "pending_settlement", payload: { finalUnits, resolution } });
@@ -282,20 +384,21 @@ async function completeIfReady(tx: Exec, requestId: string, actor: User | null) 
   return true;
 }
 
-async function finalizeRequest(tx: Exec, r: Request, live: Offer[], actor: User | null) {
+async function finalizeRequest(tx: Exec, r0: Request, live: Offer[], actor: User | null) {
+  let r = r0;
   const ready = live.filter((o) => o.status === "pending_settlement");
-  for (const o of ready) {
-    await createSettlement(tx, r, o);
-    await setOffer(tx, o.id, { status: "completed" });
-    await notify(o.driverId, "job_completed", { ref: r.ref }, tx);
-  }
+  for (const o of ready) await finishOffer(tx, r, o);
+  if (ready.length) r = (await tx.select().from(requests).where(eq(requests.id, r.id)))[0]; // payments above released their shares: work from the current reserve
+  // Parcels nobody carried are withdrawn (their share of the escrow goes back below) and can be re-shipped in one click.
+  await tx.update(shipments).set({ status: "cancelled", failReason: "unfulfilled", updatedAt: new Date() }).where(and(eq(shipments.requestId, r.id), eq(shipments.status, "pending"), sql`${shipments.offerId} is null`));
   const unitPrice = r.unitPriceCents ?? 0;
-  const held = live.reduce((a, o) => a + unitPrice * o.expectedUnits, 0); // shares still escrowed until payout
+  const unpaid = await unpaidOfferIds(tx, live.map((o) => o.id)); // only shares whose settlement is not paid yet (held by a complaint) stay escrowed
+  const held = live.filter((o) => unpaid.has(o.id)).reduce((a, o) => a + unitPrice * o.expectedUnits, 0);
   await releaseReserve(tx, r, Math.max(0, r.reservedCents - held), `complete-release:${r.id}`, actor?.id);
   await tx.update(offers).set({ status: "expired", updatedAt: new Date() }).where(and(eq(offers.requestId, r.id), eq(offers.status, "offered")));
   await tx.update(requests).set({ status: "completed", completedAt: new Date(), updatedAt: new Date() }).where(eq(requests.id, r.id));
   await logEvent(tx, { requestId: r.id, actor: actor ? actorOf(actor) : null, type: "request_completed", oldStatus: r.status, newStatus: "completed" });
-  await notify(r.businessId, "request_completed", { ref: r.ref }, tx);
+  await notify(r.businessId, "request_completed", { requestId: r.id, ref: r.ref }, tx);
 }
 
 /** Business closes a partially-filled request once all assigned work is confirmed. */
@@ -342,11 +445,15 @@ export async function driverCancel(driver: User, offerId: string, reason: string
     const r = await lockRequest(tx, o.requestId);
     const s = await getSettings(tx);
     const u = await setOffer(tx, offerId, { status: "cancelled", cancelReason: reason, cancelledAt: new Date() });
+    await releaseOfferShipments(tx, o, "driver_cancelled", { loadedToPool: true });
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: "driver_cancelled", oldStatus: o.status, newStatus: "cancelled", payload: { reason } });
-    await notify(r.businessId, "driver_cancelled", { ref: r.ref }, tx);
+    await notify(r.businessId, "driver_cancelled", { requestId: r.id, ref: r.ref }, tx);
+    if (o.officeId) await notify(o.officeId, "office_driver_cancelled", { ref: r.ref, driver: driver.name }, tx);
     let strike: "none" | "warning" | "suspended" = "none";
     if (s.cancelPolicyEnabled) {
-      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(jobEvents).where(and(eq(jobEvents.type, "driver_cancelled"), eq(jobEvents.actorId, driver.id), sql`${jobEvents.createdAt} > now() - make_interval(days => ${s.cancelWindowDays})`));
+      const [prof] = await tx.select({ reset: driverProfiles.strikesResetAt }).from(driverProfiles).where(eq(driverProfiles.userId, driver.id));
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(jobEvents).where(and(eq(jobEvents.type, "driver_cancelled"), eq(jobEvents.actorId, driver.id), sql`${jobEvents.createdAt} > now() - make_interval(days => ${s.cancelWindowDays})`,
+        prof?.reset ? sql`${jobEvents.createdAt} > ${prof.reset}` : undefined));
       if (n >= s.cancelSuspendAt) {
         await tx.update(driverProfiles).set({ suspendedUntil: new Date(Date.now() + s.cancelSuspendDays * 864e5), availability: "unavailable" }).where(eq(driverProfiles.userId, driver.id));
         strike = "suspended"; await notify(driver.id, "cancel_suspended", { days: s.cancelSuspendDays }, tx);
@@ -358,6 +465,12 @@ export async function driverCancel(driver: User, offerId: string, reason: string
   });
 }
 
+/** A driver who already delivered or failed a stop cannot simply be swapped out (their finished stops must stay paid): the route is ended instead. */
+async function guardReplaceManifest(tx: Exec, o: Offer) {
+  const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(shipments).where(and(eq(shipments.offerId, o.id), inArray(shipments.status, ["delivered", "failed", "returned", "missing"])));
+  if (n > 0) throw err("INVALID_TRANSITION", "This driver already worked some stops — end the route instead so completed stops stay paid", { resolvedStops: n });
+}
+
 /** Operations: replace a driver (record reason) and look for a substitute. */
 export async function staffReplace(staff: User, offerId: string, reason: string) {
   if (!can(staff, "replacements.manage")) throw err("FORBIDDEN");
@@ -366,11 +479,39 @@ export async function staffReplace(staff: User, offerId: string, reason: string)
     const o = await lockOffer(tx, offerId);
     expect(o, "accepted", "arrived", "attendance_confirmed");
     const r = await lockRequest(tx, o.requestId);
+    await guardReplaceManifest(tx, o);
     const u = await setOffer(tx, offerId, { status: "replaced", cancelReason: reason, cancelledAt: new Date() });
+    await releaseOfferShipments(tx, o, "driver_replaced", { loadedToPool: true });
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(staff), type: "driver_replaced", oldStatus: o.status, newStatus: "replaced", payload: { reason } });
     await audit(staff, "offer.replace", "offer", offerId, { reason }, tx);
-    await notify(o.driverId, "replaced_by_ops", { ref: r.ref }, tx);
+    await notify(o.driverId, "replaced_by_ops", { offerId: o.id, ref: r.ref }, tx);
     await freeSlotAndReplace(tx, r, o, "ops_replace");
+    return u;
+  });
+}
+
+/** An office replaces one of ITS OWN drivers on a job that has not started; the replacement is offered to the office's drivers first. */
+export async function officeReplace(office: User, offerId: string, reason: string) {
+  if (!reason?.trim()) throw err("VALIDATION", "Reason required", { field: "reason" });
+  return db.transaction(async (tx) => {
+    const o = await lockOffer(tx, offerId);
+    if (o.officeId !== office.id) throw err("NOT_FOUND");
+    const r0 = await lockRequest(tx, o.requestId);
+    if (o.status === "offered") {
+      // The driver has not accepted yet: withdrawing the offer frees nothing (no slot was taken) and needs no substitute.
+      const w = await setOffer(tx, offerId, { status: "expired", cancelReason: reason, cancelledAt: new Date() });
+      await logEvent(tx, { requestId: r0.id, offerId, actor: actorOf(office), type: "offer_withdrawn", oldStatus: "offered", newStatus: "expired", payload: { reason, by: "office" } });
+      return w;
+    }
+    expect(o, "accepted", "arrived");
+    const r = r0;
+    await guardReplaceManifest(tx, o);
+    const u = await setOffer(tx, offerId, { status: "replaced", cancelReason: reason, cancelledAt: new Date() });
+    await releaseOfferShipments(tx, o, "driver_replaced", { loadedToPool: true });
+    await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(office), type: "driver_replaced", oldStatus: o.status, newStatus: "replaced", payload: { reason, by: "office" } });
+    await audit(office, "offer.replace", "offer", offerId, { reason }, tx);
+    await notify(o.driverId, "replaced_by_office", { offerId: o.id, ref: r.ref }, tx);
+    await freeSlotAndReplace(tx, r, o, "office_replace", office.id);
     return u;
   });
 }
@@ -382,6 +523,8 @@ export async function assignDriver(actor: User, requestId: string, driverId: str
     if (!["published", "filling"].includes(r.status)) throw err("INVALID_TRANSITION", `Request is ${r.status}`);
     const snap = r.pricingSnapshot as { providerCostCents: number; expectedUnits: number } | null;
     if (!snap) throw err("INVALID_TRANSITION");
+    // A request reserved for one office cannot be taken over by another office through a direct API call.
+    if (source === "office" && r.preferredOfficeId && r.preferredOfficeId !== actor.id) throw err("FORBIDDEN", "This request is reserved for another office");
     const [c] = await evaluateCandidates(tx, r, { driverIds: [driverId], onlyOfficeId: source === "office" ? actor.id : undefined });
     if (!c) throw err("NOT_ELIGIBLE", "Driver not found or not allowed");
     if (c.reasons.length) throw err("NOT_ELIGIBLE", "Driver is not eligible", { reasons: c.reasons });
@@ -406,8 +549,7 @@ export async function openTicket(tx: Exec, user: User, i: { category: string; su
   }).returning();
   if (i.body?.trim()) await tx.insert(ticketReplies).values({ ticketId: t.id, authorId: user.id, authorRole: user.role, body: i.body });
   if (t.priority === "urgent") {
-    const ops = await tx.select({ id: users.id }).from(users).where(and(inArray(users.role, ["admin"]), eq(users.status, "active")));
-    await notifyMany(ops.map((o) => o.id), "ticket_urgent", { ref: t.ref }, tx);
+    await notifyOps("tickets.manage", "ticket_urgent", { ref: t.ref }, tx);
   }
   return t;
 }

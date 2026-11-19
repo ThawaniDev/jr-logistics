@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { db, type Exec } from "@/db";
 import { jobEvents, requests, businessProfiles, webhookDeliveries, type User } from "@/db/schema";
+import { enqueuePartnerOutbox } from "./partners/enqueue";
 
 /** Events that are pushed to business webhooks. Payloads are minimised (no PII). */
 export const WEBHOOK_EVENTS = new Set([
   "request_published", "driver_accepted", "driver_arrived", "attendance_confirmed", "delivery_reported",
-  "delivery_confirmed", "request_completed", "request_cancelled", "driver_cancelled", "driver_replaced", "payout_paid",
+  "delivery_confirmed", "shipment_delivered", "shipment_failed", "request_completed", "request_cancelled", "driver_cancelled", "driver_replaced", "payout_paid",
 ]);
 
 export interface EventInput {
@@ -25,6 +26,7 @@ export async function logEvent(x: Exec, e: EventInput) {
     oldStatus: e.oldStatus ?? null, newStatus: e.newStatus ?? null, payload: (e.payload ?? null) as never,
   });
   if (WEBHOOK_EVENTS.has(e.type)) await enqueueWebhook(x, e);
+  await enqueuePartnerOutbox(x, e); // warehouse-system write-back (no-op unless the parcel is linked to a connection that wants it)
 }
 
 async function enqueueWebhook(x: Exec, e: EventInput) {
@@ -35,7 +37,8 @@ async function enqueueWebhook(x: Exec, e: EventInput) {
   if (!bp?.url) return;
   await x.insert(webhookDeliveries).values({
     businessId: r.businessId, requestId: e.requestId, event: e.type, url: bp.url,
-    payload: { event: e.type, request: { id: e.requestId, ref: r.ref, status: r.status }, offerId: e.offerId ?? null, status: e.newStatus ?? null } as never,
+    payload: { event: e.type, request: { id: e.requestId, ref: r.ref, status: r.status }, offerId: e.offerId ?? null, status: e.newStatus ?? null,
+      shipment: e.payload?.shipmentId ? { id: e.payload.shipmentId, code: e.payload.code ?? null, externalRef: e.payload.externalRef ?? null, reason: e.payload.reason ?? null } : undefined } as never,
   });
 }
 

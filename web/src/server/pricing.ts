@@ -44,10 +44,14 @@ export interface Quote {
   ruleId: string; ruleVersion: number; agreementRef: string | null; currency: string; unit: string;
   unitPriceCents: number; providerCostCents: number; quantity: number; expectedUnits: number;
   totalCents: number; providerTotalCents: number; marginCents: number; effectiveAt: string; expiresAt: string | null;
+  /** Units actually billed across all slots (manifest jobs: the exact parcel count; otherwise quantity × expectedUnits). */
+  totalUnits: number;
 }
 
 export interface QuoteInput {
   service: ServiceKey; quantity: number; shipmentsPerDriver?: number | null; durationDays: number;
+  /** Manifest jobs: the exact number of parcels. Slots are balanced, so the last driver may carry fewer than `shipmentsPerDriver`. */
+  totalShipments?: number | null;
 }
 
 /** Units per slot: shipments for delivery, days for vehicle services. */
@@ -63,20 +67,21 @@ export function expectedUnitsFor(i: QuoteInput): number {
 export function buildQuote(rule: Rule, i: QuoteInput): Quote {
   if (!Number.isInteger(i.quantity) || i.quantity < 1) throw err("VALIDATION", "quantity must be a positive integer", { field: "quantity" });
   const units = expectedUnitsFor(i);
-  const total = rule.priceCents * i.quantity * units;
-  const providerTotal = rule.providerCostCents * i.quantity * units;
+  const billable = i.totalShipments && i.totalShipments > 0 ? i.totalShipments : i.quantity * units;
+  const total = rule.priceCents * billable;
+  const providerTotal = rule.providerCostCents * billable;
   return {
     ruleId: rule.id, ruleVersion: rule.version, agreementRef: rule.agreementRef, currency: rule.currency, unit: rule.unit,
     unitPriceCents: rule.priceCents, providerCostCents: rule.providerCostCents, quantity: i.quantity, expectedUnits: units,
     totalCents: total, providerTotalCents: providerTotal, marginCents: total - providerTotal,
-    effectiveAt: rule.effectiveAt.toISOString(), expiresAt: rule.expiresAt?.toISOString() ?? null,
+    effectiveAt: rule.effectiveAt.toISOString(), expiresAt: rule.expiresAt?.toISOString() ?? null, totalUnits: billable,
   };
 }
 
 /** Customer-safe view of a quote: never exposes provider cost or margin. */
 export const publicQuote = (q: Quote) => ({
   ruleVersion: q.ruleVersion, currency: q.currency, unit: q.unit, unitPriceCents: q.unitPriceCents,
-  quantity: q.quantity, expectedUnits: q.expectedUnits, totalCents: q.totalCents,
+  quantity: q.quantity, expectedUnits: q.expectedUnits, totalUnits: q.totalUnits, totalCents: q.totalCents,
 });
 
 // ── Admin management ──

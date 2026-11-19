@@ -6,8 +6,9 @@ import {
 } from "@/db/schema";
 import { OFFER_BUSY, TEMPERATURE_VEHICLES, SERVICE_MAP, type ServiceKey } from "./catalog";
 import { getSettings, type Settings } from "./settings";
-import { notifyMany } from "./notify";
+import { notify } from "./notify";
 import { logEvent } from "./events";
+import { isManifestJob, poolSize } from "./shipments";
 
 export type Reason =
   | "not_verified" | "unavailable" | "suspended" | "service_mismatch" | "vehicle_mismatch" | "temp_mismatch"
@@ -40,6 +41,18 @@ async function busyWindows(x: Exec, driverIds: string[]) {
     .where(and(inArray(offers.driverId, driverIds), inArray(offers.status, OFFER_BUSY)));
 }
 
+/** A job the driver has accepted and is working on (decision E11: while one exists he sees / receives no other offers). */
+export const ACTIVE_JOB_STATES = ["accepted", "arrived", "attendance_confirmed"] as const;
+export interface ActiveJob { offerId: string; requestId: string; ref: string; status: string }
+export async function activeJobs(x: Exec, driverIds: string[]): Promise<Map<string, ActiveJob>> {
+  const out = new Map<string, ActiveJob>();
+  if (!driverIds.length) return out;
+  const rows = await x.select({ d: offers.driverId, offerId: offers.id, requestId: requests.id, ref: requests.ref, status: offers.status }).from(offers)
+    .innerJoin(requests, eq(requests.id, offers.requestId)).where(and(inArray(offers.driverId, driverIds), inArray(offers.status, [...ACTIVE_JOB_STATES]))).orderBy(offers.acceptedAt);
+  for (const r of rows) if (!out.has(r.d)) out.set(r.d, { offerId: r.offerId, requestId: r.requestId, ref: r.ref, status: r.status });
+  return out;
+}
+
 export async function driverHasConflict(x: Exec, driverId: string, req: Pick<Request, "startsAt" | "durationDays">, policy: Settings["overlapPolicy"]) {
   const busy = await busyWindows(x, [driverId]);
   if (policy === "single_active") return busy.length > 0;
@@ -62,6 +75,7 @@ export async function evaluateCandidates(x: Exec, req: Request, opts: { driverId
   const existing = ids.length ? await x.select({ d: offers.driverId }).from(offers).where(and(eq(offers.requestId, req.id), isNotNull(offers.driverId), sql`${offers.status} <> 'expired'`)) : [];
   const offices = await readyOfficeIds(x, [...new Set(rows.map((r) => r.p.officeId).filter(Boolean) as string[])]);
   const offered = new Set(existing.map((e) => e.d));
+  const active = settings.driverSingleActiveJob ? await activeJobs(x, ids) : new Map<string, ActiveJob>();
   const w = windowOf(req);
   const recentCancels = await recentCancelCounts(x, ids, settings.cancelWindowDays);
   const needsTemp = req.vehicleType ? TEMPERATURE_VEHICLES.includes(req.vehicleType) : false;
@@ -77,6 +91,7 @@ export async function evaluateCandidates(x: Exec, req: Request, opts: { driverId
     if (p.officeId && !offices.has(p.officeId)) reasons.push("office_ineligible");
     if (req.preferredOfficeId && p.officeId !== req.preferredOfficeId && opts.onlyOfficeId === undefined) { /* office window handled by caller */ }
     if (offered.has(u.id)) reasons.push("already_offered");
+    if (active.has(u.id)) reasons.push("busy"); // E11: one active job at a time — no new offers while he is working
     const mine = busy.filter((b) => b.driverId === u.id);
     if (settings.overlapPolicy === "single_active" ? mine.length > 0 : mine.some((b) => { const bw = windowOf(b); return bw.start < w.end && w.start < bw.end; })) reasons.push("time_overlap");
     const factors: Record<string, number> = {};
@@ -96,8 +111,10 @@ export async function recentCancelCounts(x: Exec, driverIds: string[], days: num
   const map = new Map<string, number>();
   if (!driverIds.length) return map;
   const rows = await x.select({ d: jobEvents.actorId, c: sql<number>`count(*)::int` }).from(jobEvents)
+    .innerJoin(driverProfiles, eq(driverProfiles.userId, jobEvents.actorId))
     .where(and(eq(jobEvents.type, "driver_cancelled"), inArray(jobEvents.actorId, driverIds),
-      sql`${jobEvents.createdAt} > now() - make_interval(days => ${days})`)).groupBy(jobEvents.actorId);
+      sql`${jobEvents.createdAt} > now() - make_interval(days => ${days})`,
+      sql`(${driverProfiles.strikesResetAt} is null or ${jobEvents.createdAt} > ${driverProfiles.strikesResetAt})`)).groupBy(jobEvents.actorId);
   for (const r of rows) if (r.d) map.set(r.d, r.c);
   return map;
 }
@@ -114,6 +131,8 @@ export async function dispatchOffers(x: Exec, req: Request, opts: { replacement?
   if (!snap) return 0;
   const open = Math.max(0, req.quantity - req.slotsFilled);
   if (open === 0) return 0;
+  // Nothing left to carry (all parcels already covered): no point recruiting more drivers.
+  if ((await isManifestJob(x, req.id)) && (await poolSize(x, req.id)) === 0) return 0;
   const cands = (await evaluateCandidates(x, req, { onlyOfficeId: opts.onlyOfficeId })).filter((c) => !c.reasons.length);
   const take = cands.slice(0, opts.max ?? Math.min(open * 5, 30));
   if (!take.length) return 0;
@@ -122,9 +141,22 @@ export async function dispatchOffers(x: Exec, req: Request, opts: { replacement?
     isReplacement: !!opts.replacement, replacesOfferId: opts.replacesOfferId ?? null,
     expectedUnits: snap.expectedUnits, expectedEarningCents: earningFor(snap.providerCostCents, snap.expectedUnits),
   }))).onConflictDoNothing().returning({ id: offers.id, driverId: offers.driverId });
-  await notifyMany(created.map((c) => c.driverId), opts.replacement ? "offer_replacement" : "offer_new", { requestId: req.id, ref: req.ref }, x);
+  await notifyOffers(x, req, snap, created.map((c) => ({ offerId: c.id, driverId: c.driverId, officeId: take.find((t) => t.driverId === c.driverId)?.officeId ?? null })), opts.replacement ? "offer_replacement" : "offer_new");
   await logEvent(x, { requestId: req.id, type: "offers_dispatched", payload: { count: created.length, replacement: !!opts.replacement } });
   return created.length;
+}
+
+/**
+ * E12 — one in-app notification per new offer, carrying what the driver needs to decide at a glance (parcels, cities, earning — hidden for
+ * office drivers, whose office is paid). The apps turn it into a device notification + sound.
+ */
+async function notifyOffers(x: Exec, req: Request, snap: { providerCostCents: number; expectedUnits: number }, created: Array<{ offerId: string; driverId: string; officeId: string | null }>, type: "offer_new" | "offer_replacement") {
+  for (const c of created) {
+    await notify(c.driverId, type, {
+      requestId: req.id, ref: req.ref, offerId: c.offerId, parcels: snap.expectedUnits, pickupCity: req.pickupCity, deliveryCity: req.deliveryCity,
+      earningCents: c.officeId ? null : earningFor(snap.providerCostCents, snap.expectedUnits),
+    }, x);
+  }
 }
 
 export { db };
@@ -143,13 +175,14 @@ export async function backfillOffersForDriver(driverId: string, max = 10, x: Exe
     if (created >= max) break;
     const snap = r.pricingSnapshot as { providerCostCents: number; expectedUnits: number } | null;
     if (!snap) continue;
+    if ((await isManifestJob(x, r.id)) && (await poolSize(x, r.id)) === 0) continue;
     const [c] = await evaluateCandidates(x, r, { driverIds: [driverId] });
     if (!c || c.reasons.length) continue;
     const ins = await x.insert(offers).values({
       requestId: r.id, driverId, officeId: c.officeId, status: "offered", source: "system", expectedUnits: snap.expectedUnits,
       expectedEarningCents: earningFor(snap.providerCostCents, snap.expectedUnits),
     }).onConflictDoNothing().returning({ id: offers.id });
-    if (ins.length) { created++; await notifyMany([driverId], "offer_new", { requestId: r.id, ref: r.ref }, x); }
+    if (ins.length) { created++; await notifyOffers(x, r, snap, [{ offerId: ins[0].id, driverId, officeId: c.officeId }], "offer_new"); }
   }
   return created;
 }

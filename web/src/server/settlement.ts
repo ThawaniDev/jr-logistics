@@ -1,17 +1,17 @@
-import { and, desc, eq, inArray, sql, count, sum } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lt, or, sql, count, sum } from "drizzle-orm";
+import { contains } from "@/lib/sql";
 import { db, type Exec } from "@/db";
 import {
-  settlements, offers, requests, driverProfiles, payoutBatches, withdrawals, invoices, complaints, users, walletAccounts,
+  settlements, requests, driverProfiles, withdrawals, invoices, complaints, users, walletAccounts, businessProfiles, officeProfiles,
   type Request, type Offer, type User,
 } from "@/db/schema";
 import { err } from "@/lib/errors";
-import { pct } from "@/lib/money";
 import { getSettings } from "./settings";
 import { ensureAccount, platformAccount, post } from "./wallet";
 import { audit } from "./audit";
 import { notify } from "./notify";
 import { logEvent } from "./events";
-import { nextRef, nextSeq } from "./counters";
+import { nextSeq } from "./counters";
 import { requirePerm } from "./auth/permissions";
 
 type Snap = { unitPriceCents: number; providerCostCents: number; expectedUnits: number; ruleVersion: number };
@@ -25,15 +25,15 @@ export async function createSettlement(tx: Exec, r: Request, o: Offer) {
   if (o.finalUnits == null) throw err("INVALID_TRANSITION", "Final quantity not confirmed");
   const s = await getSettings(tx);
   const snap = r.pricingSnapshot as unknown as Snap;
-  const [drv] = await tx.select().from(driverProfiles).where(eq(driverProfiles.userId, o.driverId));
   const reserved = snap.unitPriceCents * o.expectedUnits;
   const customer = snap.unitPriceCents * o.finalUnits;
   const provider = snap.providerCostCents * o.finalUnits;
   const margin = customer - provider;
   const [row] = await tx.insert(settlements).values({
-    requestId: r.id, offerId: o.id, driverId: o.driverId, officeId: o.officeId ?? drv?.officeId ?? null, businessId: r.businessId,
+    requestId: r.id, offerId: o.id, driverId: o.driverId, officeId: o.officeId, businessId: r.businessId, // office = snapshot from when the offer was made, never re-derived from the driver's current link
     finalUnits: o.finalUnits, reservedCents: reserved, customerCents: customer, providerCents: provider, marginCents: margin,
-    vatCents: pct(margin, s.vatPct), refundCents: reserved - customer, pricingSnapshot: snap as never,
+    vatCents: Math.round((customer * s.vatPct) / (100 + s.vatPct)), refundCents: reserved - customer, pricingSnapshot: snap as never,
+    status: "approved", approvedAt: new Date(), // no review / approval step (E18): ready to pay the moment it exists
   }).onConflictDoNothing({ target: settlements.offerId }).returning();
   return row ?? null;
 }
@@ -52,51 +52,14 @@ async function blockingComplaint(tx: Exec, requestId: string, offerId: string) {
   return !!c;
 }
 
-export async function reviewSettlement(actor: User, id: string) {
-  requirePerm(actor, "settlements.review");
-  return db.transaction(async (tx) => {
-    const s = await lock(tx, id);
-    if (s.status !== "pending_review") throw err("INVALID_TRANSITION", `Cannot review a ${s.status} settlement`);
-    const [u] = await tx.update(settlements).set({ status: "reviewed", reviewedBy: actor.id, updatedAt: new Date() }).where(eq(settlements.id, id)).returning();
-    await audit(actor, "settlement.review", "settlement", id, null, tx);
-    return u;
-  });
-}
-
-export async function approveSettlement(actor: User, id: string) {
-  requirePerm(actor, "settlements.approve");
-  return db.transaction(async (tx) => {
-    const s = await lock(tx, id);
-    if (!["pending_review", "reviewed"].includes(s.status)) throw err("INVALID_TRANSITION", `Cannot approve a ${s.status} settlement`);
-    const cfg = await getSettings(tx);
-    if (cfg.separationOfDuties && s.reviewedBy === actor.id) throw err("FORBIDDEN", "Approver must differ from reviewer");
-    if (await blockingComplaint(tx, s.requestId, s.offerId)) throw err("DISPUTE_BLOCKS", "An open complaint holds this settlement");
-    const [u] = await tx.update(settlements).set({ status: "approved", approvedBy: actor.id, approvedAt: new Date(), updatedAt: new Date() }).where(eq(settlements.id, id)).returning();
-    await audit(actor, "settlement.approve", "settlement", id, { amount: s.providerCents }, tx);
-    return u;
-  });
-}
-
-export async function rejectSettlement(actor: User, id: string, reason: string) {
-  requirePerm(actor, "settlements.review");
-  if (!reason?.trim()) throw err("VALIDATION", "Reason required", { field: "reason" });
-  return db.transaction(async (tx) => {
-    const s = await lock(tx, id);
-    if (["paid", "rejected"].includes(s.status)) throw err("INVALID_TRANSITION", `Cannot reject a ${s.status} settlement`);
-    // Return the slot's escrow to the business (fixes the old "stuck escrow" defect).
-    const acct = await ensureAccount(s.businessId, tx);
-    await post(tx, { accountId: acct.id, kind: "release_reserve", reserved: -s.reservedCents, available: s.reservedCents, idempotencyKey: `settle-reject:${s.id}`, requestId: s.requestId, settlementId: s.id, actorId: actor.id });
-    await tx.update(requests).set({ reservedCents: sql`${requests.reservedCents} - ${s.reservedCents}` }).where(eq(requests.id, s.requestId));
-    const [u] = await tx.update(settlements).set({ status: "rejected", note: reason, updatedAt: new Date() }).where(eq(settlements.id, id)).returning();
-    await audit(actor, "settlement.reject", "settlement", id, { reason }, tx);
-    return u;
-  });
-}
-
 /** Moves money for one approved settlement. Balanced: provider + margin = customer charge. */
 export async function payoutTx(tx: Exec, id: string, actor: User | null) {
+  return (await payoutCore(tx, id, actor)).row;
+}
+/** `applied:false` = it was already paid (a concurrent batch got there first); nothing moved. */
+async function payoutCore(tx: Exec, id: string, actor: User | null): Promise<{ row: typeof settlements.$inferSelect; applied: boolean }> {
   const s = await lock(tx, id);
-  if (s.status === "paid") return s; // idempotent
+  if (s.status === "paid") return { row: s, applied: false }; // idempotent
   if (!["approved", "failed"].includes(s.status)) throw err("INVALID_TRANSITION", `Settlement is ${s.status}`);
   if (await blockingComplaint(tx, s.requestId, s.offerId)) throw err("DISPUTE_BLOCKS", "An open complaint holds this settlement");
   const biz = await ensureAccount(s.businessId, tx);
@@ -118,60 +81,79 @@ export async function payoutTx(tx: Exec, id: string, actor: User | null) {
   await notify(s.officeId ?? s.driverId, "payout_paid", { amountCents: s.providerCents }, tx);
   await logEvent(tx, { requestId: s.requestId, offerId: s.offerId, actor: actor ? { id: actor.id, name: actor.name, role: actor.role } : null, type: "payout_paid", payload: { settlementId: s.id } });
   await audit(actor, "settlement.pay", "settlement", id, { provider: s.providerCents, margin: s.marginCents }, tx);
-  return u;
+  return { row: u, applied: true };
 }
 
-export async function payoutSettlement(actor: User, id: string) {
-  requirePerm(actor, "payouts.execute");
-  return db.transaction((tx) => payoutTx(tx, id, actor));
+/**
+ * E18 — the one money step: when a driver's work ends, the settlement is created and PAID in the same transaction
+ * (business reserve released, customer charged, payee — the office or the driver — credited, platform margin booked, invoice issued).
+ * An open complaint that holds the job defers the payment; `paySettlementsDue` pays it once the hold is lifted.
+ */
+export async function settleOffer(tx: Exec, r: Request, o: Offer) {
+  const created = await createSettlement(tx, r, o);
+  const row = created ?? (await tx.select().from(settlements).where(eq(settlements.offerId, o.id)))[0];
+  if (!row) return null;
+  if (row.status === "paid") return row;
+  if (await blockingComplaint(tx, row.requestId, row.offerId)) return row; // stays `approved` (= on hold)
+  return payoutTx(tx, row.id, null);
 }
 
-/** Batch: each item in its own transaction, so one failure never blocks or half-applies others. */
-export async function runPayoutBatch(actor: User, limit = 200) {
-  requirePerm(actor, "payouts.execute");
-  const due = await db.select({ id: settlements.id, providerCents: settlements.providerCents }).from(settlements)
-    .where(eq(settlements.status, "approved")).orderBy(settlements.approvedAt).limit(limit);
-  const results: Array<{ settlementId: string; ok: boolean; error?: string }> = [];
-  let total = 0;
+/** Offers whose settlement has not been paid yet (held, failed, legacy): their escrow share must stay reserved. */
+export async function unpaidOfferIds(tx: Exec, offerIds: string[]) {
+  if (!offerIds.length) return new Set<string>();
+  const paid = await tx.select({ id: settlements.offerId }).from(settlements).where(and(inArray(settlements.offerId, offerIds), eq(settlements.status, "paid")));
+  const ok = new Set(paid.map((p) => p.id));
+  return new Set(offerIds.filter((id) => !ok.has(id)));
+}
+
+/**
+ * Housekeeping: pays every settlement that is not paid yet and is no longer held (hold released, a transient failure, or a settlement created
+ * by the old review/approve flow). Each in its own transaction, so one problem never blocks the rest. Returns how many were paid.
+ */
+export async function paySettlementsDue(limit = 100) {
+  const due = await db.select({ id: settlements.id }).from(settlements).where(inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"])).orderBy(settlements.createdAt).limit(limit);
+  let paid = 0;
   for (const d of due) {
     try {
-      await db.transaction((tx) => payoutTx(tx, d.id, actor));
-      results.push({ settlementId: d.id, ok: true });
-      total += d.providerCents;
+      const applied = await db.transaction(async (tx) => {
+        const s = await lock(tx, d.id);
+        if (s.status === "paid" || (await blockingComplaint(tx, s.requestId, s.offerId))) return false;
+        if (s.status !== "approved") await tx.update(settlements).set({ status: "approved", approvedAt: new Date(), updatedAt: new Date() }).where(eq(settlements.id, s.id));
+        return (await payoutCore(tx, d.id, null)).applied;
+      });
+      if (applied) paid++;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "error";
-      await db.update(settlements).set({ status: "failed", note: msg.slice(0, 200), updatedAt: new Date() }).where(and(eq(settlements.id, d.id), eq(settlements.status, "approved")));
-      results.push({ settlementId: d.id, ok: false, error: msg });
+      await db.update(settlements).set({ status: "failed", note: msg.slice(0, 200), updatedAt: new Date() }).where(and(eq(settlements.id, d.id), inArray(settlements.status, ["approved", "pending_review", "reviewed"])));
     }
   }
-  const [batch] = await db.insert(payoutBatches).values({
-    ref: await nextRef(db, "BATCH"), itemCount: due.length, paidCount: results.filter((r) => r.ok).length,
-    failedCount: results.filter((r) => !r.ok).length, totalCents: total, results: results as never, createdBy: actor.id,
-    periodKey: (await getSettings()).settlementPeriod,
-  }).returning();
-  await audit(actor, "payout.batch", "payout_batch", batch.id, { items: due.length, total });
-  return batch;
+  return paid;
 }
 
-/** Retry a failed item: failed → approved (visible, retry-safe). */
-export async function retryFailed(actor: User, id: string) {
-  requirePerm(actor, "payouts.execute");
-  const [u] = await db.update(settlements).set({ status: "approved", updatedAt: new Date() }).where(and(eq(settlements.id, id), eq(settlements.status, "failed"))).returning();
-  if (!u) throw err("INVALID_TRANSITION", "Only failed settlements can be retried");
-  return u;
-}
-
-export async function listSettlements(f: { status?: string; page?: number; pageSize?: number; payeeId?: string; businessId?: string }) {
+export async function listSettlements(f: { status?: string; q?: string; page?: number; pageSize?: number; payeeId?: string; businessId?: string; from?: Date; to?: Date }) {
   const pageSize = Math.min(f.pageSize ?? 25, 100), page = Math.max(f.page ?? 1, 1);
   const where = and(
     f.status ? eq(settlements.status, f.status) : undefined,
     f.payeeId ? sql`coalesce(${settlements.officeId}, ${settlements.driverId}) = ${f.payeeId}` : undefined,
     f.businessId ? eq(settlements.businessId, f.businessId) : undefined,
+    f.from ? gte(settlements.createdAt, f.from) : undefined, f.to ? lt(settlements.createdAt, f.to) : undefined,
+    // free text: the order reference, the driver's name, or a parcel code / warehouse reference of that job
+    f.q?.trim() ? or(ilike(requests.ref, contains(f.q.trim())), ilike(users.name, contains(f.q.trim())),
+      sql`exists (select 1 from shipments sh where sh.request_id = ${settlements.requestId} and sh.offer_id = ${settlements.offerId} and (upper(sh.code) = upper(${f.q.trim()}) or lower(sh.external_ref) = lower(${f.q.trim()})))`) : undefined,
   );
-  const [items, [{ total }]] = await Promise.all([
-    db.select().from(settlements).where(where).orderBy(desc(settlements.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
-    db.select({ total: count() }).from(settlements).where(where),
+  const [rows, [{ total }]] = await Promise.all([
+    db.select({ s: settlements, ref: requests.ref, driver: users.name }).from(settlements).innerJoin(requests, eq(requests.id, settlements.requestId)).innerJoin(users, eq(users.id, settlements.driverId))
+      .where(where).orderBy(desc(settlements.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+    db.select({ total: count() }).from(settlements).innerJoin(requests, eq(requests.id, settlements.requestId)).innerJoin(users, eq(users.id, settlements.driverId)).where(where),
   ]);
+  // Names for the payee office and the paying business in one extra query (no per-row lookups).
+  const ids = [...new Set(rows.flatMap(({ s: x }) => [x.officeId, x.businessId].filter(Boolean) as string[]))];
+  const names = ids.length ? await db.select({ id: users.id, name: users.name, company: businessProfiles.companyName, office: officeProfiles.officeName }).from(users)
+    .leftJoin(businessProfiles, eq(businessProfiles.userId, users.id)).leftJoin(officeProfiles, eq(officeProfiles.userId, users.id)).where(inArray(users.id, ids)) : [];
+  const nm = new Map(names.map((n) => [n.id, n.company ?? n.office ?? n.name]));
+  const held = rows.length ? await db.select({ offerId: complaints.offerId, requestId: complaints.requestId }).from(complaints).where(and(eq(complaints.holdsSettlement, true), inArray(complaints.status, ["open", "in_progress"]))) : [];
+  const heldOffers = new Set(held.map((h) => h.offerId).filter(Boolean)), heldRequests = new Set(held.filter((h) => !h.offerId).map((h) => h.requestId));
+  const items = rows.map(({ s: x, ref, driver }) => ({ ...x, held: heldOffers.has(x.offerId) || heldRequests.has(x.requestId), ref, driverName: driver, officeName: x.officeId ? nm.get(x.officeId) ?? null : null, businessName: nm.get(x.businessId) ?? null }));
   return { items, page, pageSize, total: Number(total) };
 }
 
@@ -184,7 +166,8 @@ export async function requestWithdrawal(user: User, amountCents: number) {
     let iban: string | null = null, bank: string | null = null;
     if (user.role === "driver") {
       const [p] = await tx.select().from(driverProfiles).where(eq(driverProfiles.userId, user.id));
-      if (p?.officeLinkStatus === "linked") throw err("FORBIDDEN", "Office-linked drivers are paid by their office");
+      // Linked drivers are paid by their office, but money they earned BEFORE linking is theirs: let them withdraw that balance.
+      if (p?.officeLinkStatus === "linked" && (await ensureAccount(user.id, tx)).availableCents < amountCents) throw err("FORBIDDEN", "Office-linked drivers are paid by their office");
       iban = p?.iban ?? null; bank = p?.bankName ?? null;
     } else {
       const { officeProfiles } = await import("@/db/schema");

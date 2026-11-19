@@ -1,3 +1,3 @@
-"use client";
-import { WalletPage } from "@/components/features/wallet";
-export default function Page() { return <WalletPage />; }
+import { OfficePayouts } from "@/components/features/office-payouts";
+
+export default function Page() { return <OfficePayouts />; }

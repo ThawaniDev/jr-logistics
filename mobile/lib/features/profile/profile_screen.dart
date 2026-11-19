@@ -5,10 +5,14 @@ import '../../core/config.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../providers.dart';
+import '../../providers_extra.dart';
 import '../../widgets/common.dart';
 import 'language_sheet.dart';
 
 final invitesProvider = FutureProvider.autoDispose((ref) async => ((await ref.watch(apiProvider).invites())['items'] as List).cast<Map>());
+
+/// First letter of the name for the avatar; an empty/blank name must not crash the screen.
+String _initial(String name) { final n = name.trim(); return n.isEmpty ? '?' : n.characters.first; }
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -18,11 +22,12 @@ class ProfileScreen extends ConsumerWidget {
     final user = ref.watch(authProvider).value?.user;
     final ov = ref.watch(overviewProvider).value;
     final invites = ref.watch(invitesProvider).value ?? const [];
+    final supportUnread = ref.watch(unreadTicketRefsProvider).isNotEmpty; // a reply / resolution on one of the driver's tickets
     return Scaffold(
       appBar: AppBar(title: Text(t('nav.profile'))),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         SectionCard(child: Row(children: [
-          CircleAvatar(radius: 28, backgroundColor: JR.accent, child: Text('${user?['name'] ?? '?'}'.characters.first, style: const TextStyle(color: JR.accentInk, fontSize: 22, fontWeight: FontWeight.w800))),
+          CircleAvatar(radius: 28, backgroundColor: JR.accent, child: Text(_initial('${user?['name'] ?? ''}'), style: const TextStyle(color: JR.accentInk, fontSize: 22, fontWeight: FontWeight.w800))),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${user?['name'] ?? ''}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
@@ -51,8 +56,12 @@ class ProfileScreen extends ConsumerWidget {
           ])),
         ],
         const SizedBox(height: 16),
+        _tile(Icons.edit_outlined, t('m.edit_profile'), () => context.push('/profile/edit')),
         _tile(Icons.description_outlined, t('nav.documents'), () => context.push('/documents')),
         _tile(Icons.notifications_outlined, t('nav.notifications'), () => context.push('/notifications')),
+        _tile(Icons.support_agent, t('nav.support'), () => context.push('/support'), trailing: supportUnread
+            ? Row(mainAxisSize: MainAxisSize.min, children: [Container(key: const Key('support-unread-dot'), width: 10, height: 10, decoration: const BoxDecoration(color: JR.accent, shape: BoxShape.circle)), const SizedBox(width: 6), const Icon(Icons.chevron_right, color: JR.muted)])
+            : null),
         _tile(Icons.language, t('m.language'), () => showLanguageSheet(context, ref), trailing: Text(langNames[ref.watch(localeProvider)]!, style: const TextStyle(color: JR.muted))),
         _tile(Icons.logout, t('auth.logout'), () async {
           final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(content: Text(d.tr('m.logout_confirm')), actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: Text(d.tr('common.cancel'))), FilledButton(style: FilledButton.styleFrom(minimumSize: const Size(100, 44)), onPressed: () => Navigator.pop(d, true), child: Text(d.tr('auth.logout')))]));

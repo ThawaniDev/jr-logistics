@@ -5,10 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../core/format.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/models_extra.dart';
 import '../../providers.dart';
+import '../../providers_extra.dart';
 import '../../services.dart';
 import '../../widgets/common.dart';
 import '../../widgets/job_card.dart';
+import 'notify_prompt.dart';
 import 'shell.dart';
 
 class TodayScreen extends ConsumerStatefulWidget {
@@ -17,25 +20,38 @@ class TodayScreen extends ConsumerStatefulWidget {
   ConsumerState<TodayScreen> createState() => _TodayScreenState();
 }
 
+/// Whether the OS location permission is currently granted (re-read when the app comes back from Settings).
+final locationPermissionProvider = FutureProvider.autoDispose<bool>((ref) => ref.watch(locationServiceProvider).hasPermission());
+
 class _TodayScreenState extends ConsumerState<TodayScreen> {
   Timer? _poll, _loc;
   bool _toggling = false;
+  late final AppLifecycleListener _life;
+
+  void _refreshSoon() { ref.invalidate(overviewProvider); ref.invalidate(offersProvider); ref.invalidate(activeJobsProvider); ref.invalidate(locationPermissionProvider); }
 
   @override
   void initState() {
     super.initState();
-    _poll = Timer.periodic(const Duration(seconds: 30), (_) { if (mounted) { ref.invalidate(overviewProvider); ref.invalidate(offersProvider); ref.invalidate(activeJobsProvider); } });
+    _poll = Timer.periodic(const Duration(seconds: 30), (_) { if (mounted) _refreshSoon(); });
+    // Back from the lock screen, a call or Settings: show the real state immediately instead of up to 30 s later.
+    _life = AppLifecycleListener(onResume: () { if (mounted) _refreshSoon(); });
   }
 
   @override
-  void dispose() { _poll?.cancel(); _loc?.cancel(); super.dispose(); }
+  void dispose() { _poll?.cancel(); _loc?.cancel(); _life.dispose(); super.dispose(); }
 
-  /// Live location only while online; stops the moment the driver goes offline.
-  void _syncLocationTimer(bool online) {
-    if (online && _loc == null) {
+  /// Live location is reported while the driver is online OR has an active job (the server accepts both: customers
+  /// follow a job in progress even if the driver went offline). It stops once neither applies, and is then cleared.
+  void _syncLocationTimer({required bool online, required bool onJob}) {
+    final shouldReport = online || onJob;
+    if (shouldReport && _loc == null) {
       _loc = Timer.periodic(const Duration(seconds: 90), (_) => _report());
       _report();
-    } else if (!online && _loc != null) { _loc!.cancel(); _loc = null; }
+    } else if (!shouldReport && _loc != null) {
+      _loc!.cancel(); _loc = null;
+      ref.read(apiProvider).clearLocation().catchError((_) {}); // driver is offline and the job ended: stop sharing the last point
+    }
   }
 
   Future<void> _report() async {
@@ -44,6 +60,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   }
 
   Future<void> _toggle(bool goOnline) async {
+    if (_toggling) return;
     if (goOnline) {
       final prefs = ref.read(prefsProvider);
       final loc = ref.read(locationServiceProvider);
@@ -54,13 +71,16 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: Text(d.tr('m.not_now'))), FilledButton(style: FilledButton.styleFrom(minimumSize: const Size(100, 44)), onPressed: () => Navigator.pop(d, true), child: Text(d.tr('m.allow')))],
         ));
         await prefs.setBool('loc_asked', true);
-        if (ok == true) { final granted = await loc.requestPermission(); if (!granted && mounted) toast(context, context.tr('m.location_denied')); }
+        if (ok == true) { final granted = await loc.requestPermission(); if (!granted && mounted) toast(context, context.tr('m.location_denied')); ref.invalidate(locationPermissionProvider); }
       }
     }
+    if (!mounted) return;
     setState(() => _toggling = true);
     final api = ref.read(apiProvider);
-    if (!mounted) return;
-    final r = await guarded(context, () async { await api.setAvailability(goOnline); if (!goOnline) await api.clearLocation().catchError((_) {}); return true; }, success: goOnline ? 'driver.now_online' : 'driver.now_offline');
+    // Going offline wipes the shared location — unless a job is in progress, which keeps reporting (see _syncLocationTimer).
+    final onJob = (ref.read(overviewProvider).value?.activeJobs ?? 0) > 0;
+    final r = await guarded(context, () async { await api.setAvailability(goOnline); if (!goOnline && !onJob) await api.clearLocation().catchError((_) {}); return true; }, success: goOnline ? 'driver.now_online' : 'driver.now_offline');
+    if (r == true && !goOnline && onJob) _report(); // the server cleared the point when we went offline; publish a fresh one right away
     if (r == true) refreshAll(ref); // going online backfills matching offers server-side; going offline changes what we may see
     if (mounted) setState(() => _toggling = false);
   }
@@ -73,30 +93,59 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final ov = ref.watch(overviewProvider);
     final jobs = ref.watch(activeJobsProvider);
     final offers = ref.watch(offersProvider);
-    ov.whenData((o) => WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _syncLocationTimer(o.available); }));
+    ov.whenData((o) => WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _syncLocationTimer(online: o.available, onJob: o.activeJobs > 0); }));
     return Scaffold(
       appBar: AppBar(title: Text(t('driver.hello', {'name': '${user?['name'] ?? ''}'.split(' ').first})), actions: [IconButton(tooltip: t('nav.notifications'), icon: const Icon(Icons.notifications_outlined), onPressed: () => context.push('/notifications'))]),
       body: RefreshIndicator(
         color: JR.accent, onRefresh: () async { refreshAll(ref); await ref.read(overviewProvider.future); },
-        child: AsyncBody(value: ov, onRetry: () => ref.invalidate(overviewProvider), builder: (o) => ListView(padding: const EdgeInsets.all(16), children: [
+        child: AsyncBody(value: ov, onRetry: () => ref.invalidate(overviewProvider), builder: (o) => ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [
           if (!o.verified) ...[Banner2(tone: Tone.warn, title: t('verify.driver_${o.verification}_title'), text: t('verify.driver_body'), action: OutlinedButton(onPressed: () => context.push('/documents'), child: Text(t('verify.go_documents')))), const SizedBox(height: 12)],
           if (o.suspended) ...[Banner2(tone: Tone.danger, title: t('driver.suspended'), text: t('driver.suspended_until', {'d': fmtDateTime(o.suspendedUntil, lang)})), const SizedBox(height: 12)],
           _AvailabilityCard(online: o.available, busy: _toggling, blocked: !o.verified || o.suspended, onToggle: _toggle),
+          // Online without location permission: operations cannot see the driver and check-ins carry no GPS. Say so, with the way out.
+          if (o.available && ref.watch(locationPermissionProvider).value == false) ...[
+            const SizedBox(height: 12),
+            Banner2(key: const Key('location-off'), tone: Tone.warn, icon: Icons.location_off_outlined, text: t('um.loc_off'), action: OutlinedButton.icon(onPressed: () => ref.read(linkOpenerProvider).openAppSettings(), icon: const Icon(Icons.settings_outlined), label: Text(t('um.open_settings')))),
+          ],
           const SizedBox(height: 12),
+          // E11: while a job is active the server hides new offers; this shortcut takes the driver straight back to it.
+          if (activeJobOf(o) case final a?) ...[
+            SectionCard(key: const Key('active-job-card'), border: JR.accent, onTap: () => context.openJob(a.offerId), child: Row(children: [
+              const Icon(Icons.local_shipping, color: JR.accent),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t('fmb.active_job'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                if (a.ref.isNotEmpty) Text('${a.ref}${a.status.isNotEmpty && t.has('jobstatus.${a.status}') ? ' · ${t('jobstatus.${a.status}')}' : ''}', style: const TextStyle(color: JR.muted, fontSize: 13)),
+              ])),
+              const Icon(Icons.chevron_right, color: JR.muted),
+            ])),
+            const SizedBox(height: 12),
+          ],
+          // E17: cash collected on delivery that has not been handed to the warehouse yet.
+          if (CashBrief.fromOverview(o.j) case final c? when c.show) ...[
+            SectionCard(key: const Key('cash-card'), border: c.outstandingCents > 0 ? JR.gold : null, onTap: () => context.push('/cash'), child: Row(children: [
+              Icon(Icons.payments_outlined, color: c.outstandingCents > 0 ? JR.gold : JR.cyan),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t('fmb.cash_with_me'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(fmtMoney(c.outstandingCents, lang), key: const Key('cash-card-amount'), textDirection: TextDirection.ltr, style: TextStyle(color: c.outstandingCents > 0 ? JR.gold : JR.accent, fontWeight: FontWeight.w800, fontSize: 19))),
+              ])),
+              const Icon(Icons.chevron_right, color: JR.muted),
+            ])),
+            const SizedBox(height: 12),
+          ],
+          const NotifyPromptCard(),
           if ((offers.value?.length ?? 0) > 0) ...[
             SectionCard(border: JR.cyan, onTap: () => StatefulNavigationShell.of(context).goBranch(2), child: Row(children: [const Icon(Icons.work, color: JR.cyan), const SizedBox(width: 12), Expanded(child: Text('${t('driver.new_offers')}: ${offers.value!.length}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))), const Icon(Icons.chevron_right, color: JR.muted)])),
             const SizedBox(height: 12),
           ],
           Row(children: [
-            Expanded(child: _Stat(label: t('driver.pending_pay'), value: fmtMoney(o.pendingCents, lang), color: JR.gold)),
+            Expanded(child: _Stat(label: t('fmb.wallet_on_hold'), value: fmtMoney(o.pendingCents, lang), color: JR.gold)),
             const SizedBox(width: 12),
             Expanded(child: _Stat(label: t('wallet.available'), value: fmtMoney(o.availableCents, lang), color: JR.accent)),
           ]),
           const SizedBox(height: 20),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Flexible(child: Text(t('driver.active_jobs'), overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-            if ((jobs.value?.length ?? 0) > 0) TextButton.icon(onPressed: () => context.push('/route'), icon: const Icon(Icons.alt_route), label: Text(t('m.route_title'))),
-          ]),
+          Text(t('driver.active_jobs'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           AsyncBody(value: jobs, onRetry: () => ref.invalidate(activeJobsProvider), builder: (list) => list.isEmpty
               ? Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: EmptyView(title: t('m.today_empty'), hint: o.available ? t('driver.no_offers_hint') : t('driver.no_offers_offline'), icon: Icons.local_shipping_outlined))
@@ -118,7 +167,7 @@ class _AvailabilityCard extends StatelessWidget {
       border: online ? JR.accent : null,
       child: Column(children: [
         Row(children: [
-          Container(width: 12, height: 12, decoration: BoxDecoration(shape: BoxShape.circle, color: online ? JR.accent : JR.muted, boxShadow: online ? [const BoxShadow(color: JR.accent, blurRadius: 10)] : null)),
+          ExcludeSemantics(child: Container(width: 12, height: 12, decoration: BoxDecoration(shape: BoxShape.circle, color: online ? JR.accent : JR.muted, boxShadow: online ? [const BoxShadow(color: JR.accent, blurRadius: 10)] : null))),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(online ? t('driver.online') : t('driver.offline'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
@@ -127,8 +176,8 @@ class _AvailabilityCard extends StatelessWidget {
         ]),
         const SizedBox(height: 14),
         online
-            ? OutlinedButton(key: const Key('toggle'), onPressed: busy ? null : () => onToggle(false), child: Text(t('driver.go_offline')))
-            : FilledButton(key: const Key('toggle'), onPressed: busy || blocked ? null : () => onToggle(true), child: Text(t('driver.go_online'))),
+            ? OutlinedButton.icon(key: const Key('toggle'), onPressed: busy ? null : () => onToggle(false), icon: busyIcon(busy, Icons.power_settings_new, color: JR.accent), label: Text(t('driver.go_offline')))
+            : FilledButton.icon(key: const Key('toggle'), onPressed: busy || blocked ? null : () => onToggle(true), icon: busyIcon(busy, Icons.power_settings_new), label: Text(t('driver.go_online'))),
       ]),
     );
   }

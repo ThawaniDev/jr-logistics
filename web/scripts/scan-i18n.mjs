@@ -1,7 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 const walk = (d) => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : /\.(tsx?|ts)$/.test(p) ? [p] : []; });
-const files = walk("src").filter((f) => !f.includes("/server/") || f.endsWith("current.ts") === false && /views|catalog/.test(f) === false);
 const lit = new Set(), dyn = new Set();
 for (const f of walk("src")) {
   if (f.includes("src/server/") || f.includes("src/db/") || f.includes("src/i18n/dictionaries")) continue;

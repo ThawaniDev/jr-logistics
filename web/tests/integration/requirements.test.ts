@@ -13,6 +13,7 @@ import { opsAlerts, report } from "@/server/ops";
 import { storage, setStorage } from "@/server/storage";
 import { call } from "../helpers/api";
 import { createSession } from "@/server/auth/session";
+import { work } from "../helpers/work";
 
 beforeEach(resetDb);
 afterAll(shutdown);
@@ -24,8 +25,7 @@ async function completedJob(units = 10) {
   const [o] = await db.select().from(offers).where(eq(offers.requestId, r.id));
   await jobs.acceptOffer(d, o.id, true);
   await jobs.confirmAttendance(biz, o.id, true);
-  await jobs.reportDelivered(d, o.id, units);
-  await jobs.confirmDelivery(biz, o.id, { action: "confirm" });
+  await work(biz, d, o.id, units);
   return { admin, biz, d, r, offerId: o.id };
 }
 
@@ -59,7 +59,7 @@ describe("PRICE-001/002 effective dating and immutable snapshots", () => {
     const r = await publishedRequest(biz);
     await createRule(admin, { service: "delivery_driver", vehicleType: "sedan", pickupCity: "riyadh", deliveryCity: "riyadh", priceCents: 5000, providerCostCents: 4000 }); // v2, much pricier
     const [o] = await db.select().from(offers).where(eq(offers.requestId, r.id));
-    await jobs.acceptOffer(d, o.id, true); await jobs.confirmAttendance(biz, o.id, true); await jobs.reportDelivered(d, o.id, 10); await jobs.confirmDelivery(biz, o.id, { action: "confirm" });
+    await jobs.acceptOffer(d, o.id, true); await jobs.confirmAttendance(biz, o.id, true); await work(biz, d, o.id, 10);
     const [s] = await db.select().from(settlements);
     expect(s.customerCents).toBe(100_00); expect(s.providerCents).toBe(70_00); // v1 economics
     expect((await db.select().from(requests).where(eq(requests.id, r.id)))[0].unitPriceCents).toBe(1000);
@@ -73,12 +73,12 @@ describe("JOB-006 custody", () => {
     const r = await publishedRequest(biz);
     const o = (await db.select().from(offers).where(eq(offers.requestId, r.id))).find((x) => x.driverId === d.id)!; // two drivers are offered; pick ours
     await jobs.acceptOffer(d, o.id, true);
-    await expect(support.handoverCustody(biz, o.id, [{ itemType: "pos_device" }])).rejects.toMatchObject({ code: "INVALID_TRANSITION" }); // before attendance
+    await expect(support.handoverCustody(biz, o.id, [{ itemType: "phone" }])).rejects.toMatchObject({ code: "INVALID_TRANSITION" }); // before attendance
     await jobs.confirmAttendance(biz, o.id, true);
-    await expect(support.handoverCustody(stranger, o.id, [{ itemType: "pos_device" }])).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(support.handoverCustody(d, o.id, [{ itemType: "pos_device" }])).rejects.toMatchObject({ code: "FORBIDDEN" }); // driver can't hand over
+    await expect(support.handoverCustody(stranger, o.id, [{ itemType: "phone" }])).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(support.handoverCustody(d, o.id, [{ itemType: "phone" }])).rejects.toMatchObject({ code: "FORBIDDEN" }); // driver can't hand over
     await expect(support.handoverCustody(biz, o.id, [{ itemType: "rocket" }])).rejects.toMatchObject({ code: "VALIDATION" });
-    const [item] = await support.handoverCustody(biz, o.id, [{ itemType: "pos_device", qty: 2 }]);
+    const [item] = await support.handoverCustody(biz, o.id, [{ itemType: "phone", qty: 2 }]);
     await expect(support.acknowledgeCustody(other, item.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect((await support.acknowledgeCustody(d, item.id)).status).toBe("acknowledged");
     await expect(support.returnCustody(biz, item.id, "damaged")).rejects.toMatchObject({ code: "VALIDATION" }); // needs a note
@@ -91,6 +91,7 @@ describe("JOB-006 custody", () => {
 describe("JOB-008 overlap policy is configurable", () => {
   it("single_active blocks a second job even on a different day; time_window allows it", async () => {
     const admin = await mkAdmin(); await mkRule(admin);
+    await updateSettings({ driverSingleActiveJob: false }, admin.id); // (the "one active job" rule would hide the second offer before the overlap policy is even consulted)
     const biz = await mkBusiness({ fundsCents: 5000_00 }); const d = await mkDriver();
     const r1 = await publishedRequest(biz);
     const [o1] = await db.select().from(offers).where(eq(offers.requestId, r1.id));
@@ -183,9 +184,8 @@ describe("REPORTS & finance visibility", () => {
 
   it("platform summary matches the ledger after payout", async () => {
     const { r } = await completedJob();
-    const f1 = await mkStaff(["settlements.review"]), f2 = await mkStaff(["settlements.approve", "payouts.execute"]);
     const [s] = await db.select().from(settlements).where(eq(settlements.requestId, r.id));
-    await settle.reviewSettlement(f1, s.id); await settle.approveSettlement(f2, s.id); await settle.payoutSettlement(f2, s.id);
+    expect(s.status).toBe("paid"); // paid the moment the job ended
     const sum = await settle.platformSummary();
     expect(sum.platformRevenueCents).toBe(30_00);
     expect(sum.paidSettlements).toBe(1);

@@ -1,6 +1,6 @@
 import { config } from "dotenv";
 config({ path: process.env.ENV_FILE ?? ".env.local" });
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 /**
  * Idempotent seed. NEVER deletes data and never overwrites an existing admin password.
@@ -24,6 +24,9 @@ async function main() {
   await getSettings(); // materialise defaults lazily
 
   if (!env.demoMode) { console.log("DEMO_MODE off → skipping demo fixtures"); await closeDb(); return; }
+  // Demo/test deployments: the super admin is listed on the demo card, so it must not force a password change on first use.
+  // Production never reaches this line — there the temporary password stays temporary.
+  await db.update(users).set({ mustChangePassword: false }).where(eq(users.id, admin.id));
 
   const upsertUser = async (v: typeof users.$inferInsert) => {
     const [ex] = await db.select().from(users).where(v.email ? eq(users.email, v.email) : eq(users.phone, v.phone!));
@@ -40,7 +43,9 @@ async function main() {
   for (const [e, n, r] of staff) await upsertUser({ role: "staff", name: n, email: e, passwordHash: demoPw, staffRole: r, permissions: STAFF_PRESETS[r] });
 
   const biz = await upsertUser({ role: "business", name: "Sara Alharbi", phone: "+966500000001", city: "riyadh" });
-  await db.insert(businessProfiles).values({ userId: biz.id, companyName: "Nakheel Fresh Foods", crNumber: "1010123456", industry: "Food & Grocery", verificationStatus: "verified" }).onConflictDoNothing();
+  // The demo warehouse sits in central Riyadh (drivers must check in within the platform radius of this pin).
+  await db.insert(businessProfiles).values({ userId: biz.id, companyName: "Nakheel Fresh Foods", crNumber: "1010123456", industry: "Food & Grocery", verificationStatus: "verified", warehouseLat: 24.7136, warehouseLng: 46.6753 }).onConflictDoNothing();
+  await db.update(businessProfiles).set({ warehouseLat: 24.7136, warehouseLng: 46.6753 }).where(and(eq(businessProfiles.userId, biz.id), isNull(businessProfiles.warehouseLat)));
   const bAcct = await ensureAccount(biz.id);
   await post(db, { accountId: bAcct.id, kind: "topup", available: 20_000_00, idempotencyKey: "demo-seed-biz", simulated: true, note: "demo seed" });
 

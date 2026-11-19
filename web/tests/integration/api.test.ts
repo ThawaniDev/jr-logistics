@@ -2,15 +2,17 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users, driverProfiles, offers, businessProfiles, documents } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, mkOffice, tomorrow } from "../helpers/factories";
-import { call, loginWithOtp, staffLogin } from "../helpers/api";
+import { resetDb, shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, mkOffice, tomorrow, mkShipments } from "../helpers/factories";
+import { call, loginWithOtp } from "../helpers/api";
 import { createSession } from "@/server/auth/session";
 
+/** First bytes of a real PNG: uploads are checked against their declared type. */
+const PNG_HEADER = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 beforeEach(resetDb);
 afterAll(shutdown);
 
 const tok = async (u: { id: string }) => (await createSession(u.id, "mobile")).token;
-const body = (o: Record<string, unknown> = {}) => ({ service: "delivery_driver", quantity: 1, shipmentsPerDriver: 10, vehicleType: "sedan", pickupCity: "riyadh", deliveryCity: "riyadh", startsAt: tomorrow().toISOString(), durationDays: 1, ...o });
+const body = (o: Record<string, unknown> = {}) => ({ service: "delivery_driver", quantity: 1, shipmentsPerDriver: 10, vehicleType: "sedan", pickupCity: "riyadh", deliveryCity: "riyadh", pickupAddress: "Warehouse 4", deliveryAddress: "12 Olaya St", startsAt: tomorrow().toISOString(), durationDays: 1, shipments: mkShipments(10), ...o });
 
 describe("demo accounts list", () => {
   it("lists the super admin with a working pre-filled password, and stops once the password changes", async () => {
@@ -134,8 +136,10 @@ describe("request flow over HTTP with privacy rules", () => {
     const acc = await call("POST", `/offers/${job.offerId}/accept`, { token: dt, body: { termsAccepted: true } });
     expect(acc.status).toBe(200);
     const mine = await call("GET", `/driver/jobs/${job.offerId}`, { token: dt });
-    expect(mine.json.recipient).toEqual({ name: "Mona", phone: "+966511111111" });
-    expect(mine.json.delivery.address).toBe("Olaya St 12");
+    // per-parcel job: the manifest holds each recipient. The driver sees every address (to approve the route), a name/phone only for the current stop.
+    expect(mine.json.manifest).toBe(true); expect(mine.json.recipient).toBeNull(); expect(mine.json.stops).toHaveLength(10);
+    expect(mine.json.stops.every((s: any) => s.recipientPhone === null && s.recipientName === null && s.address)).toBe(true);
+    expect(mine.json.delivery).toBeNull(); expect(mine.json.stops[0].address).toContain("Olaya St"); // each stop has its own address; there is no single delivery address any more
     const detail2 = await call("GET", `/requests/${pub.json.id}`, { token: bt });
     expect(detail2.json.offers[0].driver.phone).toBe(d.phone);
     expect(detail2.json.offers[0].actions).toContain("confirm_attendance");
@@ -202,12 +206,14 @@ describe("documents & verification", () => {
     const admin = await mkAdmin(); const staff = await mkStaff(["documents.review"]);
     const d = await mkDriver({ verified: false }); const dt = await tok(d); const st = await tok(staff);
     for (const type of ["national_id", "driving_license", "vehicle_registration"]) {
-      const fd = new FormData(); fd.set("type", type); fd.set("file", new File([new Uint8Array([1, 2, 3, 4])], "x.png", { type: "image/png" }));
+      const fd = new FormData(); fd.set("type", type); fd.set("file", new File([PNG_HEADER], "x.png", { type: "image/png" }));
       expect((await call("POST", "/documents", { token: dt, form: fd })).status).toBe(201);
     }
+    const fake = new FormData(); fake.set("type", "national_id"); fake.set("file", new File(["not really a png"], "x.png", { type: "image/png" }));
+    expect((await call("POST", "/documents", { token: dt, form: fake })).status).toBe(422); // content does not match the declared type
     const bad = new FormData(); bad.set("type", "national_id"); bad.set("file", new File(["x"], "x.exe", { type: "application/x-msdownload" }));
     expect((await call("POST", "/documents", { token: dt, form: bad })).status).toBe(422);
-    const expired = new FormData(); expired.set("type", "national_id"); expired.set("expiresOn", "2020-01-01"); expired.set("file", new File([new Uint8Array([1])], "x.png", { type: "image/png" }));
+    const expired = new FormData(); expired.set("type", "national_id"); expired.set("expiresOn", "2020-01-01"); expired.set("file", new File([PNG_HEADER], "x.png", { type: "image/png" }));
     expect((await call("POST", "/documents", { token: dt, form: expired })).status).toBe(422);
 
     const docs = (await call("GET", "/admin/documents", { token: st })).json.items;
@@ -241,14 +247,10 @@ describe("office flow", () => {
     expect(mine.json.items).toHaveLength(1);
     expect((await call("POST", `/driver/invites/${mine.json.items[0].id}/respond`, { token: dt, body: { accept: true } })).status).toBe(200);
     const biz = await mkBusiness({ fundsCents: 5000_00 }); const bt = await tok(biz);
-    const pub = await call("POST", "/requests", { token: bt, body: body({ publish: true, termsAccepted: true, preferredOfficeId: office.id }) });
-    expect(pub.status).toBe(201);
-    // during the office window no system offers go out
-    expect((await call("GET", "/driver/offers", { token: dt })).json.items).toHaveLength(0);
-    const opp = await call("GET", "/office/opportunities", { token: ot });
-    expect(opp.json.items[0].eligibleDrivers).toHaveLength(1);
-    const asg = await call("POST", `/office/opportunities/${pub.json.id}/assign`, { token: ot, body: { driverId: d.id } });
-    expect(asg.status).toBe(201);
+    const pub = await call("POST", "/requests", { token: bt, body: body({ publish: true, termsAccepted: true, preferredOfficeId: office.id }) }); // office selection was cancelled — the field is ignored
+    expect(pub.status).toBe(201); expect(pub.json.preferredOfficeId).toBeNull();
+    // offers go out immediately (no exclusive office window any more); the office still sees the request as an opportunity
+    expect((await call("GET", "/office/opportunities", { token: ot })).json.items).toHaveLength(1);
     const o = (await call("GET", "/driver/offers", { token: dt })).json.items[0];
     expect(o.earningHidden).toBe(true); expect(o.expectedEarningCents).toBeNull(); // office-linked drivers don't see rates
     await call("POST", `/offers/${o.offerId}/accept`, { token: dt, body: { termsAccepted: true } });

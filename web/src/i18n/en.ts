@@ -1,4 +1,5 @@
 import type { Dict } from "./core";
+import { extra } from "./fragments";
 const en: Dict = {
   // ── common
   "common.all": "All", "common.amount": "Amount", "common.back": "Back", "common.cancel": "Cancel", "common.close": "Close", "common.confirm": "Confirm", "common.copied": "Copied",
@@ -9,7 +10,7 @@ const en: Dict = {
   "nav.active_jobs": "Active jobs", "nav.agreement": "Agreement", "nav.api": "API & webhooks", "nav.audit": "Audit log", "nav.cases": "Support cases", "nav.complaints": "Complaints", "nav.dashboard": "Dashboard",
   "nav.documents": "Documents", "nav.drivers": "Drivers", "nav.earnings": "Earnings", "nav.finance": "Finance", "nav.group_finance": "Finance", "nav.group_more": "More", "nav.group_people": "People", "nav.group_support": "Support",
   "nav.group_system": "System", "nav.live_map": "Live map", "nav.my_jobs": "My jobs", "nav.new_request": "New request", "nav.notifications": "Notifications", "nav.offices": "Courier offices", "nav.operations": "Operations",
-  "nav.opportunities": "Opportunities", "nav.payouts": "Payouts", "nav.pricing": "Pricing", "nav.profile": "Profile", "nav.reports": "Reports", "nav.requests": "Requests", "nav.settings": "Settings",
+  "nav.opportunities": "Opportunities", "nav.payouts": "Payouts", "nav.pricing": "Pricing", "nav.profile": "Profile", "nav.reports": "Reports", "nav.requests": "Requests", "nav.scenarios": "Scenario MCQs (48)", "nav.settings": "Settings",
   "nav.settlements": "Settlements", "nav.staff": "Staff", "nav.support": "Support", "nav.users": "Users", "nav.verification": "Verification", "nav.wallet": "Wallet",
   // ── roles & catalogs
   "role.business": "Business", "role.driver": "Driver", "role.office": "Courier office", "role.staff": "Staff", "role.admin": "Admin", "role.system": "System",
@@ -61,16 +62,31 @@ const en: Dict = {
   "err.TERMS_REQUIRED": "Please accept the terms to continue.", "err.DISPUTE_BLOCKS": "An open dispute is blocking this step.", "err.DEPENDENCY_UNAVAILABLE": "A required service is unavailable. Please try again later.",
   "err.INTERNAL": "Something went wrong on our side. Please try again.", "err.METHOD_NOT_ALLOWED": "Not allowed.", "err.page_not_found": "Page not found", "err.page_not_found_hint": "The page you're looking for doesn't exist or was moved.", "err.go_home": "Back to home",
   // ── landing
-  "landing.badge": "Saudi logistics marketplace", "landing.h1_a": "Delivery capacity,", "landing.h1_b": "on demand and accountable.", "landing.sub": "Book vetted drivers and vehicles in minutes. Funds are held in escrow, jobs are tracked end to end, and everyone is paid fairly.",
-  "landing.cta_business": "I need drivers", "landing.cta_driver": "I'm a driver", "landing.dashboard": "My dashboard", "landing.nav_services": "Services", "landing.nav_how": "How it works", "landing.nav_trust": "Trust & safety", "landing.nav_join": "Join us",
-  "landing.s1_n": "3", "landing.s1_l": "Services", "landing.s2_n": "24/7", "landing.s2_l": "Operations desk", "landing.s3_n": "100%", "landing.s3_l": "Escrow protected",
-  "landing.services_title": "Services built for operations", "landing.services_sub": "Pick what you need. Pricing is transparent and locked at publish time.", "landing.how_title": "From request to payment in four steps",
-  "landing.step1_t": "Create your request", "landing.step1_d": "Choose service, vehicle and route and see the price instantly.", "landing.step2_t": "Instant matching", "landing.step2_d": "Eligible drivers are offered the job; the first to accept gets it.",
-  "landing.step3_t": "Track and confirm", "landing.step3_d": "Confirm attendance and quantities with a clear timeline and in-app chat.", "landing.step4_t": "Settle securely", "landing.step4_d": "Payment is released after confirmation and finance approval.",
-  "landing.trust_title": "Built on trust", "landing.trust_escrow_t": "Escrow wallet", "landing.trust_escrow_d": "Funds are reserved when you publish and refunded for unused work.",
-  "landing.trust_verified_t": "Verified providers", "landing.trust_verified_d": "Documents are reviewed before drivers and offices can take jobs.", "landing.trust_offices_t": "Courier offices", "landing.trust_offices_d": "Offices manage their own drivers under a signed agreement.",
-  "landing.trust_tracking_t": "Full audit trail", "landing.trust_tracking_d": "Every status change is recorded with who did it and when.", "landing.join_title": "Join JR Logistics", "landing.get_started": "Get started",
-  "landing.footer": "A Saudi platform for on-demand logistics capacity.",
+  "landing.badge": "Saudi platform — market open now", "landing.h1_a": "Assign your deliveries", "landing.h1_b": "to available drivers", "landing.h1_c": "instantly", "landing.sub": "Request ready delivery drivers in minutes — post your request, receive matches, confirm attendance, and pay safely via an escrow wallet. All from one platform.",
+  "landing.cta_business": "I'm a business needing drivers", "landing.cta_driver": "I'm a driver / courier", "landing.cta_office": "I'm a courier office / logistics provider", "landing.dashboard": "My dashboard", "landing.nav_services": "Services", "landing.nav_how": "How it works", "landing.nav_estimate": "Cost calculator", "landing.nav_trust": "Trust & safety", "landing.nav_join": "Join us",
+  "landing.stat1_val": "< 1 min", "landing.stat1_lbl": "to post your request", "landing.stat2_val": "Smart matching", "landing.stat2_lbl": "connects you with the right driver", "landing.stat3_val": "24/7", "landing.stat3_lbl": "monitoring & support",
+  "landing.fc1_t": "Instant matching", "landing.fc1_d": "The right driver receives the offer in seconds", "landing.fc2_t": "Escrow wallet", "landing.fc2_d": "Funds released only upon confirmed completion",
+  "landing.services_eyebrow": "Services built for operations", "landing.services_title": "A logistics platform matching need with solution", "landing.services_sub": "Post your request, select your required logistics service, and receive ready matches from verified providers with live attendance tracking and escrow settlement.",
+  "landing.available_now": "Available now", "landing.coming_soon": "Coming soon", "landing.coming_title": "Upcoming platform services", "landing.coming_sub": "The infrastructure is designed to scale with your transportation needs",
+  "landing.how_eyebrow": "Rigorous workflow", "landing.how_title": "From request to payment in four steps",
+  "landing.step1_t": "Create your request", "landing.step1_d": "Add your parcels — recipient, phone and address for each — and see the locked price instantly.",
+  "landing.step2_t": "Instant matching", "landing.step2_d": "The job offer is broadcasted to eligible verified drivers; first to accept gets it.",
+  "landing.step3_t": "Track and confirm attendance", "landing.step3_d": "Confirm attendance and quantities with a live timeline and real-time in-app chat.",
+  "landing.step4_t": "Secure escrow settlement", "landing.step4_d": "Funds are held safely and paid out only after confirmed completion and ops approval.",
+  "landing.est_eyebrow": "Instant calculator", "landing.est_title": "Estimate your cost in seconds", "landing.est_sub": "Select service and fleet size to view an instant estimate",
+  "landing.est_service": "Service type", "landing.est_count": "Drivers / Vehicles count", "landing.est_units": "Shipments per driver / Days", "landing.est_city": "City", "landing.est_total": "Estimated total cost",
+  "landing.est_note": "Indicative price from our approved rates. The exact price is shown before you publish, and the amount is held in escrow until the job is completed.", "landing.est_cta": "Create your request now",
+  "landing.trust_eyebrow": "Built on security & trust", "landing.trust_title": "Highest standards of protection & reliability",
+  "landing.trust_escrow_t": "Smart escrow wallet", "landing.trust_escrow_d": "Funds are reserved on publish and never disbursed until confirmed delivery.",
+  "landing.trust_verified_t": "Vetted providers", "landing.trust_verified_d": "National IDs, driver licenses, and vehicle registrations strictly audited before activation.",
+  "landing.trust_offices_t": "Licensed courier offices", "landing.trust_offices_d": "Fleet offices manage their drivers under legally binding partner agreements.",
+  "landing.trust_tracking_t": "Full live audit trail", "landing.trust_tracking_d": "Every transition, timestamp, and quantity count is permanently logged.",
+  "landing.join_eyebrow": "Join the ecosystem", "landing.join_title": "Choose your portal and get started",
+  "landing.join_biz_t": "For businesses & stores", "landing.join_biz_d": "Drowning in orders? Need extra drivers for a campaign? Create precise requests and stay in total control.", "landing.join_biz_btn": "Register your business",
+  "landing.join_drv_t": "For drivers & couriers", "landing.join_drv_d": "Turn on availability and receive delivery opportunities with full details before accepting. Earnings reach your wallet upon confirmed completion.", "landing.join_drv_btn": "Join as a delivery driver",
+  "landing.join_office_t": "For courier offices & providers", "landing.join_office_d": "Manage your fleet, receive matching opportunities, assign drivers, and track receivables and settlements in one central place.", "landing.join_office_btn": "Register courier office",
+  "landing.get_started": "Get started", "landing.s1_n": "3", "landing.s1_l": "Services", "landing.s2_n": "24/7", "landing.s2_l": "Operations desk", "landing.s3_n": "100%", "landing.s3_l": "Escrow protected",
+  "landing.footer": "A Saudi platform for on-demand logistics & operational capacity.", "landing.footer_vision": "Supporting Saudi Vision 2030 for a flexible labor market", "landing.footer_coverage": "Riyadh · Jeddah · Dammam · Makkah · Madinah · NEOM", "landing.footer_disclaimer": "All transactions are secured with full financial escrow protection.", "landing.currency": "SAR",
   // ── business
   "biz.welcome": "Welcome, {name}", "biz.sub": "Here's what's happening with your requests.", "biz.active": "Active requests", "biz.completed": "Completed", "biz.spent": "Total spent", "biz.recent": "Recent requests",
   "biz.no_requests": "No requests yet", "biz.no_requests_hint": "Create your first request and get matched with drivers.", "biz.low_funds": "Your wallet balance is low.",
@@ -101,7 +117,7 @@ const en: Dict = {
   "event.delivery_confirmed": "Delivery confirmed", "event.delivery_disputed": "Delivery disputed", "event.dispute_resolved": "Dispute resolved", "event.request_completed": "Request completed", "event.request_cancelled": "Request cancelled",
   "event.driver_cancelled": "Driver cancelled", "event.driver_replaced": "Driver replaced", "event.driver_assigned": "Driver assigned", "event.custody_handover": "Items handed over", "event.custody_returned": "Items returned",
   "event.custody_not_returned": "Items not returned", "event.custody_damaged": "Items damaged", "event.payout_paid": "Payout paid", "event.whatsapp_handoff_opened": "WhatsApp opened by driver", "event.contact_exception": "Driver couldn't reach recipient",
-  "event.office_window_elapsed": "Office window ended — opened to all drivers", "event.request_expired": "Request expired",
+  "event.office_window_elapsed": "Office window ended — opened to all drivers", "event.unfilled_slots_closed": "Unfilled slots closed — job continues with the drivers already assigned", "event.no_work_reported": "No work reported", "event.request_expired": "Request expired",
   // ── wizard
   "wizard.sub": "Three quick steps. You'll see the exact price before you publish.", "wizard.step_service": "Service", "wizard.step_route": "Route & time", "wizard.step_review": "Review", "wizard.choose_service": "What do you need?",
   "wizard.vehicle": "Vehicle", "wizard.drivers_count": "Number of drivers", "wizard.vehicles_count": "Number of vehicles", "wizard.shipments_per_driver": "Shipments per driver", "wizard.shipments_hint": "Used to calculate the price.",
@@ -171,7 +187,7 @@ const en: Dict = {
   "notif.verification_needed": "{name} ({role}) needs verification", "notif.document_submitted": "{owner} uploaded {type}", "notif.document_approved": "Your document was approved", "notif.document_rejected": "Your document was rejected: {note}", "notif.document_info_requested": "More information needed: {note}",
   "notif.verification_verified": "Your account is verified", "notif.verification_rejected": "Verification rejected: {note}", "notif.verification_info_requested": "More information needed: {note}", "notif.verification_suspended": "Your account was suspended: {note}",
   "notif.office_opportunity": "A request {ref} prefers your office", "notif.office_invite": "{office} invited you to join their office", "notif.invite_accepted": "{driver} joined your office", "notif.invite_declined": "{driver} declined your invitation", "notif.office_unlinked": "You were unlinked from your office",
-  "notif.agreement_pending": "Agreement v{version} is waiting for your acceptance", "notif.payout_paid": "A payout was added to your wallet", "notif.withdrawal_paid": "Your withdrawal was paid", "notif.withdrawal_rejected": "Your withdrawal was rejected", "notif.broadcast": "{message}", "notif.request_expired": "Request {ref} expired with no driver. Funds refunded.",
+  "notif.agreement_pending": "Agreement v{version} is waiting for your acceptance", "notif.payout_paid": "A payout was added to your wallet", "notif.withdrawal_paid": "Your withdrawal was paid", "notif.withdrawal_rejected": "Your withdrawal was rejected", "notif.broadcast": "{message}", "notif.request_partially_filled": "Request {ref}: only {filled} of {requested} drivers were found. The open slots were closed and their funds refunded.", "notif.delivery_disputed_ops": "Request {ref}: the delivered quantity was disputed and needs review.", "notif.replaced_by_office": "Your office replaced you on {ref}.", "notif.suspension_cleared": "Your account is active again. Your cancellation count was reset.", "notif.wallet_adjusted": "A manual adjustment of {amountCents} halalas was applied to your wallet.", "notif.complaint_assigned": "Complaint {ref} was assigned to you.", "notif.iban_changed": "Your payout IBAN was changed. If this was not you, contact support immediately.", "notif.office_driver_cancelled": "Your driver {driver} cancelled {ref}.", "notif.request_expired": "Request {ref} expired with no driver. Funds refunded.",
   // ── admin
   "admin.title": "Control center", "admin.sub": "Welcome back, {name}.", "admin.critical_alerts": "{n} critical alerts need attention", "admin.critical_hint": "Open the operations queue", "admin.live_requests": "Live requests", "admin.pending_verification": "Pending verification",
   "admin.verif_breakdown": "{b} business · {o} offices · {d} drivers", "admin.docs_review": "Documents to review", "admin.pending_settlements": "Settlements to process", "admin.open_tickets": "Open tickets", "admin.open_complaints": "Open complaints",
@@ -268,4 +284,4 @@ const en: Dict = {
   "m.notifications_empty": "No notifications",
   "m.driver_only": "This app is for drivers. Other accounts should use the JR web portal.",
 };
-export default en;
+export default { ...en, ...extra.en } as Dict;

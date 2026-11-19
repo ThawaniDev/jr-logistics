@@ -3,8 +3,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/i18n.dart';
 import 'core/theme.dart';
+import 'features/home/notify_host.dart';
 import 'providers.dart';
 import 'router.dart';
+import 'services_notify.dart';
 import 'widgets/common.dart';
 
 class JrApp extends ConsumerWidget {
@@ -22,16 +24,37 @@ class JrApp extends ConsumerWidget {
       supportedLocales: [for (final c in supportedCodes) Locale(c)],
       localizationsDelegates: const [GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
       routerConfig: ref.watch(routerProvider),
+      scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider), // lets a new-offer alert show its banner on whichever screen is open
       builder: (context, child) => Directionality(
         textDirection: isRtl(code) ? TextDirection.rtl : TextDirection.ltr,
-        child: strings.when(
-          data: (s) => StringsScope(strings: s, child: auth.isLoading ? const _Splash() : (auth.hasError && auth.value == null ? _BootError(onRetry: () => ref.invalidate(authProvider)) : (child ?? const SizedBox()))),
-          loading: () => const _Splash(),
-          error: (e, _) => Scaffold(body: Center(child: Text('$e'))),
+        // Large system fonts are honoured up to 1.4x: beyond that Arabic/Urdu labels (tabs, buttons) start to clip on small phones.
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.4,
+          // NotifyHost sits at a constant place in the tree (new-offer alerts for the whole session); it never changes the shape of what is below it.
+          child: NotifyHost(child: strings.when(
+            data: (s) => StringsScope(strings: s, child: auth.isLoading ? const _Splash() : (auth.hasError && auth.value == null ? _BootError(error: auth.error ?? 'network', onRetry: () => ref.invalidate(authProvider)) : _withBanner(context, ref, child ?? const SizedBox()))),
+            loading: () => const _Splash(),
+            error: (e, _) => Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('$e', textAlign: TextAlign.center)))),
+          )),
         ),
       ),
     );
   }
+}
+
+/// Slim "no connection" strip above everything while requests are failing for lack of signal.
+/// The tree shape is identical online and offline (keyed body, constant wrappers) so the Navigator is never rebuilt from scratch
+/// when the strip appears or disappears — that would throw away whatever the driver was typing.
+Widget _withBanner(BuildContext context, WidgetRef ref, Widget child) {
+  final online = ref.watch(onlineProvider);
+  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    if (!online) SafeArea(bottom: false, child: ConnectionBanner(onRetry: () {
+      ref.read(onlineProvider.notifier).set(true); // optimistic; the reloads below flip it back if still offline
+      ref.invalidate(overviewProvider); ref.invalidate(offersProvider); ref.invalidate(activeJobsProvider);
+    })),
+    // While the strip is shown it already covers the status bar: the page below must not add that inset a second time.
+    Expanded(key: const ValueKey('app-body'), child: MediaQuery.removePadding(context: context, removeTop: !online, child: child)),
+  ]);
 }
 
 class _Splash extends StatelessWidget {
@@ -44,8 +67,9 @@ class _Splash extends StatelessWidget {
 }
 
 class _BootError extends StatelessWidget {
-  const _BootError({required this.onRetry});
+  const _BootError({required this.error, required this.onRetry});
+  final Object error;
   final VoidCallback onRetry;
   @override
-  Widget build(BuildContext context) => Scaffold(body: ErrorView(error: 'network', onRetry: onRetry));
+  Widget build(BuildContext context) => Scaffold(body: SafeArea(child: ErrorView(error: error, onRetry: onRetry)));
 }

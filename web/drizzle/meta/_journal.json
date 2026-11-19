@@ -8,6 +8,76 @@
       "when": 1793854820350,
       "tag": "0000_lazy_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793878859984,
+      "tag": "0001_strikes_reset",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793881734837,
+      "tag": "0002_staff_mfa",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794133500000,
+      "tag": "0003_scenario_mcqs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794137000000,
+      "tag": "0004_scenario_custom_response",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794200000000,
+      "tag": "0005_shipments",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794300000000,
+      "tag": "0006_partner_integrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794400000000,
+      "tag": "0007_audit_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794500000000,
+      "tag": "0008_credit_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794600000000,
+      "tag": "0009_incomplete_parcels_and_route_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794700000000,
+      "tag": "0010_field_ops",
+      "breakpoints": true
     }
   ]
 }

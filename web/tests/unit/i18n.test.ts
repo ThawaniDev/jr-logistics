@@ -6,7 +6,7 @@ import en from "@/i18n/en";
 import ur from "@/i18n/ur";
 import { translate } from "@/i18n/core";
 import path from "node:path";
-import { SERVICES, VEHICLE_TYPES, TICKET_CATEGORIES, COMPLAINT_CATEGORIES, CUSTODY_ITEM_TYPES, REQUEST_STATUS, OFFER_STATUS, DRIVER_DOC_TYPES, OFFICE_DOC_TYPES, BUSINESS_DOC_TYPES, DEFAULT_CITIES, STAFF_PRESETS } from "@/server/catalog";
+import { SERVICES, VEHICLE_TYPES, TICKET_CATEGORIES, COMPLAINT_CATEGORIES, CUSTODY_ITEM_TYPES, REQUEST_STATUS, OFFER_STATUS, DRIVER_DOC_TYPES, OFFICE_DOC_TYPES, BUSINESS_DOC_TYPES, DEFAULT_CITIES, STAFF_PRESETS, SHIPMENT_STATUS, RECIPIENT_TYPES, STOP_FAIL_REASONS } from "@/server/catalog";
 
 const walk = (d: string): string[] => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(p) ? [p] : []; });
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
@@ -46,12 +46,17 @@ describe("i18n parity (ar / en / ur)", () => {
     DEFAULT_CITIES.forEach((c) => need.push(`city.${c.key}`));
     [...REQUEST_STATUS, ...OFFER_STATUS].forEach((s) => need.push(`status.${s}`));
     OFFER_STATUS.forEach((s) => need.push(`jobstatus.${s}`));
+    SHIPMENT_STATUS.forEach((s) => need.push(`shipstatus.${s}`));
+    RECIPIENT_TYPES.forEach((s) => need.push(`rtype.${s}`));
+    STOP_FAIL_REASONS.forEach((s) => need.push(`stopfail.${s}`));
+    for (const s of ["driver_unavailable", "request_cancelled", "not_fully_staffed", "unfulfilled"]) need.push(`stopfail.${s}`);
+    for (const s of ["preparing", "on_the_way", "arrived", "delivered", "attempt_failed", "cancelled"]) need.push(`track.stage.${s}`);
     Object.values(TICKET_CATEGORIES).flat().forEach((c) => need.push(`ticket_cat.${c}`));
     COMPLAINT_CATEGORIES.forEach((c) => need.push(`complaint_cat.${c}`));
     CUSTODY_ITEM_TYPES.forEach((c) => need.push(`custody.${c}`));
     [...DRIVER_DOC_TYPES, ...OFFICE_DOC_TYPES, ...BUSINESS_DOC_TYPES].forEach((d) => need.push(`doc.${d.key}`));
     Object.keys(STAFF_PRESETS).forEach((p) => need.push(`preset.${p}`));
-    ["UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "VALIDATION", "CONFLICT", "INVALID_TRANSITION", "INSUFFICIENT_FUNDS", "NO_APPROVED_PRICE", "SERVICE_DISABLED", "OVERLAPPING_JOB", "NOT_ELIGIBLE", "SLOT_TAKEN", "RATE_LIMITED", "VERIFICATION_REQUIRED", "TERMS_REQUIRED", "DISPUTE_BLOCKS", "DEPENDENCY_UNAVAILABLE", "INTERNAL"].forEach((c) => need.push(`err.${c}`));
+    ["UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "VALIDATION", "CONFLICT", "INVALID_TRANSITION", "INSUFFICIENT_FUNDS", "NO_APPROVED_PRICE", "SERVICE_DISABLED", "OVERLAPPING_JOB", "NOT_ELIGIBLE", "SLOT_TAKEN", "RATE_LIMITED", "VERIFICATION_REQUIRED", "TERMS_REQUIRED", "DISPUTE_BLOCKS", "DEPENDENCY_UNAVAILABLE", "MANIFEST_REQUIRED", "OTP_REQUIRED", "OTP_INVALID", "OTP_LOCKED", "STOP_LOCKED", "STOPS_PENDING", "RETURNS_PENDING", "WAIT_REQUIRED", "INTERNAL"].forEach((c) => need.push(`err.${c}`));
     for (const s of ["pending", "info_requested", "rejected", "suspended"]) need.push(`verify.${s}_title`, `verify.${s}_body`);
     for (const s of ["pending", "rejected", "expired"]) need.push(`verify.driver_${s}_title`);
     for (const s of ["offered", "accepted", "arrived", "attendance_confirmed", "attendance_confirmed_ack", "delivered_reported", "qty_disputed", "pending_settlement", "completed", "cancelled", "rejected", "expired", "no_show", "replaced"]) need.push(`job.hint_${s}`);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/format.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
@@ -16,15 +17,18 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  final _name = TextEditingController(), _plate = TextEditingController(), _nid = TextEditingController();
+  final _name = TextEditingController(), _plate = TextEditingController(), _nid = TextEditingController(), _bank = TextEditingController(), _iban = TextEditingController();
   String? _city, _vehicle, _temp;
   final _services = <String>{'delivery_driver'};
   bool _terms = false, _busy = false;
   Map<String, String> _errors = {};
 
   bool get _needTemp => _vehicle == 'van' || _vehicle == 'dyna';
+  /// Optional at sign-up, but when typed it must be a Saudi IBAN (SA + 22 digits) — same rule as the server.
+  bool get _ibanOk => _iban.text.trim().isEmpty || normalizeIban(_iban.text) != null;
 
   Future<void> _submit() async {
+    if (_busy) return;
     final lang = ref.read(localeProvider);
     setState(() { _busy = true; _errors = {}; });
     try {
@@ -32,8 +36,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         'registrationToken': widget.token, 'role': 'driver', 'name': _name.text.trim(), 'city': _city, 'language': lang,
         'vehicleType': _vehicle, if (_needTemp) 'vehicleTemperature': _temp, 'services': _services.toList(), 'termsAccepted': _terms,
         if (_plate.text.isNotEmpty) 'vehiclePlate': _plate.text.trim(), if (_nid.text.isNotEmpty) 'nationalId': _nid.text.trim(),
+        if (_bank.text.trim().isNotEmpty) 'bankName': _bank.text.trim(), if (_iban.text.trim().isNotEmpty) 'iban': normalizeIban(_iban.text),
       });
-      await ref.read(authProvider.notifier).signIn(r['token'] as String, (r['user'] as Map).cast<String, dynamic>());
+      final token = r['token'], user = r['user'];
+      if (token is! String || user is! Map) throw ApiException('BAD_RESPONSE', 'register: missing token/user');
+      await ref.read(authProvider.notifier).signIn(token, user.cast<String, dynamic>());
     } catch (e) {
       if (!mounted) return;
       final d = e is ApiException ? e.details : const <String, dynamic>{};
@@ -47,19 +54,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.tr;
-    final cat = ref.watch(catalogProvider).value;
+    final catAsync = ref.watch(catalogProvider);
+    final cat = catAsync.value;
     final lang = ref.watch(localeProvider);
     final cities = ((cat?['cities'] as List?) ?? const []).cast<Map>();
     final vehicles = ((cat?['vehicleTypes'] as List?) ?? const []).cast<String>();
     final svcs = ((cat?['services'] as List?) ?? const []).cast<Map>().where((s) => s['driverless'] != true);
     final termsText = (cat?['terms'] as Map?)?['driver'] as String? ?? '';
-    final ok = _name.text.trim().length >= 2 && _city != null && _vehicle != null && (!_needTemp || _temp != null) && _services.isNotEmpty && _terms;
+    final ok = _name.text.trim().length >= 2 && _city != null && _vehicle != null && (!_needTemp || _temp != null) && _services.isNotEmpty && _ibanOk && _terms;
     return Scaffold(
       appBar: AppBar(leading: BackButton(onPressed: () => context.go('/login')), title: Text(t('reg.title'))),
       body: SafeArea(
         child: ListView(padding: const EdgeInsets.all(20), children: [
-          Text('${t('reg.sub')} ${widget.phone}', style: const TextStyle(color: JR.muted)),
+          Text('${t('reg.sub')} ${widget.phone}', textDirection: TextDirection.ltr, style: const TextStyle(color: JR.muted)),
           const SizedBox(height: 20),
+          // The city / vehicle / service lists come from the server. Without them the form is unusable: say why and offer a retry.
+          if (catAsync.hasError && cat == null) ...[Banner2(key: const Key('catalog-error'), tone: Tone.warn, text: t('um.catalog_failed'), action: OutlinedButton.icon(onPressed: () => ref.invalidate(catalogProvider), icon: const Icon(Icons.refresh), label: Text(t('common.retry')))), const SizedBox(height: 16)]
+          else if (cat == null) ...[const Padding(padding: EdgeInsets.only(bottom: 16), child: LinearProgressIndicator(color: JR.accent, backgroundColor: JR.line)),],
           TextField(controller: _name, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: t('reg.full_name'), errorText: _errors['name'])),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(initialValue: _city, decoration: InputDecoration(labelText: t('reg.city')), items: [for (final c in cities) DropdownMenuItem(value: c['key'] as String, child: Text('${c[lang]}'))], onChanged: (v) => setState(() => _city = v)),
@@ -73,8 +84,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           Row(children: [
             Expanded(child: TextField(controller: _plate, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: t('reg.plate')))),
             const SizedBox(width: 12),
-            Expanded(child: TextField(controller: _nid, keyboardType: TextInputType.number, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: t('reg.national_id')))),
+            Expanded(child: TextField(controller: _nid, keyboardType: TextInputType.number, inputFormatters: digitsOnly(max: 12), textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: t('reg.national_id')))),
           ]),
+          const SizedBox(height: 14),
+          TextField(key: const Key('bank'), controller: _bank, decoration: InputDecoration(labelText: t('profile.bank'))),
+          const SizedBox(height: 14),
+          TextField(key: const Key('iban'), controller: _iban, onChanged: (_) => setState(() {}), textCapitalization: TextCapitalization.characters, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: t('profile.iban'), hintText: 'SA…', helperText: t('profile.iban_hint'), errorText: _ibanOk ? _errors['iban'] : t('profile.iban_invalid'))),
           const SizedBox(height: 18),
           Text(t('reg.services'), style: const TextStyle(color: JR.muted, fontSize: 13)),
           const SizedBox(height: 8),

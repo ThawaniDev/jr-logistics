@@ -37,8 +37,8 @@ class _List extends ConsumerWidget {
     return RefreshIndicator(
       color: JR.accent, onRefresh: () async { ref.invalidate(provider); await ref.read(provider.future); },
       child: AsyncBody(value: v, onRetry: () => ref.invalidate(provider), builder: (list) => list.isEmpty
-          ? ListView(children: [SizedBox(height: 300, child: EmptyView(title: emptyTitle, icon: Icons.local_shipping_outlined))])
-          : ListView.separated(padding: const EdgeInsets.all(16), itemCount: list.length, separatorBuilder: (_, _) => const SizedBox(height: 12), itemBuilder: (_, i) => JobCard(job: list[i], lang: lang, onTap: () => context.openJob(list[i].offerId)))),
+          ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: [SizedBox(height: 300, child: EmptyView(title: emptyTitle, icon: Icons.local_shipping_outlined))])
+          : ListView.separated(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), itemCount: list.length, separatorBuilder: (_, _) => const SizedBox(height: 12), itemBuilder: (_, i) => JobCard(job: list[i], lang: lang, onTap: () => context.openJob(list[i].offerId)))),
     );
   }
 }

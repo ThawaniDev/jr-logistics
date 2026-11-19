@@ -1,16 +1,23 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart' show ImageSource;
 import 'package:jr_driver/core/i18n.dart';
 import 'package:jr_driver/core/theme.dart';
 import 'package:jr_driver/data/api_client.dart';
 import 'package:jr_driver/data/driver_api.dart';
 import 'package:jr_driver/data/models.dart';
 import 'package:jr_driver/data/token_store.dart';
+import 'package:jr_driver/features/jobs/deliver_form.dart';
+import 'package:jr_driver/features/jobs/signature_pad.dart';
+import 'package:jr_driver/widgets/barcode_scanner.dart';
+import 'package:jr_driver/widgets/evidence_photo.dart';
 import 'package:jr_driver/providers.dart';
 import 'package:jr_driver/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,9 +33,13 @@ class FakeApi extends DriverApi {
   List<Job> activeJobs = [];
   List<Job> offerList = [];
   Overview overviewResult = Overview({'availability': 'unavailable', 'verificationStatus': 'verified', 'newOffers': 0, 'activeJobs': 0, 'jobsCompleted': 3, 'rating': 4.5, 'officeLinked': false, 'wallet': {'availableCents': 12500, 'heldCents': 0, 'pendingCents': 4000}});
+  List<Json> custodyItems = [];
+  Json profileResult = {'user': {'id': 'u1', 'name': 'Omar Test', 'email': null, 'city': 'riyadh', 'role': 'driver'}, 'profile': {'vehicleType': 'sedan', 'vehicleTemperature': null, 'vehiclePlate': 'ABC 1234', 'nationalId': '1000000000', 'services': ['delivery_driver'], 'bankName': null, 'iban': null}};
   Json waResult = {'url': 'https://wa.me/966555555555?text=hi', 'text': 'hi'};
   Object? errorOnNext;
-  RoutePlan? plan;
+  /// When set, deliver/fail/arrive/upload wait for it before answering (lets a test tap twice while a request is in flight).
+  Completer<void>? gate;
+  int jobFetches = 0;
 
   void _maybeThrow() { final e = errorOnNext; if (e != null) { errorOnNext = null; throw e; } }
 
@@ -39,9 +50,12 @@ class FakeApi extends DriverApi {
   @override
   Future<List<Job>> jobs({required bool active}) async => active ? activeJobs : [];
   @override
-  Future<Job> job(String offerId) async => jobResult!;
+  Future<Job> job(String offerId) async { jobFetches++; if (jobFetchError != null) throw jobFetchError!; return jobResult!; }
+  Object? jobFetchError;
   @override
-  Future<Json> catalog() async => {'terms': {'driver': ''}, 'policy': {'cancelPolicyEnabled': true, 'cancelWarnAt': 2, 'cancelSuspendAt': 4, 'cancelWindowDays': 7, 'cancelSuspendDays': 3}, 'cities': [], 'vehicleTypes': [], 'services': [], 'documents': {'driver': []}};
+  Future<Json> catalog() async => {'terms': {'driver': ''}, 'policy': {'cancelPolicyEnabled': true, 'cancelWarnAt': 2, 'cancelSuspendAt': 4, 'cancelWindowDays': 7, 'cancelSuspendDays': 3}, 'cities': catalogCities, 'vehicleTypes': catalogVehicles, 'services': catalogServices, 'documents': {'driver': []}};
+  List<Json> catalogCities = [], catalogServices = [];
+  List<String> catalogVehicles = [];
   @override
   Future<Json> wallet() async => {'availableCents': 12500, 'heldCents': 0, 'reservedCents': 0, 'entries': []};
   @override
@@ -51,25 +65,116 @@ class FakeApi extends DriverApi {
   @override
   Future<Json> verifyOtp(String phone, String code) async { calls.add('verifyOtp:$code'); _maybeThrow(); return {'isNew': false, 'token': 'tok', 'user': {'id': 'u1', 'role': 'driver', 'name': 'Omar Test', 'phone': phone, 'language': 'en'}}; }
   @override
-  Future<void> checkIn(String offerId, {double? lat, double? lng}) async { calls.add('checkIn:$lat,$lng'); _maybeThrow(); }
+  Future<Json> checkIn(String offerId, {double? lat, double? lng}) async { calls.add('checkIn:$lat,$lng'); await gate?.future; _maybeThrow(); return checkInResult; }
+  /// What `POST /offers/:id/checkin` answers (the offer): `arrived`, or `attendance_confirmed` when the warehouse needs no confirmation.
+  Json checkInResult = {'status': 'arrived'};
+  // ── loading by scanning: a tiny in-memory warehouse ──
+  /// code (or order ref / manifest number) → parcel the server would accept for this driver. Anything else is `VALIDATION field=code`.
+  final scanBook = <String, ({String id, String code, int seq})>{};
+  final scannedIds = <String>{};
+  Job? jobAfterFinish;
+  int finishReleased = 0;
   @override
-  Future<void> ackLoading(String offerId, bool ok, {String? note}) async { calls.add('ack:$ok'); }
+  Future<LoadingScanResult> loadingScan(String offerId, String code) async {
+    calls.add('scan:$code'); await gate?.future; _maybeThrow();
+    final e = scanBook[code];
+    if (e == null) throw ApiException('VALIDATION', 'not in your load', status: 422, details: {'field': 'code'});
+    final already = !scannedIds.add(e.id);
+    final assigned = {for (final b in scanBook.values) b.id}.length;
+    return LoadingScanResult({'shipment': {'id': e.id, 'code': e.code, 'seq': e.seq}, 'scanned': scannedIds.length, 'assigned': assigned, 'already': already});
+  }
   @override
-  Future<void> delivered(String offerId, int units) async { calls.add('delivered:$units'); _maybeThrow(); }
+  Future<Json> loadingUnscan(String offerId, String code) async {
+    calls.add('unscan:$code'); _maybeThrow();
+    final e = scanBook[code];
+    if (e != null) scannedIds.remove(e.id);
+    return {'scanned': scannedIds.length, 'assigned': {for (final b in scanBook.values) b.id}.length};
+  }
+  @override
+  Future<LoadingFinishResult> loadingFinish(String offerId) async {
+    calls.add('finish-loading'); await gate?.future; _maybeThrow();
+    if (jobAfterFinish != null) jobResult = jobAfterFinish;
+    return LoadingFinishResult({'loaded': scannedIds.length, 'released': finishReleased});
+  }
+  // ── evidence uploads and manual route order ──
+  int _media = 0;
+  @override
+  Future<Json> uploadStopMedia(String offerId, String stopId, {required String kind, String? path, Uint8List? bytes, required String filename, void Function(double progress)? onProgress}) async {
+    calls.add('media:$stopId:$kind:$filename${bytes != null ? ':${bytes.length}b' : ''}'); onProgress?.call(0.5); await gate?.future; _maybeThrow();
+    return {'id': 'm${++_media}', 'kind': kind};
+  }
+  Job? jobAfterReorder;
+  @override
+  Future<RouteOptimizeResult> routeReorder(String offerId, List<String> order) async {
+    calls.add('reorder:${order.join(',')}'); await gate?.future; _maybeThrow();
+    if (jobAfterReorder != null) jobResult = jobAfterReorder;
+    return RouteOptimizeResult({'plan': {}, 'currentId': null});
+  }
+  /// What `POST /offers/:id/route/optimize` answers, and the job the server then holds (the next job read returns [jobAfterOptimize], like a re-plan would).
+  RouteOptimizeResult optimizeResult = RouteOptimizeResult({'plan': {}, 'cached': false, 'changed': true, 'currentId': null});
+  Job? jobAfterOptimize;
+  @override
+  Future<RouteOptimizeResult> optimizeRoute(String offerId, {double? lat, double? lng}) async {
+    calls.add('optimize:$lat,$lng');
+    await gate?.future;
+    _maybeThrow();
+    if (jobAfterOptimize != null) jobResult = jobAfterOptimize;
+    return optimizeResult;
+  }
+  @override
+  Future<void> ackLoading(String offerId, bool ok, {String? note}) async { calls.add(note == null ? 'ack:$ok' : 'ack:$ok:$note'); _maybeThrow(); }
+  @override
+  Future<void> reportNoWork(String offerId, String? note) async { calls.add('noWork:${note ?? ''}'); _maybeThrow(); }
+  @override
+  Future<void> rate(String offerId, int stars, {String? comment}) async { calls.add('rate:$stars:${comment ?? ''}'); _maybeThrow(); }
+  @override
+  Future<List<Json>> custody(String offerId) async => custodyItems;
+  @override
+  Future<void> acknowledgeCustody(String itemId) async { calls.add('custody:$itemId'); _maybeThrow(); custodyItems = [for (final i in custodyItems) i['id'] == itemId ? {...i, 'status': 'acknowledged'} : i]; }
+  @override
+  Future<Json> profile() async => profileResult;
+  @override
+  Future<Json> updateProfile(Json body) async { calls.add('profile:${jsonEncode(body)}'); _maybeThrow(); return {'user': {'id': 'u1', 'name': body['name'], 'role': 'driver'}, 'profile': {}}; }
+  @override
+  Future<Json> requestWithdrawal(int cents) async { calls.add('withdraw:$cents'); await gate?.future; _maybeThrow(); return {}; }
+  @override
+  Future<void> reject(String offerId) async { calls.add('reject:$offerId'); _maybeThrow(); }
+  Json meResult = {'user': {'id': 'u1', 'role': 'driver', 'name': 'Omar Test', 'phone': '0500000011', 'language': 'en'}};
+  Object? meError;
+  @override
+  Future<Json> me() async { if (meError != null) throw meError!; return meResult; }
+  @override
+  Future<void> delivered(String offerId, [int? units]) async { calls.add(units == null ? 'delivered:{}' : 'delivered:$units'); _maybeThrow(); }
   @override
   Future<Json> accept(String offerId) async { calls.add('accept:$offerId'); _maybeThrow(); return {'id': offerId}; }
+  Object? cancelError;
   @override
-  Future<Json> cancel(String offerId, String reason) async { calls.add('cancel:$reason'); return {}; }
+  Future<Json> cancel(String offerId, String reason) async { calls.add('cancel:$reason'); if (cancelError != null) throw cancelError!; return {}; }
   @override
-  Future<Json> whatsapp(String offerId, String kind, String lang) async { calls.add('wa:$kind:$lang'); _maybeThrow(); return waResult; }
+  Future<Json> whatsapp(String offerId, String kind, String lang, {String? shipmentId}) async { calls.add(shipmentId == null ? 'wa:$kind:$lang' : 'wa:$kind:$lang:$shipmentId'); _maybeThrow(); return waResult; }
+  // per-parcel delivery: each call is recorded, may be failed via errorOnNext, and (like the server) moves the next stop to "current"
+  @override
+  Future<void> routeApprove(String offerId) async { calls.add('approve'); _maybeThrow(); }
+  @override
+  Future<void> arriveStop(String offerId, String stopId, {double? lat, double? lng}) async { calls.add('arrive:$stopId:$lat,$lng'); await gate?.future; _maybeThrow(); }
+  @override
+  Future<Json> deliverStop(String offerId, String stopId, {required String code, String? otp, String? proof, String? receiverName, String? signatureMediaId, int? cashCollectedCents, double? lat, double? lng}) async { calls.add('deliver:$stopId:$code:${otp ?? ''}:${proof ?? ''}:${receiverName ?? ''}${signatureMediaId != null ? ':sig=$signatureMediaId' : ''}${cashCollectedCents != null ? ':cash=$cashCollectedCents' : ''}'); await gate?.future; _maybeThrow(); return {}; }
+  @override
+  Future<Json> failStop(String offerId, String stopId, String reason, {String? note, String? mediaId, double? lat, double? lng}) async { calls.add('fail:$stopId:$reason:${note ?? ''}${mediaId != null ? ':media=$mediaId' : ''}'); await gate?.future; _maybeThrow(); return {}; }
+  @override
+  Future<Json> deferStop(String offerId, String stopId, {String? note, String? mediaId}) async { calls.add('defer:$stopId${note != null ? ':note=$note' : ''}${mediaId != null ? ':media=$mediaId' : ''}'); await gate?.future; _maybeThrow(); return {}; }
+  @override
+  Future<Json> resendCode(String offerId, String stopId) async { calls.add('resend:$stopId'); _maybeThrow(); return {}; }
+  @override
+  Future<Json> uploadProof(String offerId, String stopId, String path, String filename, {void Function(double progress)? onProgress}) async { calls.add('proof:$stopId:$filename'); onProgress?.call(0.5); await gate?.future; _maybeThrow(); return {}; }
+  @override
+  Future<Json> endRoute(String offerId, String reason, {String? note}) async { calls.add('endRoute:$reason:${note ?? ''}'); _maybeThrow(); return {}; }
   @override
   Future<void> setAvailability(bool on) async { calls.add('avail:$on'); overviewResult = Overview({...overviewResult.j, 'availability': on ? 'available' : 'unavailable'}); }
   @override
   Future<void> clearLocation() async { calls.add('clearLocation'); }
   @override
   Future<void> sendLocation(double lat, double lng) async { calls.add('loc'); }
-  @override
-  Future<RoutePlan> optimizeRoute(double lat, double lng, List<String> ids) async { calls.add('route:${ids.length}'); return plan!; }
   @override
   Future<List<Map<String, dynamic>>> messages(String offerId) async => [];
   @override
@@ -88,18 +193,61 @@ class FakeLinks implements LinkOpener {
   Future<bool> open(Uri uri) async { opened.add(uri); return succeed; }
   @override
   Future<bool> call(String phone) async { called.add(phone); return succeed; }
+  int settingsOpened = 0;
+  @override
+  Future<bool> openAppSettings() async { settingsOpened++; return true; }
+}
+
+class FakePhotos implements PhotoPicker {
+  PickedPhoto? next = (path: '/tmp/receipt.jpg', name: 'receipt.jpg');
+  PhotoException? failWith;
+  int taken = 0;
+  @override
+  Future<PickedPhoto?> takePhoto() async { taken++; if (failWith != null) throw failWith!; return next; }
 }
 
 class FakeLocation implements LocationService {
-  FakeLocation({this.granted = true, this.pos = const (lat: 24.7, lng: 46.7)});
+  FakeLocation({this.granted = true, this.pos = const (lat: 24.7, lng: 46.7), this.grantOnRequest = false});
   bool granted;
   LatLng? pos;
+  /// The driver says "Allow" when the OS permission dialog appears.
+  bool grantOnRequest;
+  int permissionRequests = 0;
   @override
   Future<bool> hasPermission() async => granted;
   @override
-  Future<bool> requestPermission() async => granted;
+  Future<bool> requestPermission() async { permissionRequests++; if (grantOnRequest) granted = true; return granted; }
   @override
   Future<LatLng?> current() async => granted ? pos : null;
+}
+
+/// A "camera" that sees the codes queued in [queue]. One-shot mode returns the next one; continuous mode feeds every queued code to the caller's handler (like the real page does).
+class FakeBarcodeScanner implements BarcodeScanner {
+  final queue = <String>[];
+  final opened = <({String? title, bool continuous})>[];
+  final verdicts = <ScanVerdict>[];
+  @override
+  Future<String?> scan(BuildContext context, {String? title, bool continuous = false, ScanHandler? onCode}) async {
+    opened.add((title: title, continuous: continuous));
+    if (!continuous) return queue.isEmpty ? null : queue.removeAt(0);
+    String? last;
+    while (queue.isNotEmpty) {
+      final c = queue.removeAt(0);
+      final v = await onCode?.call(c) ?? const ScanVerdict(true);
+      verdicts.add(v);
+      if (v.ok) last = c;
+    }
+    return last;
+  }
+}
+
+/// Camera / gallery for evidence photos.
+class FakeEvidencePhotos implements EvidencePhotos {
+  PickedPhoto? next = (path: '/tmp/evidence.jpg', name: 'evidence.jpg');
+  PhotoException? failWith;
+  final sources = <ImageSource>[];
+  @override
+  Future<PickedPhoto?> pick(ImageSource source) async { sources.add(source); if (failWith != null) throw failWith!; return next; }
 }
 
 Job mkJob({String status = 'accepted', String service = 'delivery_driver', List<String>? actions, Json? extra}) => Job({
@@ -110,17 +258,80 @@ Job mkJob({String status = 'accepted', String service = 'delivery_driver', List<
       'recipient': {'name': 'Mona', 'phone': '+966555555555'}, 'loadedUnits': null, 'loadedAckByDriver': null, 'deliveredUnits': null, 'finalUnits': null, 'actions': actions ?? ['checkin', 'cancel'], ...?extra,
     });
 
+Json mkStop(int n, {String status = 'loaded', bool current = false, String type = 'consumer', Json? extra}) => {
+      'id': 's$n', 'seq': n, 'stopOrder': n, 'code': 'JR-000042-${n.toString().padLeft(3, '0')}', 'status': status, 'recipientType': type,
+      'address': 'Street $n, Riyadh', 'city': 'riyadh', 'lat': null, 'lng': null, 'contents': 'Clothes $n', 'notes': null,
+      'recipientName': current || status == 'delivered' || status == 'failed' ? 'Recipient $n' : null, 'recipientPhone': current ? '+96655500000$n' : null,
+      'current': current, 'attempts': 0, 'deferCount': 0, 'canDefer': false, 'arrivedAt': null, 'waitRemainingSec': null,
+      'proofMode': type == 'business' ? 'code_or_receipt' : 'code', 'hasProof': false, 'otpAttemptsLeft': 5, 'canResend': true, 'deliveredAt': null, 'failReason': null, 'failNote': null, ...?extra,
+    };
+
+/// A stop with a map position and a driving leg into it (what the server sends once the route is planned).
+Json mkLegStop(int n, {bool current = false, String type = 'consumer', int legM = 4200, int legS = 720, String geoSource = 'given', Json? extra}) => mkStop(n, current: current, type: type, extra: {
+      'located': true, 'lat': 24.70 + n / 100, 'lng': 46.60 + n / 100, 'geoSource': geoSource, 'legDistanceM': legM, 'legDurationS': legS, ...?extra,
+    });
+
+/// The `route` object of a planned manifest job (see memory/SHIPMENTS_API.md, Addendum D).
+Json mkRoute({String? provider = 'google_routes', bool planned = true, bool canOptimize = true, List<String> warnings = const [], Json? extra}) => {
+      'planned': planned, 'provider': provider, 'plannedAt': '2026-12-01T06:20:00.000Z', 'by': 'system', 'totalDistanceM': 24300, 'totalDurationS': 6720,
+      'remainingDistanceM': 12000, 'remainingDurationS': 3100, 'chunks': 1, 'unlocated': 0, 'approximate': 0, 'warnings': warnings, 'googleConfigured': provider == 'google_routes', 'canOptimize': canOptimize, ...?extra,
+    };
+
+/// Field-ops additions to a job view (`ops`, `arrival`, `loading`, `policy`, `cod`) — pass them as `extra` of [mkJob] / [mkManifestJob].
+Json mkOps({bool arrivalConfirm = true, bool loadingRecord = false, bool otp = true, bool signature = false}) => {'requireArrivalConfirmation': arrivalConfirm, 'requireLoadingRecord': loadingRecord, 'requireDeliveryOtp': otp, 'requireSignature': signature};
+Json mkArrival({bool geofence = true, int radiusM = 200, double? lat = 24.7, double? lng = 46.6}) => {'geofence': geofence, 'radiusM': radiusM, 'warehouse': lat == null || lng == null ? null : {'lat': lat, 'lng': lng}};
+Json mkLoading({String mode = 'driver_scan', int assigned = 0, int scanned = 0, bool finished = false}) => {'mode': mode, 'assigned': assigned, 'scanned': scanned, 'finished': finished};
+Json mkPolicy({bool reorder = true, bool text = true, bool photo = true, int wait = 0, bool strict = false}) => {'canReorderRoute': reorder, 'rescheduleEvidenceText': text, 'rescheduleEvidencePhoto': photo, 'stopWaitMin': wait, 'failStrict': strict};
+Json mkCod({int toCollect = 0, int collected = 0, int parcels = 0}) => {'toCollectCents': toCollect, 'collectedCents': collected, 'parcels': parcels};
+
+/// A per-parcel job (manifest: true). `stops` default to 3 open stops; `delivery`/`recipient` are null like the server sends them.
+Job mkManifestJob({String status = 'attendance_confirmed', List<String>? actions, List<Json>? stops, Json? summary, Json? extra}) {
+  final st = stops ?? [mkStop(1, current: true), mkStop(2), mkStop(3)];
+  int c(bool Function(Json) f) => st.where(f).length;
+  return mkJob(status: status, actions: actions ?? ['work_stops', 'end_route'], extra: {
+    'manifest': true, 'allowPartial': true, 'delivery': null, 'recipient': null, 'loadedUnits': st.length, 'loadedAckByDriver': true, 'routeApprovedAt': '2026-12-01T06:30:00.000Z', 'expectedUnits': st.length,
+    'stops': st,
+    'stopsSummary': summary ?? {'total': st.length, 'pending': 0, 'loaded': c((s) => s['status'] == 'loaded'), 'delivered': c((s) => s['status'] == 'delivered'), 'failed': c((s) => s['status'] == 'failed'), 'returned': 0, 'missing': 0},
+    ...?extra,
+  });
+}
+
+/// A job in loading-by-scanning mode: [total] parcels, those numbered in [scanned] are already on the vehicle.
+Job scanJob({int total = 4, List<int> scanned = const [], List<String>? actions, Json? extra}) {
+  final stops = [for (var n = 1; n <= total; n++) mkStop(n, status: scanned.contains(n) ? 'loaded' : 'pending')];
+  return mkManifestJob(
+    status: 'attendance_confirmed', actions: actions ?? ['scan_loading', if (scanned.isNotEmpty) 'finish_loading', 'report_no_work'], stops: stops,
+    summary: {'total': total, 'pending': total - scanned.length, 'loaded': scanned.length, 'delivered': 0, 'failed': 0, 'returned': 0, 'missing': 0},
+    extra: {'routeApprovedAt': null, 'loadedUnits': null, 'loadedAckByDriver': null, 'loading': mkLoading(assigned: total, scanned: scanned.length), ...?extra},
+  );
+}
+
+void seedBook(FakeApi api, int total, {List<int> scanned = const []}) {
+  for (var n = 1; n <= total; n++) {
+    final code = 'JR-000042-${n.toString().padLeft(3, '0')}';
+    final e = (id: 's$n', code: code, seq: n);
+    api.scanBook[code] = e;
+    api.scanBook['ORD-$n'] = e; // the warehouse order reference finds the same parcel
+    if (scanned.contains(n)) api.scannedIds.add('s$n');
+  }
+}
+
 /// Pumps [child] inside a themed, localized shell with the real dictionaries.
-Future<void> pumpScreen(WidgetTester t, Widget child, {String lang = 'en', required FakeApi api, FakeLinks? links, FakeLocation? location, List<Override> extra = const []}) async {
+Future<void> pumpScreen(WidgetTester t, Widget child, {String lang = 'en', required FakeApi api, FakeLinks? links, LocationService? location, FakePhotos? photos, FakeBarcodeScanner? scanner, EvidencePhotos? evidence, List<Override> extra = const []}) async {
   SharedPreferences.setMockInitialValues({'lang': lang});
   final prefs = await SharedPreferences.getInstance();
   t.view.physicalSize = const Size(900, 1900);
   t.view.devicePixelRatio = 2;
   addTearDown(t.view.reset);
   await t.pumpWidget(ProviderScope(
+    retry: (_, _) => null,
     overrides: [
       prefsProvider.overrideWithValue(prefs), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(MemoryTokenStore()),
-      linkOpenerProvider.overrideWithValue(links ?? FakeLinks()), locationServiceProvider.overrideWithValue(location ?? FakeLocation()), ...extra,
+      linkOpenerProvider.overrideWithValue(links ?? FakeLinks()), locationServiceProvider.overrideWithValue(location ?? FakeLocation()), photoPickerProvider.overrideWithValue(photos ?? FakePhotos()),
+      barcodeScannerProvider.overrideWithValue(scanner ?? FakeBarcodeScanner()), evidencePhotosProvider.overrideWithValue(evidence ?? FakeEvidencePhotos()),
+      // the real signature encoder needs the engine's async image pipeline: tests get a tiny fixed PNG-like payload instead
+      signatureExporterProvider.overrideWithValue((SignatureController c) async => c.hasSignature ? Uint8List.fromList(const [137, 80, 78, 71, 1, 2, 3]) : null),
+      ...extra,
     ],
     child: MaterialApp(
       theme: buildTheme(), locale: Locale(lang),
@@ -141,6 +352,7 @@ Future<void> pumpRouted(WidgetTester t, Widget child, {String lang = 'en', requi
   addTearDown(t.view.reset);
   final router = GoRouter(routes: [GoRoute(path: '/', builder: (_, _) => child), GoRoute(path: '/job/:id', builder: (_, s) => Scaffold(body: Center(child: Text('JOB-PAGE-${s.pathParameters['id']}'))))]);
   await t.pumpWidget(ProviderScope(
+    retry: (_, _) => null,
     overrides: [prefsProvider.overrideWithValue(prefs), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(MemoryTokenStore()), linkOpenerProvider.overrideWithValue(links ?? FakeLinks()), locationServiceProvider.overrideWithValue(FakeLocation())],
     child: MaterialApp.router(
       theme: buildTheme(), locale: Locale(lang), routerConfig: router,

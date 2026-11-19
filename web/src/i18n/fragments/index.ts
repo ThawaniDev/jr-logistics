@@ -1,0 +1,47 @@
+import type { Dict } from "../core";
+import * as auth from "./auth";
+import * as business from "./business";
+import * as driver from "./driver";
+import * as office from "./office";
+import * as admin from "./admin";
+import * as shipCore from "./shipments-core";
+import * as shipBusiness from "./shipments-business";
+import * as shipDriver from "./shipments-driver";
+import * as shipAdmin from "./shipments-admin";
+import * as shipMobile from "./shipments-mobile";
+import * as partnersCore from "./partners-core";
+import * as partnersBusiness from "./partners-business";
+import * as partnersAdmin from "./partners-admin";
+import * as parcelsCore from "./parcels-core";
+import * as parcelsBusiness from "./parcels-business";
+import * as routeDriver from "./route-driver";
+import * as routeMobile from "./route-mobile";
+import * as foCore from "./fieldops-core";
+import * as foBusiness from "./fieldops-business";
+import * as foAdmin from "./fieldops-admin";
+import * as foDriver from "./fieldops-driver";
+import * as foMobileA from "./fieldops-mobile-a";
+import * as foMobileB from "./fieldops-mobile-b";
+import * as uxBusiness from "./ux-business";
+import * as uxAdmin from "./ux-admin";
+import * as uxDriver from "./ux-driver";
+import * as uxMobile from "./ux-mobile";
+import * as uxServer from "./ux-server";
+import * as rdCore from "./redesign-core";
+import * as rdFinance from "./rd-finance";
+import * as rdPartners from "./rd-partners";
+import * as rdOffices from "./rd-offices";
+import * as rdAdminA from "./rd-admin-a";
+import * as rdAdminB from "./rd-admin-b";
+import * as rdBusiness from "./rd-business";
+import * as rdOffice from "./rd-office";
+
+const parts = [auth, business, driver, office, admin, shipCore, shipBusiness, shipDriver, shipAdmin, shipMobile, partnersCore, partnersBusiness, partnersAdmin, parcelsCore, parcelsBusiness, routeDriver, routeMobile, foCore, foBusiness, foAdmin, foDriver, foMobileA, foMobileB, uxBusiness, uxAdmin, uxDriver, uxMobile, uxServer, rdCore, rdFinance, rdPartners, rdOffices, rdAdminA, rdAdminB, rdBusiness, rdOffice];
+const dup = new Set<string>();
+const merge = (lang: "en" | "ar" | "ur"): Dict => {
+  const out: Dict = {};
+  for (const p of parts) for (const [k, v] of Object.entries(p[lang])) { if (lang === "en" && k in out) dup.add(k); out[k] = v; }
+  return out;
+};
+export const extra = { en: merge("en"), ar: merge("ar"), ur: merge("ur") };
+export const duplicateKeys = () => [...dup];

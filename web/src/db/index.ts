@@ -3,7 +3,6 @@ import { Pool } from "pg";
 import * as schema from "./schema";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __jrPool: Pool | undefined;
 }
 
@@ -15,6 +14,8 @@ function pool(): Pool {
   }
   return globalThis.__jrPool;
 }
+
+export const getPool = pool;
 
 let _db: NodePgDatabase<typeof schema> | undefined;
 export function getDb() {

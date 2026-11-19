@@ -66,7 +66,7 @@ export const ALL_PERMISSIONS = [
   "attendance.edit", "replacements.manage", "live_location.view",
   "tickets.view", "tickets.manage", "complaints.manage", "custody.view",
   "finance.view", "wallets.view", "wallet.adjust",
-  "settlements.review", "settlements.approve", "payouts.execute", "withdrawals.manage",
+  "settlements.review", "settlements.approve", "payouts.execute", "withdrawals.manage", "cod.manage",
   "pricing.view", "pricing.edit", "refunds.manage",
   "reports.view", "reports.export",
   "staff.view", "staff.manage",
@@ -80,11 +80,11 @@ export const STAFF_PRESETS: Record<string, Permission[]> = {
   operations: [
     "users.view", "drivers.view", "requests.view", "requests.edit", "requests.assign", "attendance.edit",
     "replacements.manage", "live_location.view", "tickets.view", "tickets.manage", "complaints.manage",
-    "custody.view", "documents.review",
+    "custody.view", "documents.review", "cod.manage",
   ],
   finance: [
     "finance.view", "wallets.view", "settlements.review", "settlements.approve", "payouts.execute",
-    "withdrawals.manage", "refunds.manage", "requests.view", "reports.view", "reports.export",
+    "withdrawals.manage", "refunds.manage", "requests.view", "reports.view", "reports.export", "cod.manage",
   ],
   hr_verification: [
     "users.view", "users.edit", "drivers.view", "drivers.sensitive", "verification.manage", "documents.review",
@@ -114,10 +114,25 @@ export const BUSINESS_DOC_TYPES = [
 
 // ── Support taxonomy ──
 export const TICKET_CATEGORIES = {
-  business: ["driver_no_show", "shipment_count", "location_issue", "payment_issue", "replacement_request", "urgent", "other"],
-  driver: ["business_not_ready", "not_put_to_work", "shipment_count_differs", "location_issue", "attendance_issue", "payment_issue", "other"],
-  office: ["driver_assignment", "settlement_issue", "payment_issue", "agreement", "documents", "urgent", "other"],
+  business: ["driver_no_show", "shipment_count", "location_issue", "payment_issue", "cod_issue", "replacement_request", "urgent", "app_problem", "other"],
+  driver: ["business_not_ready", "not_put_to_work", "shipment_count_differs", "location_issue", "attendance_issue", "payment_issue", "cod_issue", "app_problem", "other"],
+  office: ["driver_assignment", "settlement_issue", "payment_issue", "agreement", "documents", "urgent", "app_problem", "other"],
 } as const;
 export const URGENT_TICKET_CATEGORIES = ["urgent", "driver_no_show", "business_not_ready", "not_put_to_work"];
 export const COMPLAINT_CATEGORIES = ["delay", "behavior", "service_quality", "payment", "custody", "damage", "no_show", "other"] as const;
-export const CUSTODY_ITEM_TYPES = ["pos_device", "network_device", "phone", "charger", "bag", "other"] as const;
+// Card (POS/network) terminals stay out of scope (owner decision C8). Cash on delivery IS tracked now (decision E17) but never touches the wallet ledger.
+export const CUSTODY_ITEM_TYPES = ["phone", "charger", "bag", "other"] as const;
+
+// ── Shipments (one row per parcel / stop) ──
+export const SHIPMENT_STATUS = ["pending", "loaded", "delivered", "failed", "returned", "missing", "cancelled"] as const;
+export type ShipmentStatus = (typeof SHIPMENT_STATUS)[number];
+/** B2C = consumer (a person at an address, proven with their one-time code); B2B = business (code, or a signed/stamped receipt photo). */
+export const RECIPIENT_TYPES = ["consumer", "business"] as const;
+export type RecipientType = (typeof RECIPIENT_TYPES)[number];
+export const STOP_FAIL_REASONS = ["unreachable", "refused", "wrong_address", "out_of_zone", "closed", "no_otp", "damaged", "gate_access", "other"] as const;
+export type StopFailReason = (typeof STOP_FAIL_REASONS)[number];
+/** Reasons that need a note so operations can understand them. */
+export const FAIL_NEEDS_NOTE: readonly string[] = ["wrong_address", "other", "damaged"];
+/** Reasons that can only be raised once the driver is standing at the address. */
+export const FAIL_NEEDS_ARRIVAL: readonly string[] = ["unreachable", "refused", "closed", "no_otp", "damaged", "gate_access"];
+export const MAX_SHIPMENTS_PER_REQUEST = 2000;

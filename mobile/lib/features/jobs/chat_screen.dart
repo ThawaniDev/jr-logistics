@@ -45,7 +45,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _send() async {
     final text = _c.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     final ok = await guarded(context, () async { await ref.read(apiProvider).sendMessage(widget.offerId, text); return true; });
     if (ok == true) { _c.clear(); await _load(); }
@@ -65,16 +65,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
             decoration: BoxDecoration(color: mine ? JR.accent.withValues(alpha: 0.18) : JR.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: mine ? JR.accent.withValues(alpha: 0.4) : JR.line)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (!mine) Text('${m['senderName']} · ${t('role.${m['senderRole']}')}', style: const TextStyle(color: JR.muted, fontSize: 11)),
+              if (!mine) Text('${m['senderName'] ?? ''} · ${t.has('role.${m['senderRole']}') ? t('role.${m['senderRole']}') : ''}', style: const TextStyle(color: JR.muted, fontSize: 11)),
               Text('${m['body']}', style: const TextStyle(fontSize: 15, height: 1.35)),
-              Align(alignment: AlignmentDirectional.centerEnd, child: Text(fmtTime(m['createdAt'] as String), style: const TextStyle(color: JR.muted, fontSize: 10))),
+              Align(alignment: AlignmentDirectional.centerEnd, child: Text(fmtTime('${m['createdAt'] ?? ''}'), style: const TextStyle(color: JR.muted, fontSize: 10))),
             ]),
           ));
         })),
         SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 8), child: Row(children: [
           Expanded(child: TextField(key: const Key('chat-input'), controller: _c, maxLength: 1000, onChanged: (_) => setState(() {}), decoration: InputDecoration(hintText: t('m.chat_hint'), counterText: ''), onSubmitted: (_) => _send())),
           const SizedBox(width: 8),
-          IconButton.filled(key: const Key('chat-send'), style: IconButton.styleFrom(backgroundColor: JR.accent, foregroundColor: JR.accentInk, minimumSize: const Size(54, 54)), onPressed: _sending || _c.text.trim().isEmpty ? null : _send, icon: Icon(Icons.send, textDirection: Directionality.of(context) == TextDirection.rtl ? TextDirection.ltr : TextDirection.rtl)),
+          IconButton.filled(key: const Key('chat-send'), tooltip: t('chat.send'), style: IconButton.styleFrom(backgroundColor: JR.accent, foregroundColor: JR.accentInk, minimumSize: const Size(54, 54)), onPressed: _sending || _c.text.trim().isEmpty ? null : _send, icon: const Icon(Icons.send)), // Icons.send mirrors itself in RTL (matchTextDirection)
         ]))),
       ]),
     );

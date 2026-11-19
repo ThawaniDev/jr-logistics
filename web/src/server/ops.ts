@@ -1,15 +1,17 @@
 import { and, desc, eq, gte, inArray, lt, sql, count, sum, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  users, requests, offers, tickets, complaints, settlements, documents, driverProfiles, withdrawals, walletAccounts, auditLogs, custodyItems, businessProfiles, officeProfiles, type User,
+  users, requests, offers, shipments, tickets, complaints, settlements, documents, driverProfiles, withdrawals, walletAccounts, auditLogs, custodyItems, businessProfiles, officeProfiles, type User,
 } from "@/db/schema";
 import { err } from "@/lib/errors";
 import { OFFER_BUSY } from "./catalog";
 import { getSettings } from "./settings";
 import { audit } from "./audit";
+import { notify } from "./notify";
 import { requirePerm, can } from "./auth/permissions";
 import { dispatchOffers, evaluateCandidates } from "./matching";
 import { lockRequest } from "./requests";
+import { contains, likeEscape } from "@/lib/sql";
 
 // ───────── SLA (pure; unit-tested) ─────────
 export type StartSla = "on_time" | "late" | "missed" | "at_risk" | "pending";
@@ -26,7 +28,7 @@ export function startSla(i: { startsAt: Date; arrivedAt: Date | null; status: st
 }
 
 // ───────── Dashboards ─────────
-export async function adminStats() {
+export async function adminStats(viewer: Pick<User, "role" | "permissions">) {
   const [byRole, byStatus, [t], [c], [v], [s], [w], [gmv]] = await Promise.all([
     db.select({ role: users.role, n: count() }).from(users).groupBy(users.role),
     db.select({ status: requests.status, n: count() }).from(requests).groupBy(requests.status),
@@ -44,9 +46,9 @@ export async function adminStats() {
     users: Object.fromEntries(byRole.map((r) => [r.role, Number(r.n)])),
     requests: Object.fromEntries(byStatus.map((r) => [r.status, Number(r.n)])),
     openTickets: Number(t.n), openComplaints: Number(c.n), documentsToReview: Number(v.n),
-    pendingSettlements: Number(s.n), pendingPayoutCents: Number(s.amt ?? 0), pendingWithdrawals: Number(w.n),
+    pendingSettlements: Number(s.n), ...(can(viewer, "finance.view") ? { pendingPayoutCents: Number(s.amt ?? 0) } : {}), pendingWithdrawals: Number(w.n),
     pendingVerification: { business: Number(pendingBiz.n), office: Number(pendingOff.n), drivers: Number(pendingDrv.n) },
-    gmvCents: Number(gmv.g ?? 0), marginCents: Number(gmv.m ?? 0),
+    ...(can(viewer, "finance.view") ? { gmvCents: Number(gmv.g ?? 0), marginCents: Number(gmv.m ?? 0) } : {}),
   };
 }
 
@@ -56,7 +58,19 @@ export async function businessOverview(biz: User) {
     db.select({ s: sum(settlements.customerCents) }).from(settlements).where(and(eq(settlements.businessId, biz.id), eq(settlements.status, "paid"))),
   ]);
   const [bp] = await db.select().from(businessProfiles).where(eq(businessProfiles.userId, biz.id));
-  return { requests: Object.fromEntries(byStatus.map((r) => [r.status, Number(r.n)])), totalSpentCents: Number(spent.s ?? 0), verificationStatus: bp?.verificationStatus ?? "pending", rating: bp?.ratingCount ? Math.round((bp.ratingSum / bp.ratingCount) * 10) / 10 : null };
+  // Things only the business can move forward right now (driver arrived → confirm attendance; delivery reported → confirm quantity).
+  const waiting = await db.select({ status: offers.status, n: count() }).from(offers).innerJoin(requests, eq(requests.id, offers.requestId))
+    .where(and(eq(requests.businessId, biz.id), inArray(offers.status, ["accepted", "arrived"]))).groupBy(offers.status);
+  const w = Object.fromEntries(waiting.map((r) => [r.status, Number(r.n)]));
+  const s = await getSettings();
+  // Undelivered parcels the warehouse still has to receive back (failed, not yet marked returned) across all this business's requests.
+  const [ret] = await db.select({ n: count() }).from(shipments).innerJoin(requests, eq(requests.id, shipments.requestId)).where(and(eq(requests.businessId, biz.id), eq(shipments.status, "failed")));
+  const wh = bp?.warehouseLat != null && bp?.warehouseLng != null ? { lat: bp.warehouseLat, lng: bp.warehouseLng } : null;
+  const ops = await (await import("./warehouse")).effectiveOps(biz.id, db, s);
+  // Parcels delivered today (Riyadh calendar day) and in the last 7 days — the dashboard's "delivered" tile.
+  const dayStart = new Date(Math.floor((Date.now() + 3 * 3600_000) / 86_400_000) * 86_400_000 - 3 * 3600_000), weekStart = new Date(Date.now() - 7 * 86_400_000);
+  const [dl] = await db.select({ today: sql<number>`count(*) filter (where ${shipments.deliveredAt} >= ${dayStart})::int`, week: sql<number>`count(*) filter (where ${shipments.deliveredAt} >= ${weekStart})::int` }).from(shipments).innerJoin(requests, eq(requests.id, shipments.requestId)).where(and(eq(requests.businessId, biz.id), eq(shipments.status, "delivered")));
+  return { warehouse: wh, ops, parcels: { deliveredToday: Number(dl?.today ?? 0), deliveredWeek: Number(dl?.week ?? 0) }, returnsPending: Number(ret.n), requireVerification: s.requireBusinessVerification, pendingAttendance: (w.arrived ?? 0), pendingDeliveryConfirm: 0, requests: Object.fromEntries(byStatus.map((r) => [r.status, Number(r.n)])), totalSpentCents: Number(spent.s ?? 0), verificationStatus: bp?.verificationStatus ?? "pending", rating: bp?.ratingCount ? Math.round((bp.ratingSum / bp.ratingCount) * 10) / 10 : null };
 }
 
 // ───────── Operations queue ─────────
@@ -67,7 +81,7 @@ export async function opsAlerts() {
   const late = await db.select({ o: offers, r: requests, d: users.name }).from(offers).innerJoin(requests, eq(requests.id, offers.requestId)).innerJoin(users, eq(users.id, offers.driverId))
     .where(and(eq(offers.status, "accepted"), lt(requests.startsAt, new Date(now.getTime() - s.lateGraceMin * 60_000))));
   for (const l of late) alerts.push({ type: "driver_late", severity: "critical", requestId: l.r.id, offerId: l.o.id, ref: l.r.ref, detail: { driver: l.d, startsAt: l.r.startsAt } });
-  const unfilled = await db.select().from(requests).where(and(inArray(requests.status, ["published", "filling"]), sql`${requests.slotsFilled} < ${requests.quantity}`, lt(requests.startsAt, new Date(now.getTime() + 24 * 3600_000))));
+  const unfilled = await db.select().from(requests).where(and(inArray(requests.status, ["published", "filling"]), sql`${requests.slotsFilled} < ${requests.quantity}`, lt(requests.startsAt, new Date(now.getTime() + s.unfilledAlertHours * 3600_000))));
   for (const r of unfilled) alerts.push({ type: "unfilled_soon", severity: r.slotsFilled === 0 ? "critical" : "warning", requestId: r.id, ref: r.ref, detail: { open: r.quantity - r.slotsFilled, startsAt: r.startsAt } });
   const unconfirmed = await db.select({ o: offers, r: requests }).from(offers).innerJoin(requests, eq(requests.id, offers.requestId)).where(and(eq(offers.status, "delivered_reported"), lt(offers.deliveredAt, new Date(now.getTime() - 24 * 3600_000))));
   for (const u of unconfirmed) alerts.push({ type: "delivery_unconfirmed", severity: "warning", requestId: u.r.id, offerId: u.o.id, ref: u.r.ref });
@@ -83,7 +97,8 @@ export async function opsAlerts() {
 }
 
 export async function opsToday() {
-  const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+  const KSA = 3 * 3600_000; // Saudi Arabia is UTC+3 all year: "today" starts at local midnight, not UTC midnight
+  const start = new Date(Math.floor((Date.now() + KSA) / 864e5) * 864e5 - KSA);
   const end = new Date(start.getTime() + 864e5);
   const rows = await db.select({ o: offers, r: requests }).from(offers).innerJoin(requests, eq(requests.id, offers.requestId)).where(and(gte(requests.startsAt, start), lt(requests.startsAt, end)));
   const c = (st: string[]) => rows.filter((x) => st.includes(x.o.status)).length;
@@ -133,33 +148,50 @@ export async function rematch(staff: User, requestId: string) {
 }
 
 // ───────── Directory ─────────
-export async function driverDirectory(staff: User, f: { q?: string; verification?: string; page?: number }) {
+export async function driverDirectory(staff: User, f: { q?: string; verification?: string; status?: string; suspended?: boolean; page?: number; pageSize?: number }) {
+  return (await driverDirectoryPage(staff, f)).items;
+}
+/** Same list with the paging envelope: `total` counts every match, not just the page. */
+export async function driverDirectoryPage(staff: User, f: { q?: string; verification?: string; status?: string; suspended?: boolean; page?: number; pageSize?: number }) {
   requirePerm(staff, "drivers.view");
-  const page = Math.max(f.page ?? 1, 1);
+  const page = Math.max(f.page ?? 1, 1), pageSize = Math.min(Math.max(f.pageSize ?? 50, 1), 100);
   const sensitive = can(staff, "drivers.sensitive");
-  const rows = await db.select({ u: users, p: driverProfiles }).from(driverProfiles).innerJoin(users, eq(users.id, driverProfiles.userId))
-    .where(and(f.verification ? eq(driverProfiles.verificationStatus, f.verification) : undefined, f.q ? sql`(${users.name} ilike ${"%" + f.q + "%"} or ${users.phone} ilike ${"%" + f.q + "%"})` : undefined))
-    .orderBy(desc(users.createdAt)).limit(50).offset((page - 1) * 50);
-  return rows.map(({ u, p }) => ({
+  const q = f.q?.trim() ? contains(f.q) : null;
+  const where = and(
+    f.verification ? eq(driverProfiles.verificationStatus, f.verification) : undefined,
+    f.status ? eq(users.status, f.status) : undefined,
+    f.suspended === undefined ? undefined : f.suspended ? sql`${driverProfiles.suspendedUntil} > now()` : sql`(${driverProfiles.suspendedUntil} is null or ${driverProfiles.suspendedUntil} <= now())`,
+    q ? sql`(${users.name} ilike ${q} or ${users.phone} ilike ${q})` : undefined,
+  );
+  const [rows, [{ total }]] = await Promise.all([
+    db.select({ u: users, p: driverProfiles }).from(driverProfiles).innerJoin(users, eq(users.id, driverProfiles.userId)).where(where).orderBy(desc(users.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+    db.select({ total: count() }).from(driverProfiles).innerJoin(users, eq(users.id, driverProfiles.userId)).where(where),
+  ]);
+  const items = rows.map(({ u, p }) => ({
     id: u.id, name: u.name, phone: sensitive ? u.phone : u.phone?.replace(/\d(?=\d{3})/g, "•"), city: u.city, status: u.status,
     vehicleType: p.vehicleType, verificationStatus: p.verificationStatus, availability: p.availability, officeId: p.officeId,
     jobsCompleted: p.jobsCompleted, rating: p.ratingCount ? Math.round((p.ratingSum / p.ratingCount) * 10) / 10 : null, suspendedUntil: p.suspendedUntil, nationalId: sensitive ? p.nationalId : undefined,
   }));
+  return { items, page, pageSize, total: Number(total) };
 }
 export async function clearSuspension(staff: User, driverId: string) {
   requirePerm(staff, "users.edit");
-  await db.update(driverProfiles).set({ suspendedUntil: null }).where(eq(driverProfiles.userId, driverId));
+  // Also restart the strike count: otherwise the very next cancellation would re-suspend the driver immediately.
+  await db.update(driverProfiles).set({ suspendedUntil: null, strikesResetAt: new Date() }).where(eq(driverProfiles.userId, driverId));
   await audit(staff, "driver.clear_suspension", "user", driverId);
+  await notify(driverId, "suspension_cleared");
 }
 
 // ───────── Reports (one definition, paginated, CSV-exportable) ─────────
-export type ReportType = "requests" | "settlements" | "drivers" | "cancellations" | "sla" | "complaints" | "custody" | "withdrawals";
+export const REPORT_TYPES = ["requests", "settlements", "drivers", "cancellations", "sla", "complaints", "custody", "withdrawals"] as const;
+export type ReportType = (typeof REPORT_TYPES)[number];
 export async function report(staff: User, type: ReportType, f: { from?: Date; to?: Date; page?: number; pageSize?: number } = {}) {
   requirePerm(staff, "reports.view");
   const pageSize = Math.min(f.pageSize ?? 100, 1000), off = ((f.page ?? 1) - 1) * pageSize;
   const range = (col: Parameters<typeof gte>[0]) => and(f.from ? gte(col, f.from) : undefined, f.to ? lt(col, f.to) : undefined);
   const s = await getSettings();
   switch (type) {
+    default: throw err("NOT_FOUND", "Unknown report");
     case "requests": {
       const rows = await db.select().from(requests).where(range(requests.createdAt)).orderBy(desc(requests.createdAt)).limit(pageSize).offset(off);
       return { columns: ["ref", "service", "status", "quantity", "pickupCity", "deliveryCity", "startsAt", "totalCents"], rows: rows.map((r) => ({ ref: r.ref, service: r.service, status: r.status, quantity: r.quantity, pickupCity: r.pickupCity, deliveryCity: r.deliveryCity, startsAt: r.startsAt.toISOString(), totalCents: r.totalCents })) };
@@ -206,9 +238,22 @@ export function toCsv(columns: string[], rows: Array<Record<string, unknown>>) {
   return [columns.join(","), ...rows.map((r) => columns.map((c) => cell(r[c])).join(","))].join("\n");
 }
 
-export async function auditTrail(staff: User, f: { entity?: string; page?: number }) {
+export async function auditTrail(staff: User, f: { entity?: string; page?: number; actorId?: string; action?: string; from?: Date; to?: Date; pageSize?: number }) {
+  return (await auditPage(staff, f)).items;
+}
+/** Audit log with the actor's name joined in and a total. `action` matches by prefix ("settlement." finds every settlement action). */
+export async function auditPage(staff: User, f: { entity?: string; page?: number; pageSize?: number; actorId?: string; action?: string; from?: Date; to?: Date }) {
   requirePerm(staff, "audit.view");
-  const page = Math.max(f.page ?? 1, 1);
-  return db.select().from(auditLogs).where(f.entity ? eq(auditLogs.entity, f.entity) : undefined).orderBy(desc(auditLogs.createdAt)).limit(100).offset((page - 1) * 100);
+  const page = Math.max(f.page ?? 1, 1), pageSize = Math.min(Math.max(f.pageSize ?? 100, 1), 200);
+  const where = and(
+    f.entity ? eq(auditLogs.entity, f.entity) : undefined, f.actorId ? eq(auditLogs.actorId, f.actorId) : undefined,
+    f.action ? sql`${auditLogs.action} like ${likeEscape(f.action) + "%"}` : undefined,
+    f.from ? gte(auditLogs.createdAt, f.from) : undefined, f.to ? lt(auditLogs.createdAt, f.to) : undefined,
+  );
+  const [rows, [{ total }]] = await Promise.all([
+    db.select({ a: auditLogs, actorName: users.name }).from(auditLogs).leftJoin(users, sql`${users.id} = ${auditLogs.actorId}`).where(where).orderBy(desc(auditLogs.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+    db.select({ total: count() }).from(auditLogs).where(where),
+  ]);
+  return { items: rows.map(({ a, actorName }) => ({ ...a, actorName: actorName ?? null })), page, pageSize, total: Number(total) };
 }
 export { walletAccounts };

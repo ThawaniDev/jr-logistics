@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../providers.dart';
+import '../../services.dart';
 import '../../widgets/common.dart';
 
 final documentsProvider = FutureProvider.autoDispose((ref) => ref.watch(apiProvider).documents());
@@ -16,20 +17,31 @@ class DocumentsScreen extends ConsumerStatefulWidget {
 
 class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   String? _uploading;
+  double? _progress;
+  bool _cameraDenied = false;
 
   Future<void> _upload(String type) async {
+    if (_uploading != null) return;
     final src = await showModalBottomSheet<ImageSource>(context: context, useRootNavigator: true, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(16), child: Text(c.tr('m.pick_source'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-      ListTile(leading: const Icon(Icons.photo_camera_outlined, color: JR.accent), title: Text(c.tr('m.camera')), onTap: () => Navigator.pop(c, ImageSource.camera)),
-      ListTile(leading: const Icon(Icons.photo_library_outlined, color: JR.accent), title: Text(c.tr('m.gallery')), onTap: () => Navigator.pop(c, ImageSource.gallery)),
+      ListTile(minVerticalPadding: 14, leading: const Icon(Icons.photo_camera_outlined, color: JR.accent), title: Text(c.tr('m.camera')), onTap: () => Navigator.pop(c, ImageSource.camera)),
+      ListTile(minVerticalPadding: 14, leading: const Icon(Icons.photo_library_outlined, color: JR.accent), title: Text(c.tr('m.gallery')), onTap: () => Navigator.pop(c, ImageSource.gallery)),
     ])));
     if (src == null) return;
-    final f = await ImagePicker().pickImage(source: src, maxWidth: 2000, imageQuality: 85);
+    PickedPhoto? f;
+    try {
+      f = await pickPhoto(src);
+    } on PhotoException catch (e) {
+      // Camera/photo permission refused (or the picker failed): say so and, if it is a permission, point to Settings.
+      if (mounted) { setState(() => _cameraDenied = e.denied); if (!e.denied) toast(context, context.tr('um.camera_failed'), error: true); }
+      return;
+    }
     if (f == null || !mounted) return;
-    setState(() => _uploading = type);
-    final ok = await guarded(context, () => ref.read(apiProvider).uploadDocument(type, f.path, f.name), success: 'docs.uploaded');
+    final picked = f;
+    setState(() { _uploading = type; _progress = 0; _cameraDenied = false; });
+    final ok = await guarded(context, () => ref.read(apiProvider).uploadDocument(type, picked.path, picked.name, onProgress: (p) { if (mounted) setState(() => _progress = p); }), success: 'docs.uploaded');
     if (ok != null) { ref.invalidate(documentsProvider); ref.invalidate(overviewProvider); }
-    if (mounted) setState(() => _uploading = null);
+    if (mounted) setState(() { _uploading = null; _progress = null; });
   }
 
   @override
@@ -37,12 +49,18 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     final t = context.tr;
     final cat = ref.watch(catalogProvider).value;
     final docs = ref.watch(documentsProvider);
-    final types = (((cat?['documents'] as Map?)?['driver']) as List?)?.cast<Map>() ?? const [];
+    final types = ((((cat?['documents'] as Map?)?['driver']) as List?) ?? const []).whereType<Map>().toList();
     return Scaffold(
       appBar: AppBar(title: Text(t('nav.documents'))),
-      body: RefreshIndicator(color: JR.accent, onRefresh: () async { ref.invalidate(documentsProvider); await ref.read(documentsProvider.future); }, child: AsyncBody(value: docs, onRetry: () => ref.invalidate(documentsProvider), builder: (d) => ListView(padding: const EdgeInsets.all(16), children: [
+      body: RefreshIndicator(color: JR.accent, onRefresh: () async { ref.invalidate(documentsProvider); await ref.read(documentsProvider.future); }, child: AsyncBody(value: docs, onRetry: () => ref.invalidate(documentsProvider), builder: (d) => ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [
         Text(t('docs.sub'), style: const TextStyle(color: JR.muted, height: 1.4)),
         const SizedBox(height: 14),
+        if (cat == null) ...[
+          // The list of document types comes from the server; without it there is nothing to upload against.
+          if (ref.watch(catalogProvider).hasError) Padding(padding: const EdgeInsets.only(bottom: 14), child: Banner2(tone: Tone.warn, text: t('um.catalog_failed'), action: OutlinedButton.icon(onPressed: () => ref.invalidate(catalogProvider), icon: const Icon(Icons.refresh), label: Text(t('common.retry')))))
+          else const Padding(padding: EdgeInsets.only(bottom: 14), child: LinearProgressIndicator(color: JR.accent, backgroundColor: JR.line)),
+        ],
+        if (_cameraDenied) Padding(padding: const EdgeInsets.only(bottom: 14), child: Banner2(key: const Key('camera-denied'), tone: Tone.warn, text: t('um.camera_denied'), action: OutlinedButton.icon(onPressed: () => ref.read(linkOpenerProvider).openAppSettings(), icon: const Icon(Icons.settings_outlined), label: Text(t('um.open_settings'))))),
         for (final ty in types) Builder(builder: (_) {
           final mine = d.where((x) => x['type'] == ty['key']).toList();
           final latest = mine.isEmpty ? null : mine.first;
@@ -51,11 +69,12 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
             const SizedBox(height: 10),
             if (latest == null) Text(t('docs.none'), style: const TextStyle(color: JR.muted)) else Row(children: [
               Pill(t('docstatus.${latest['status']}'), tone: switch (latest['status']) { 'approved' => Tone.success, 'rejected' => Tone.danger, _ => Tone.warn }),
-              if (latest['expiresOn'] != null) ...[const SizedBox(width: 10), Text('${t('docs.expires')}: ${latest['expiresOn']}', style: const TextStyle(color: JR.muted, fontSize: 12))],
+              if (latest['expiresOn'] != null) ...[const SizedBox(width: 10), Text('${t('docs.expires')}: ${latest['expiresOn']}', textDirection: TextDirection.ltr, style: const TextStyle(color: JR.muted, fontSize: 12))],
             ]),
             if (latest?['reviewNote'] != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${latest!['reviewNote']}', style: const TextStyle(color: JR.gold, fontSize: 13))),
             const SizedBox(height: 12),
-            OutlinedButton.icon(onPressed: _uploading != null ? null : () => _upload(ty['key'] as String), icon: _uploading == ty['key'] ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accent)) : const Icon(Icons.upload_file), label: Text(latest == null ? t('docs.upload') : t('docs.replace'))),
+            if (_uploading == ty['key']) Padding(padding: const EdgeInsets.only(bottom: 10), child: LinearProgressIndicator(value: _progress == null || _progress == 0 ? null : _progress, minHeight: 6, color: JR.accent, backgroundColor: JR.line, semanticsLabel: t('um.uploading'))),
+            OutlinedButton.icon(onPressed: _uploading != null ? null : () => _upload('${ty['key']}'), icon: _uploading == ty['key'] ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accent)) : const Icon(Icons.upload_file), label: Text(_uploading == ty['key'] ? t('um.uploading') : latest == null ? t('docs.upload') : t('docs.replace'))),
           ])));
         }),
       ]))),

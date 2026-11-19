@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineRoutes, dispatchExternal } from "../router";
 import { requestBody } from "../schemas";
-import { authenticateKey, logApiCall, createExternalJob, listExternalJobs, getExternalJob, externalJobEvents } from "@/server/integrations";
+import { authenticateKey, logApiCall, createExternalJob, listExternalJobs, getExternalJob, externalJobEvents, externalJobShipments } from "@/server/integrations";
 import { AppError, err } from "@/lib/errors";
 import { hit } from "@/server/auth/ratelimit";
 import type { User } from "@/db/schema";
@@ -21,13 +21,17 @@ const ext = async (req: Request, scope: string, fn: (b: User) => Promise<{ statu
   finally { await logApiCall(biz, key, req.method, new URL(req.url).pathname, status, started); }
 };
 
+/** Query numbers from integrators are untrusted: junk ("abc", "-3", "1e9") falls back to the default instead of reaching SQL. */
+const posInt = (v: string | null, d: number) => { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 1_000_000 ? n : d; };
+
 defineRoutes([
-  { method: "GET", path: "/jobs", auth: "public", handler: async ({ req, query }) => dispatchExternal(await ext(req, "jobs:read", async (b) => ({ body: await listExternalJobs(b, { status: query.get("status") ?? undefined, page: Number(query.get("page") ?? 1), pageSize: Number(query.get("pageSize") ?? 20) }) }))) },
+  { method: "GET", path: "/jobs", auth: "public", handler: async ({ req, query }) => dispatchExternal(await ext(req, "jobs:read", async (b) => ({ body: await listExternalJobs(b, { status: query.get("status") ?? undefined, page: posInt(query.get("page"), 1), pageSize: Math.min(posInt(query.get("pageSize"), 20), 100) }) }))) },
   { method: "POST", path: "/jobs", auth: "public", body: requestBody, handler: async ({ req, input }) => dispatchExternal(await ext(req, "jobs:write", async (b) => {
     const r = await createExternalJob(b, input, req.headers.get("idempotency-key"));
     return { status: r.replay ? 200 : r.status, body: r.body };
   })) },
   { method: "GET", path: "/jobs/:id", auth: "public", handler: async ({ req, params }) => dispatchExternal(await ext(req, "jobs:read", async (b) => ({ body: await getExternalJob(b, params.id) }))) },
+  { method: "GET", path: "/jobs/:id/shipments", auth: "public", handler: async ({ req, params }) => dispatchExternal(await ext(req, "jobs:read", async (b) => ({ body: await externalJobShipments(b, params.id) }))) },
   { method: "GET", path: "/jobs/:id/events", auth: "public", handler: async ({ req, params }) => dispatchExternal(await ext(req, "jobs:read", async (b) => ({ body: await externalJobEvents(b, params.id) }))) },
 ]);
 export { z };

@@ -45,6 +45,11 @@ dependencies:
   intl: ^0.20.2
   shared_preferences: ^2.5.5
   image_picker: ^1.2.3
+  mobile_scanner: ^7.5.0
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  flutter_local_notifications: ^22.3.3
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +73,22 @@ flutter:
   assets:
     - assets/i18n/
     - assets/logo.png
+    - assets/fonts/OFL.txt # Cairo's licence (SIL Open Font License 1.1) — shown in the app's licence page
+
+  # Cairo (Arabic + Latin, SIL OFL 1.1), bundled so text looks the same on every phone and works offline.
+  # Static weights cut from Google Fonts' variable file (wght 400–800, upright).
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Cairo-ExtraBold.ttf
+          weight: 800
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

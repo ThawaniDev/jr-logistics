@@ -21,7 +21,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
     body: body ? (isForm ? (body as FormData) : JSON.stringify(body)) : undefined,
   });
   if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/auth/")) {
-    window.location.href = "/login?expired=1";
+    window.location.href = window.location.pathname.startsWith("/admin") ? "/staff/login?expired=1" : "/login?expired=1";
   }
   return parse(res);
 }

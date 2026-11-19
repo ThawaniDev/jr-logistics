@@ -1,0 +1,1989 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>منصة JR للخدمات اللوجستية — الدليل التشغيلي الشامل للتدفقات (48 تدفقاً واقعياً مع المحفظة السالبة وفروقات النطاقات)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0b1120;
+      --bg-secondary: #111c35;
+      --bg-card: #162447;
+      --bg-card-hover: #1c2d59;
+      --border-color: #233566;
+      --border-light: #2d437e;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-primary: #10b981;
+      --accent-primary-hover: #059669;
+      --accent-secondary: #3b82f6;
+      --accent-warning: #f59e0b;
+      --accent-danger: #ef4444;
+      --accent-purple: #8b5cf6;
+      --accent-gold: #fbbf24;
+      --code-bg: #080d1a;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      line-height: 1.7;
+      padding: 0;
+      margin: 0;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Top Banner & Header */
+    .hero {
+      background: linear-gradient(135deg, #09132b 0%, #111d42 50%, #0d2838 100%);
+      border-bottom: 1px solid var(--border-color);
+      padding: 48px 24px 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 700px;
+      height: 700px;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-container {
+      max-width: 1350px;
+      margin: 0 auto;
+    }
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--accent-primary);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+      line-height: 1.4;
+    }
+    .hero p {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 950px;
+      line-height: 1.8;
+      margin-bottom: 24px;
+    }
+
+    /* Model Highlight Banner */
+    .model-callout {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      font-size: 14px;
+    }
+    .model-callout-tag {
+      background: var(--accent-secondary);
+      color: #fff;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .metric-card {
+      background: rgba(22, 36, 71, 0.6);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border-color);
+      padding: 18px;
+      border-radius: var(--radius-md);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .metric-card:hover {
+      border-color: var(--accent-primary);
+      transform: translateY(-2px);
+    }
+    .metric-value {
+      font-size: 26px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .metric-value span {
+      color: var(--accent-primary);
+      font-size: 16px;
+    }
+    .metric-label {
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1350px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+
+    /* Search & Filter Toolbar */
+    .toolbar {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      margin-bottom: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: sticky;
+      top: 16px;
+      z-index: 100;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .search-box {
+      width: 100%;
+      position: relative;
+    }
+    .search-input {
+      width: 100%;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      padding: 12px 42px 12px 16px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus {
+      border-color: var(--accent-primary);
+    }
+    .search-icon {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      pointer-events: none;
+    }
+    .category-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .pill {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      padding: 7px 14px;
+      border-radius: 9999px;
+      font-size: 12.5px;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .pill:hover, .pill.active {
+      background: var(--accent-primary);
+      color: #ffffff;
+      border-color: var(--accent-primary);
+      font-weight: 500;
+    }
+
+    /* Category Section */
+    .category-section {
+      margin-bottom: 48px;
+    }
+    .category-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 12px;
+      margin-bottom: 24px;
+    }
+    .category-badge {
+      background: var(--accent-secondary);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    .badge-zones { background: var(--accent-purple); }
+    .category-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* Flows Cards Grid */
+    .flows-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 22px;
+    }
+
+    .flow-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-card);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .flow-card:hover {
+      border-color: var(--border-light);
+    }
+    .flow-card-header {
+      background: rgba(17, 28, 53, 0.7);
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .flow-id-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .flow-id {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: var(--accent-primary);
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .flow-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+    .flow-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+    }
+    .badge-auto { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+    .badge-ops { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+    .badge-fin { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3); }
+    .badge-alert { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
+    .badge-credit { background: rgba(139, 92, 246, 0.15); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.3); }
+    .badge-zone { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(251, 113, 133, 0.3); }
+
+    .flow-body {
+      padding: 22px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    /* Scenario Box */
+    .scenario-box {
+      background: rgba(11, 17, 32, 0.6);
+      border: 1px solid rgba(45, 67, 126, 0.4);
+      border-radius: var(--radius-sm);
+      padding: 16px 18px;
+      border-right: 4px solid var(--accent-secondary);
+    }
+    .scenario-box.zone-box {
+      border-right-color: var(--accent-purple);
+    }
+    .scenario-box.credit-box {
+      border-right-color: var(--accent-gold);
+    }
+    .scenario-label {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--accent-secondary);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .scenario-box.zone-box .scenario-label { color: #c084fc; }
+    .scenario-box.credit-box .scenario-label { color: var(--accent-gold); }
+    .scenario-text {
+      color: var(--text-main);
+      font-size: 14.5px;
+      line-height: 1.8;
+    }
+
+    /* Actors List */
+    .actors-line {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .actors-label {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .actor-tag {
+      background: rgba(35, 53, 102, 0.6);
+      color: #e2e8f0;
+      padding: 3px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+    }
+
+    /* Steps List */
+    .steps-container {
+      margin-top: 4px;
+    }
+    .steps-label {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--accent-gold);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .steps-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 13.5px;
+      color: #cbd5e1;
+      line-height: 1.7;
+    }
+    .step-num {
+      background: var(--border-color);
+      color: #fff;
+      font-size: 11.5px;
+      font-weight: 700;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* Technical & Financial Cards */
+    .details-columns {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .detail-card {
+      background: var(--code-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+    }
+    .detail-card-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .title-tech { color: #38bdf8; }
+    .title-fin { color: #34d399; }
+
+    .code-line {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #e2e8f0;
+      direction: ltr;
+      text-align: left;
+      background: rgba(15, 23, 42, 0.8);
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 6px;
+      word-break: break-all;
+    }
+
+    .fin-math {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12.5px;
+    }
+    .fin-row {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px dashed rgba(255,255,255,0.08);
+      padding-bottom: 4px;
+    }
+    .fin-row:last-child {
+      border-bottom: none;
+      padding-top: 4px;
+      font-weight: 700;
+      color: #34d399;
+    }
+    .fin-row.negative-credit {
+      color: #c084fc;
+    }
+
+    /* Master Table */
+    .table-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow-x: auto;
+      margin-bottom: 48px;
+      box-shadow: var(--shadow-card);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: right;
+      font-size: 13px;
+    }
+    th {
+      background: var(--bg-secondary);
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      color: #cbd5e1;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .table-num {
+      font-weight: 700;
+      color: var(--accent-primary);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 32px 24px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    /* Print styles */
+    @media print {
+      body { background: #fff; color: #000; }
+      .hero, .toolbar { display: none; }
+      .flow-card { border: 1px solid #ccc; break-inside: avoid; margin-bottom: 20px; box-shadow: none; background: #fff; }
+      .flow-card-header { background: #eee; color: #000; }
+      .scenario-box, .detail-card { background: #f9f9f9; color: #000; border-color: #ddd; }
+      .code-line { background: #eee; color: #000; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Hero Header -->
+  <header class="hero">
+    <div class="hero-container">
+      <div class="brand-badge">
+        <span>⚡</span> الدليل التشغيلي الميداني الموسع · JR Logistics KSA
+      </div>
+      <h1>التدفقات التشغيلية الشاملة لمنصة JR للخدمات اللوجستية (48 تدفقاً)</h1>
+      <p>
+        الدليل الميداني والتقني المحدث وفق نموذج الأعمال الجديد الداعم لـ <strong>المحفظة السالبة والحدود الائتمانية للمستودعات (Postpaid Negative Wallets)</strong>، مع تفصيل <strong>فروقات النطاقات الجغرافية بين المستودعات ومنصة JR (Zone Differentiations)</strong> وتغطية موسعة للرصيف، الميل الأخير، الأساطيل، والمنازعات.
+      </p>
+
+      <div class="model-callout">
+        <span class="model-callout-tag">نموذج الأعمال الجديد</span>
+        <span>
+          <strong>التسهيلات الائتمانية للمستودعات:</strong> يمكن لرصيد محفظة المستودع <code>available_cents</code> أن ينخفض بالسالب حتى سقف ائتماني محدد لكل مستودع (مثلاً: -50,000 ريال)، مع حظر النشر التلقائي عند تجاوز الحد وسداد الفواتير بدورة دفع شهرية / نصف شهرية.
+        </span>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-value">48 <span>تدفقاً</span></div>
+          <div class="metric-label">سيناريوهات عمليات ومستودعات واقعية</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">8 <span>فئات</span></div>
+          <div class="metric-label">تشمل النطاقات الجغرافية والمحفظة السالبة</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">100% <span>حفظ كميات</span></div>
+          <div class="metric-label">محجوز = محمل = مسلم + مرتجع</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">ائتمان <span>سالب</span></div>
+          <div class="metric-label">سحب آلي من السقف الائتماني المعتمد</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- Search & Filter Toolbar -->
+    <div class="toolbar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" class="search-input" placeholder="ابحث في التدفقات (مثال: محفظة سالبة، نطاق، مرتجع، تبريد، غياب، عهدة، دينا)..." oninput="filterFlows()">
+      </div>
+      <div class="category-pills">
+        <div class="pill active" onclick="setCategory('all', this)">جميع التدفقات (48)</div>
+        <div class="pill" onclick="setCategory('cat1', this)">1. الرصيف والائتمان السالب (9)</div>
+        <div class="pill" onclick="setCategory('zones', this)">2. نطاقات المستودع vs منصة JR (4)</div>
+        <div class="pill" onclick="setCategory('cat2', this)">3. الميل الأخير والمرتجعات الآجلة (9)</div>
+        <div class="pill" onclick="setCategory('cat3', this)">4. العهد والشبكة ومبالغ التحصيل (4)</div>
+        <div class="pill" onclick="setCategory('cat4', this)">5. الحضور وأساطيل المكاتب (9)</div>
+        <div class="pill" onclick="setCategory('cat5', this)">6. المنازعات وفواتير الائتمان (7)</div>
+        <div class="pill" onclick="setCategory('cat6', this)">7. الدفتر المالي والتسويات (4)</div>
+        <div class="pill" onclick="setCategory('cat7', this)">8. مطابقة السوق وسعة الأساطيل (2)</div>
+      </div>
+    </div>
+
+    <!-- Master Summary Table -->
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>اسم التدفق التشغيلي</th>
+            <th>الحدث الميداني المحفز</th>
+            <th>الحالة النهائية للطلب والعرض</th>
+            <th>الأثر على المحفظة والحد الائتماني</th>
+            <th>نوع المعالجة</th>
+          </tr>
+        </thead>
+        <tbody id="masterTableBody">
+          <!-- Populated via script -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Container for Detailed Cards -->
+    <div id="flowsContainer">
+      <!-- Injected via script -->
+    </div>
+
+  </div>
+
+  <footer>
+    منصة JR للخدمات اللوجستية · شركة ثواني لتقنية المعلومات · جميع الحقوق محفوظة © 2026
+  </footer>
+
+  <script>
+    const flowsData = [
+      // ─────────────────── CAT 1: Loading Bay & Credit Ceiling ───────────────────
+      {
+        id: "01",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "التسليم اللامتطابق مع استرجاع المرتجعات (حجز 50، تحميل 30، تسليم 25، إرجاع 5)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "مستودع تجارة إلكترونية في حي السلي حجز فان لتوصيل 50 طرداً عند 08:00 صباحاً. بسبب نقص عمال الفرز لم يُجهز سوى 30 طرداً. قام السائق بعدّها وتأكيد استلام 30 طرداً عبر التطبيق. أثناء مسار التوصيل تم تسليم 25 طرداً بنجاح، بينما تعذر الوصول لـ 5 عملاء. في تمام 18:00 عاد السائق إلى رصيف المستودع وسلم الطرود الـ 5 المتبقية، وسجل تسليم 25 طرداً، واعتمد مشرف المستودع ذلك.",
+        actors: ["مشرف المستودع", "السائق الميداني", "برج المراقبة", "الإدارة المالية"],
+        steps: [
+          "يصل السائق للرصيف ويسجل الوصول بـ GPS عبر POST /offers/:id/checkin.",
+          "يؤكد مشرف المستودع حضور السائق عبر POST /offers/:id/attendance.",
+          "يدخل المستودع كمية التحميل الفعلية (30 طرداً) عبر POST /offers/:id/loading.",
+          "يؤكد السائق مطابقة العد الفعلي عبر POST /offers/:id/loading-ack.",
+          "يقوم السائق بتسليم 25 طرداً، ويسجل استثناء الاتصال لـ 5 طرود متعذرة.",
+          "يعود السائق لرصيف المستودع ويسلم الـ 5 طرود المتبقية مع فحص الباركود.",
+          "يرفع السائق التقرير النهائي بتسليم 25 طرداً عبر POST /offers/:id/delivered.",
+          "يعتمد المستودع التسليم، ويقوم النظام تلقائياً بفك فائض الضمان المحجوز وصرف مستحقات السائق."
+        ],
+        techState: "requests: assigned ➔ in_progress ➔ completed\noffers: accepted ➔ arrived ➔ attendance_confirmed ➔ delivered_reported ➔ completed\nloadedUnits: 30 | deliveredUnits: 25 | finalUnits: 25",
+        apiCode: "jobs.recordLoading() ➔ acknowledgeLoading() ➔ reportDelivered() ➔ confirmDelivery()",
+        finMath: [
+          { label: "الضمان المحجوز مسبقاً (50 × 16 ريال)", val: "800.00 ريال" },
+          { label: "المبلغ الفعلي المستحق (25 × 16 ريال)", val: "400.00 ريال" },
+          { label: "دخل السائق المعتمد (25 × 11.50 ريال)", val: "287.50 ريال" },
+          { label: "هامش ربح منصة JR (25 × 4.50 ريال)", val: "112.50 ريال" },
+          { label: "الفائض المسترد فوراً لمحفظة المستودع", val: "400.00 ريال" }
+        ]
+      },
+      {
+        id: "02",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "محاولة التحميل الزائد وتجاوز سعة المركبة والضمان (طلب 50 ومحاولة تحميل 75)",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "حجز المستودع سيارة سيدان لـ 50 طرداً (ضمان 350 ريال). عند الوصول حاول عمال المستودع تحميل 75 كرتوناً كبيراً، مما يعرض المركبة لمخالفات الوزن وتجاوز الحمولة المقررة ويخل بالتأمين وحساب الضمان المالي.",
+        actors: ["عامل الرصيف", "السائق", "دعم العمليات"],
+        steps: [
+          "يُدخل موظف المستودع units: 75 في واجهة التحميل.",
+          "يرفض السائق الحمولة الزائدة لمخالفتها الأمان، ويضغط اعتراض على التحميل بالتطبيق.",
+          "يفتح النظام تذكرة عاجلة shipment_count_differs في برج المراقبة.",
+          "يتواصل برج المراقبة مع إدارة المستودع: إنزال 25 كرتوناً أو حجز مركبة إضافية.",
+          "ينزل المستودع الزيادة ويعدل التحميل إلى 50 طرداً، ويؤكد السائق الاستلام."
+        ],
+        techState: "offers.loadedAckByDriver = false (disputed)\njobs.maxBillableUnits() caps billing strictly to expectedUnits",
+        apiCode: "POST /offers/:id/loading-ack (ok: false) ➔ openTicket()",
+        finMath: [
+          { label: "الضمان المحجوز المقفل", val: "350.00 ريال" },
+          { label: "محاولة التحميل غير المصرحة", val: "75 طرداً (مرفوض)" },
+          { label: "الحمولة المعتمدة المنفذة", val: "50 طرداً" },
+          { label: "الحالة المالية للضمان", val: "محمي من التجاوز 100%" }
+        ]
+      },
+      {
+        id: "03",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "تعطل المستودع أو نفاذ الشحنات عند وصول السائق (إثبات عدم التمكين من العمل)",
+        type: "تحقق عمليات",
+        badge: "badge-ops",
+        scenario: "وصل السائق في الموعد تماماً عند 07:55. تبيّن أن خط سيور الفرز تعطل كهربائياً ولا توجد أي شحنات جاهزة، وأخبره المشرف بإلغاء العمل والعودة لمنزله.",
+        actors: ["السائق", "مشرف المستودع", "عمليات المنصة"],
+        steps: [
+          "يثبت السائق وصوله الجغرافي بنظام GPS عند البوابة.",
+          "بعد انتظار 45 دقيقة دون تحميل، يضغط السائق: إبلاغ: لم يتم تمكيني من العمل.",
+          "يستدعي التطبيق POST /offers/:id/no-work مع تدوين السبب.",
+          "يتأكد موظف العمليات من تعطل المستودع عبر الكاميرات والاتصال.",
+          "تلغي المنصة الطلب بمسؤولية المستودع، وتخصم 50 ريالاً تعويض حضور للسائق."
+        ],
+        techState: "offers: arrived ➔ cancelled (no-work confirmed)\ntickets: not_put_to_work opened",
+        apiCode: "jobs.reportNoWork() ➔ requests.cancelRequest() with show-up indemnity",
+        finMath: [
+          { label: "الضمان المحجوز مسبقاً", val: "450.00 ريال" },
+          { label: "تعويض استدعاء السائق (Call-out Fee)", val: "50.00 ريال" },
+          { label: "المسترد لمحفظة المستودع", val: "400.00 ريال" },
+          { label: "صافي دخل السائق المستلم", val: "50.00 ريال" }
+        ]
+      },
+      {
+        id: "04",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "اكتشاف شحنات تالفة أو كراتين مكسورة أثناء التحميل على الرصيف",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "أثناء تحميل 40 كرتون منظفات سائلة داخل سيارة هايس، لاحظ السائق تسرب سوائل وتهتك 4 كراتين بسبب سوء التخزين الداخلي.",
+        actors: ["عامل المستودع", "السائق الميداني"],
+        steps: [
+          "يرفض السائق استلام الـ 4 كراتين التالفة حمايةً لباقي الشحنات من التلف.",
+          "يعدل موظف المستودع الكمية المحملة على الرصيف إلى 36 كرتوناً.",
+          "يلتقط السائق صور الكراتين التالفة بهاتفه ويؤكد استلام 36 كرتوناً فقط.",
+          "يقيد النظام الحادثة في سجل تدقيق العمليات مع تثبيت سقف التحاسب على 36 وحدة."
+        ],
+        techState: "offers.loadedUnits = 36 (reduced from 40)\njobEvents: loading_confirmed { damaged_retained: 4 }",
+        apiCode: "POST /offers/:id/loading (units: 36) ➔ POST /offers/:id/loading-ack (ok: true)",
+        finMath: [
+          { label: "الحجز المبدئي (40 كرتوناً)", val: "600.00 ريال" },
+          { label: "الحمولة المعدلة بعد استبعاد التالف", val: "36 كرتوناً" },
+          { label: "الحد الأقصى للمطالبة المالية", val: "540.00 ريال" },
+          { label: "فائض محجوز يعاد للمستودع", val: "60.00 ريال" }
+        ]
+      },
+      {
+        id: "05",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "خرق شروط التبريد للشحنات المبردة عند رصيف الاستلام (Cold Chain Breach)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "حجز مستودع أدوية سيارة مبردة (+2° إلى +8°). عند وصول السائق، وجد مفتش الجودة بالمستودع أن جهاز تبريد السيارة معطل ودرجة الحرارة +18° مئوية.",
+        actors: ["مفتش الجودة بالمستودع", "السائق المخالف", "سائق بديل"],
+        steps: [
+          "يفحص المفتش جهاز التبريد ويسجل رفض الحضور عبر POST /offers/:id/attendance.",
+          "تتحول حالة السائق فوراً إلى no_show لمنعه من استلام الأدوية المعرضة للتلف.",
+          "تبث دالة freeSlotAndReplace عروض استبدال فورية لسيارات التبريد المؤهلة القريبة.",
+          "يقبل سائق مبرد بديل الطلب ويصل خلال 15 دقيقة لإنقاذ الشحنة الحساسة."
+        ],
+        techState: "offers: arrived ➔ no_show (unfit reefer vehicle)\nrequests: status set back to filling ➔ dispatchOffers()",
+        apiCode: "confirmAttendance(false, 'temp_breach') ➔ freeSlotAndReplace()",
+        finMath: [
+          { label: "مستحقات السائق المخالف", val: "0.00 ريال" },
+          { label: "غرامة على المستودع", val: "0.00 ريال (عيب بالمركبة)" },
+          { label: "الضمان المحجوز للشحنة", val: "محفوظ بالكامل للمركبة البديلة" }
+        ]
+      },
+      {
+        id: "06",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "التكدس الشديد وتأخر التحميل على الرصيف (>60 دقيقة)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "وصل السائق عند 08:00 صباحاً. بسبب تكدس 30 شاحنة في ساحة المستودع، لم يبدأ تحميل سيارته إلا عند 09:40 (تأخير 100 دقيقة على الرصيف).",
+        actors: ["السائق", "مشرف الساحة", "نظام احتساب SLA"],
+        steps: [
+          "يثبت السائق وصوله بنظام GPS عند الساعة 08:00.",
+          "يرفع السائق تذكرة تأخير مستودع business_not_ready عبر التطبيق.",
+          "عند انتهاء التحميل عند 09:40، يحسب النظام زمن الانتظار (Dwell Time = 100 دقيقة).",
+          "تمدد خوارزمية مؤشرات الأداء موعد تسليم شحنات السائق تلقائياً بمقدار 100 دقيقة لحمايته.",
+          "يقيد في الفاتورة احتساب رسوم انتظار (35 ريال/ساعة) لصالح السائق."
+        ],
+        techState: "tickets: business_not_ready created\nops.startSla() dynamically recalculates driver completion deadline",
+        apiCode: "openTicket('business_not_ready') ➔ ops.startSla() dynamic extension",
+        finMath: [
+          { label: "مدة الانتظار غير المبررة بالرصيف", val: "100 دقيقة" },
+          { label: "مهلة السماح المجانية", val: "60 دقيقة" },
+          { label: "فترة التأخير المحتسبة (40 دقيقة)", val: "0.66 ساعة" },
+          { label: "رسوم انتظار تقيد لصالح السائق", val: "23.33 ريال" }
+        ]
+      },
+      {
+        id: "07",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "نشر الطلبات على الحساب الآجل بالسالب ضمن الحد الائتماني (Negative Wallet Publishing)",
+        type: "آلي بالكامل",
+        badge: "badge-credit",
+        scenario: "مستودع أدوية لديه رصيد نقدي صفر ريال في محفظته، ولكنه يمتلك تسهيلاً ائتمانياً معتمداً من إدارة JR بسقف سالب قدره 50,000 ريال. قام بنشر 4 سيارات مبردة بقيمة 3,200 ريال. وافق النظام على النشر فوراً وسجل الرصيد المتاح كـ -3,200 ريال.",
+        actors: ["مدير لوجستيات المستودع", "محرك الائتمان بالمنصة", "دفتر القيد المزدوج"],
+        steps: [
+          "يقوم المستودع بإنشاء طلب لـ 4 سيارات مبردة بتكلفة تقديرية 3,200 ريال.",
+          "يفحص محرك الائتمان: الرصيد الحالي (0) - القيمة المطلوبة (3,200) >= -50,000 ريال (الحد المسموح).",
+          "يوافق النظام على النشر فوراً دون الحاجة لشحن المحفظة مسبقاً ببطاقة بنكية.",
+          "ينفذ دفتر القيد حجز الضمان: availableCents يصبح -320,000 هللة (-3,200 ريال)، و reservedCents يصبح +320,000 هللة.",
+          "تتحول حالة الطلب إلى published ويتم بث العروض للسائقين كالمعتاد."
+        ],
+        techState: "walletAccounts.availableCents = -320000 (negative balance allowed up to -creditLimitCents)\nrequests.status = 'published'",
+        apiCode: "publishRequest() ➔ check available - total >= -creditLimit ➔ post(reserve)",
+        finMath: [
+          { label: "الحد الائتماني المعتمد للمستودع", val: "50,000.00- ريال" },
+          { label: "الرصيد النقدي قبل النشر", val: "0.00 ريال" },
+          { label: "قيمة حجز الـ 4 سيارات", val: "3,200.00 ريال" },
+          { label: "رصيد المحفظة الجديد (بالسالب)", val: "3,200.00- ريال" },
+          { label: "الحد الائتماني المتبقي المتاح", val: "46,800.00 ريال" }
+        ]
+      },
+      {
+        id: "08",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "إيقاف النشر آلياً عند بلوغ سقف الائتمان السالب (Hard Stop on Credit Limit)",
+        type: "آلي بالكامل",
+        badge: "badge-alert",
+        scenario: "مستودع إلكترونيات بلغ رصيده السالب -47,500 ريال من أصل سقف 50,000 ريال. حاول المستودع نشر طلب شاحنات دينا بقيمة 4,000 ريال. رفض النظام النشر وأوقف العملية لأن الرصيد سيتجاوز السقف ليصل لـ -51,500 ريال.",
+        actors: ["محاسب المستودع", "نظام الرقابة الائتمانية بالمنصة"],
+        steps: [
+          "ينقر المستودع زر نشر الطلب لقيمة 4,000 ريال.",
+          "يحتسب النظام: الرصيد الحالي (-47,500) - 4,000 = -51,500 ريال.",
+          "بما أن -51,500 < -50,000 (تجاوز السقف الائتماني المسموح به)، يوقف النظام العملية فوراً.",
+          "يُلقى خطأ برمجياً CREDIT_LIMIT_EXCEEDED وتظهر رسالة: تم تجاوز الحد الائتماني المعتمد (50,000 ريال)، يرجى سداد فاتورة الدفعة لتفعيل النشر.",
+          "يقوم المستودع بتحويل بنكي لسداد 20,000 ريال، فيرتفع رصيده إلى -27,500 ريال ويفتح النظام النشر تلقائياً."
+        ],
+        techState: "throw err('CREDIT_LIMIT_EXCEEDED', 'Available credit insufficient')\nrequest status remains 'draft'",
+        apiCode: "publishRequest() ➔ credit limit guard check throws AppError ➔ paymentTopup() restores",
+        finMath: [
+          { label: "السقف الائتماني الأقصى المعتمد", val: "50,000.00- ريال" },
+          { label: "الرصيد الحالي المستهلك", val: "47,500.00- ريال" },
+          { label: "المبلغ المطلوب للطلب الجديد", val: "4,000.00 ريال" },
+          { label: "الرصيد المتوقع بعد النشر", val: "51,500.00- ريال (مرفوض)" },
+          { label: "المبلغ المطلوب سداده لإتاحة النشر", val: "1,500.00 ريال على الأقل" }
+        ]
+      },
+      {
+        id: "09",
+        cat: "cat1",
+        catName: "رصيف المستودع وفروقات الكميات وسقف الائتمان",
+        title: "تعارض الوزن الحجمي مع الوزن الفعلي على الرصيف (Volumetric vs Gravimetric)",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "حجز مستودع تجزئة سيارة هايس لـ 60 كرتوناً (بافتراض كراتين ملابس خفيفة). عند التحميل تبيّن أن الكراتين تحوي أواني فخارية ثقيلة بوزن 2.5 طن، مما يكسر نظام تعليق المركبة ويتجاوز الحمولة الوزنية المسموحة نظاماً (1.5 طن).",
+        actors: ["السائق الميداني", "مشرف الرصيف", "برج المراقبة"],
+        steps: [
+          "يفحص السائق استمارة الحمولة القصوى للمركبة (1.5 طن) ويقيس وزن الشحنات.",
+          "يرفض السائق تحميل أكثر من 35 كرتوناً (تزن 1.4 طن) التزاماً بنظام المرور والسلامة.",
+          "يرفع السائق بلاغ تعارض حمولة وزنية بالتطبيق.",
+          "يقوم المستودع بتعديل الكمية المحملة على الرصيف إلى 35 كرتوناً.",
+          "تعدل الفاتورة الآجلة في المحفظة السالبة لتطابق 35 وحدة فقط دون تحميل المستودع الشحنات المتبقية."
+        ],
+        techState: "offers.loadedUnits = 35 (down from 60 due to axle weight compliance)\njobEvents: weight_limit_enforced",
+        apiCode: "recordLoading(35) ➔ acknowledgeLoading(true) ➔ credit reserve adjusted",
+        finMath: [
+          { label: "الوزن الإجمالي المحاول تحميله", val: "2,500 كجم (خطر)" },
+          { label: "الحمولة الوزنية النظامية القصوى", val: "1,500 كجم" },
+          { label: "الكراتين المحملة فعلياً بأمان", val: "35 كرتوناً" },
+          { label: "تعديل السحب الائتماني", val: "خفض السحب بمقدار 25 وحدة" }
+        ]
+      },
+
+      // ─────────────────── ZONES: Warehouse vs JR Zones ───────────────────
+      {
+        id: "10",
+        cat: "zones",
+        catName: "نطاقات المستودع مقابل نطاقات JR الجغرافية",
+        title: "تعارض نطاق المستودع الداخلي مع نطاق JR الجغرافي عند الاستلام (Zone Mismatch)",
+        type: "تدخل عمليات",
+        badge: "badge-zone",
+        scenario: "يصنف المستودع في نظامه الداخلي (WMS) منطقة العمارية وبنبان كـ 'نطاق شمال الرياض 1'، بينما تصنفها منصة JR تعاقدياً كـ 'نطاق أطراف الرياض الخارجي (Peripheral Zone)' الذي يخضع لتسعيرة إضافية. لاحظ السائق وجود 8 طرود بالعمارية ضمن حمولة مصنفة داخل النطاق الحضري.",
+        actors: ["السائق الميداني", "منسق حركة المستودع", "برج المراقبة"],
+        steps: [
+          "يفحص السائق عناوين الشحنات على البوالص ويلاحظ 8 طرود متجهة لمزارع العمارية.",
+          "يختار السائق بالتطبيق: استثناء نطاق جغرافي ➔ الشحنات خارج نطاق المدينة المعتمد.",
+          "يتطابق فحص المنصة مع مضلع النطاقات الجغرافي (JR Zone Polygons) الذي يؤكد أنها نطاق أطراف.",
+          "يمنح برج المراقبة المستودع خيارين عبر لوحة التحكم: إما استبعاد الـ 8 طرود وإعادتها للرصيف، أو الموافقة على بدل النطاق الخارجي (15 ريالاً إضافياً لكل طرد).",
+          "يوافق المستودع رقمياً على البدل، ويخصم النظام 120 ريالاً إضافية من سقفه الائتماني السالب ويحولها لحساب السائق."
+        ],
+        techState: "zoneMapping: internalZone 'North-1' mapped to JR_Zone 'Peripheral'\nledger: add surcharge of 120 SAR to negative wallet",
+        apiCode: "POST /offers/:id/zone-exception ➔ approveZoneSurcharge(120 SAR) ➔ wallet.post()",
+        finMath: [
+          { label: "تصنيف المستودع الداخلي", val: "نطاق حضري عادي (خطأ)" },
+          { label: "تصنيف منصة JR المعتمد", val: "نطاق أطراف خارجي (+15 ر.س/طرد)" },
+          { label: "عدد الطرود خارج النطاق", val: "8 طرود" },
+          { label: "بدل النطاق الإضافي المعتمد", val: "120.00 ريال" },
+          { label: "الأثر المالي", val: "قيد 120 ريالاً بالسالب على محفظة المستودع" }
+        ]
+      },
+      {
+        id: "11",
+        cat: "zones",
+        catName: "نطاقات المستودع مقابل نطاقات JR الجغرافية",
+        title: "تسليم عابر للنطاقات واحتساب بدل النطاق الإضافي آلياً (Cross-Zone Surcharge)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "استلم السائق شحنات من مستودع بالصناعية الثانية (جنوب الرياض) لتسليمها في الدرعية وحي القيروان (شمال الرياض)، قاطعاً أكثر من 55 كم بين النطاقين الجغرافيين لمنصة JR. يقوم النظام آلياً باحتساب بدل العبور بين النطاقات وقيده على الحساب الآجل للمستودع.",
+        actors: ["السائق", "محرك التسعير الجغرافي بالمنصة", "المستودع"],
+        steps: [
+          "يقرأ محرك التسعير الجغرافي إحداثيات موقع الاستلام (المدينة الصناعية الثانية - نطاق صناعي جنوبي).",
+          "يقرأ المحرك إحداثيات نقاط التسليم (الدرعية / القيروان - نطاق حضري شمالي).",
+          "يكتشف النظام وجود عبور بين نطاقين متباعدين (Cross-Zone Transit > 45 km).",
+          "تطبق دالة resolveRule بند البدل الجغرافي العابر للنطاقات بمقدار 40 ريالاً للمشوار.",
+          "تُقيد الـ 40 ريالاً كقيد آلي يضاف لسحب المحفظة السالبة للمستودع وتودع كحافز مسار للسائق."
+        ],
+        techState: "pricing.resolveRule() detects cross-zone polygon transit\nsurchargeRule: cross_zone_distance applied",
+        apiCode: "pricing.buildQuote(crossZoneSurcharge) ➔ post(kind: 'cross_zone_fee')",
+        finMath: [
+          { label: "تسعيرة الشفت الأساسية", val: "300.00 ريال" },
+          { label: "بدل العبور بين النطاقات الجغرافية", val: "40.00 ريال" },
+          { label: "إجمالي الفاتورة الآجلة المقيدة", val: "340.00 ريال" },
+          { label: "دخل السائق المعتمد الإجمالي", val: "260.00 ريال" }
+        ]
+      },
+      {
+        id: "12",
+        cat: "zones",
+        catName: "نطاقات المستودع مقابل نطاقات JR الجغرافية",
+        title: "تجاوز المضلع الجغرافي المعتمد وإشعار التوسع اللحظي (Out-of-Polygon Geofence)",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "أثناء جولة التوصيل، أرسل أحد العملاء موقعه المحدث عبر واتساب وتبين أنه يقع في مزرعة بعد نقطة تفتيش صلبوخ بـ 15 كم (خارج مضلع التغطية المرخص لمنصة JR بالرياض بنسبة 100%).",
+        actors: ["السائق الميداني", "العميل", "برج المراقبة"],
+        steps: [
+          "يفتح السائق رابط الواتساب؛ يكتشف التطبيق فوراً خروج الإحداثيات عن مضلع الرياض المعتمد.",
+          "يعرض التطبيق تحذيراً أحمر للسائق: الموقع يقع خارج نطاق التغطية المرخص للمنصة.",
+          "يمنع النظام السائق من الانتقال بدون تفويض رسمي لضمان سلامة التغطية والتأمين.",
+          "يتدخل برج المراقبة للتنسيق مع المستودع: تصحيح العنوان لداخل النطاق أو إعادة الطرد لمستودع الفرز كشحنة غير مغطاة.",
+          "يعاد الطرد لكشف المرتجعات دون أي غرامة أو احتساب تأخير على السائق."
+        ],
+        techState: "geofence.assertWithinPolygon(point, RIYADH_METRO_GEOJSON) = false\nstop state: out_of_service_boundary",
+        apiCode: "POST /driver/jobs/:id/contact-exception (boundary_breach) ➔ opsAlert",
+        finMath: [
+          { label: "مسافة التجاوز عن مضلع التغطية", val: "15 كم خارج النطاق" },
+          { label: "الإجراء المالي", val: "استبعاد الشحنة دون خصم" },
+          { label: "التسوية الآجلة للمستودع", val: "تخفيض الفاتورة بقيمة الطرد" }
+        ]
+      },
+      {
+        id: "13",
+        cat: "zones",
+        catName: "نطاقات المستودع مقابل نطاقات JR الجغرافية",
+        title: "دمج نطاقين منخفضين في خط سير شاحنة واحدة (Multi-Zone Consolidation)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "يملك المستودع 15 طرداً لنطاق شرق الرياض و 12 طرداً لنطاق جنوب الرياض (حمولة منخفضة لا تبرر حجز شاحنتين مستقلتين). طلب المستودع دمج النطاقين الداخليين في خط سير شاحنة دينا واحدة مشتركة مع اعتماد تسعيرة النطاق المدمج.",
+        actors: ["مدير تخطيط المستودع", "سائق الدينا", "محرك التوجيه الذكي"],
+        steps: [
+          "ينشئ المستودع طلباً موحداً يضم شحنات النطاقين الداخليين (East + South).",
+          "يتعرف محرك التسعير على الطلب كـ Multi-Zone Route، ويطبق تسعيرة الشفت النهاري الممتد.",
+          "يتم حجز الضمان الآجل من السقف الائتماني السالب للمستودع بقيمة شاحنة واحدة مدمجة المسار.",
+          "يستلم سائق الدينا الشحنات الـ 27 ويعيد ترتيب التوقفات جغرافياً عبر محرك خرائط جوجل.",
+          "ينفذ السائق المسار بنجاح خلال 7 ساعات عمل دون تجاوز ساعات العمل المقررة."
+        ],
+        techState: "requests.routeType = 'consolidated_multizone'\nrouting.optimizeRoutePlan(cross_clusters)",
+        apiCode: "requests.createDraft(multizone: true) ➔ resolveRule(multizone_dyna)",
+        finMath: [
+          { label: "تكلفة حجز شاحنتين منفصلتين", val: "700.00 ريال" },
+          { label: "تكلفة الشاحنة المدمجة المعتمدة", val: "480.00 ريال" },
+          { label: "الوفر المالي المحقق للمستودع", val: "220.00 ريال" },
+          { label: "السحب المقيد على الائتمان الآجل", val: "480.00- ريال" }
+        ]
+      },
+
+      // ─────────────────── CAT 2: Last-Mile Exceptions & Postpaid Returns ───────────────────
+      {
+        id: "14",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "تعذر الوصول للعميل / عدم الرد عند باب المنزل",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "وصل السائق إلى عنوان العميل في حي الملقا. اتصل 3 مرات، وطرق الباب، وأرسل رسالة واتساب عبر الزر المباشر في التطبيق. لم يتلق أي رد لمدة 10 دقائق.",
+        actors: ["السائق الميداني", "العميل النهائي", "المستودع"],
+        steps: [
+          "يضغط السائق على زر واتساب بالتطبيق لإرسال الرسالة العربية الجاهزة للعميل.",
+          "بعد انتظار 10 دقائق، يختار: تعذر التسليم ➔ العميل لا يجيب.",
+          "يستدعي التطبيق POST /driver/jobs/:id/contact-exception مع reason: unreachable.",
+          "يتحول الطرد في مسار السائق إلى حالة مرتجع لمستودع المصدر (RTO).",
+          "لا يحتسب كطرد مسلم، ويعاد مع نهاية الشفت إلى رصيف المستودع."
+        ],
+        techState: "jobEvents: contact_exception { reason: 'unreachable' }\noffer units delivered counter unchanged",
+        apiCode: "POST /driver/jobs/:id/contact-exception ➔ logEvent()",
+        finMath: [
+          { label: "قيمة تسليم الطرد", val: "غير محتسبة للتسليم" },
+          { label: "أجر السائق عن المشوار", val: "محمي ضمن أجر الشفت اليومي" },
+          { label: "مصير الشحنة", val: "مرتجع لمستودع التوزيع مجاناً" }
+        ]
+      },
+      {
+        id: "15",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "رفض العميل المباشر للاستلام (رفض الدفع نقداً / تراجع عن الشراء)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "فتح العميل الباب وصرح: طلبت هذا المنتج قبل أسبوع واشتريته من السوق، لا أريده أو ليس معي سيولة كافية لدفع قيمة الدفع عند الاستلام (250 ريال).",
+        actors: ["السائق", "العميل النهائي", "برنامج المستودع WMS"],
+        steps: [
+          "يحدد السائق في التطبيق خيار رفض الاستلام من العميل مع تحديد السبب بدقة.",
+          "يوجه التطبيق السائق بإعادة إغلاق الكرتون وإعادته لحقيبة المرتجعات بالسيارة.",
+          "يرسل النظام إشعار Webhook تلقائياً لنظام إدارة المستودع لإلغاء الطلب بمتجرهم.",
+          "يعاد الطرد للمستودع عند رصيف التنزيل المسائي."
+        ],
+        techState: "webhookDelivery: event 'shipment.rejected' { reason: 'cod_refused' }",
+        apiCode: "driverApi.contactException('cod_refused') ➔ triggerWebhook()",
+        finMath: [
+          { label: "مبلغ الدفع عند الاستلام المطلوب", val: "250.00 ريال (ملغى)" },
+          { label: "حالة الطرد", val: "مرتجع للمستودع RTO" },
+          { label: "تأثير على تقييم السائق", val: "صفر (لا تحتسب على السائق)" }
+        ]
+      },
+      {
+        id: "16",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "قبول جزئي للشحنات في توريدات الشركات (B2B Split Delivery)",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "سائق يوصل 20 كرتون زيت طعام لمطعم. وجد مدير المطعم 17 كرتوناً سليمة و 3 كراتين متمزقة جراء المطبات. وافق على استلام 17 ووقع بالسند على رفض 3 كراتين.",
+        actors: ["السائق", "مدير المطعم المستلم", "مسؤول الشركات بالمستودع"],
+        steps: [
+          "يدخل السائق في التطبيق استلام 17 وحدة فقط.",
+          "يلتقط صورة لسند التسليم الورقي موقعاً من مدير المطعم برفض 3 كراتين تالفة.",
+          "يعيد السائق الكراتين الـ 3 المرفوضة للمستودع مساءً.",
+          "تعتمد التسوية المالية النهائية على تسليم 17 كرتوناً فقط."
+        ],
+        techState: "offers.deliveredUnits = 17\noffer.notes = '3 rejected due to packaging damage, signed DN uploaded'",
+        apiCode: "POST /offers/:id/delivered (units: 17) ➔ uploadDocument()",
+        finMath: [
+          { label: "الكمية المطلوبة أصلاً", val: "20 كرتوناً" },
+          { label: "الكمية المسلمة المعتمدة", val: "17 كرتوناً" },
+          { label: "الكمية المرتجعة المخصومة", val: "3 كراتين" },
+          { label: "أساس المحاسبة المالية", val: "17 كرتوناً فقط" }
+        ]
+      },
+      {
+        id: "17",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "طلب العميل التوصيل لعنوان خارج نطاق التغطية أو في مدينة أخرى",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "اتصل السائق بالعميل بالرياض، فأفاد العميل بأنه انتقل لاستراحة في الخرج (تبعد 70 كم خارج نطاق تغطية الشفت المعتمد بالرياض).",
+        actors: ["السائق", "العميل", "برج المراقبة"],
+        steps: [
+          "يوضح السائق تعذر الانتقال للخرج لأن ذلك يعطل مواعيد 25 عميلاً آخرين في الرياض.",
+          "يختار السائق استثناء تواصل ➔ location_issue مع تدوين ملاحظة.",
+          "يؤكد برج المراقبة مع المستودع إعادة الطرد لفرزه ضمن شحنات النقل بين المدن.",
+          "يستكمل السائق خط سيره بالرياض ويعيد الطرد لرصيف المستودع مساءً."
+        ],
+        techState: "jobEvents: location_issue { requested_city: 'alkharj' }\nstop bypassed",
+        apiCode: "POST /driver/jobs/:id/contact-exception (location_issue)",
+        finMath: [
+          { label: "مسافة الانحراف المطلوبة", val: "70 كم (خارج النطاق)" },
+          { label: "قرار العمليات", val: "رفض الانحراف وإعادة الطرد" },
+          { label: "التعويض المالي", val: "توصيل عادي بدون خصومات" }
+        ]
+      },
+      {
+        id: "18",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "تلف البضاعة أثناء النقل بسبب حادث مروري مفاجئ",
+        type: "تدخل عمليات",
+        badge: "badge-alert",
+        scenario: "تعرضت سيارة السائق لحادث صدم من الخلف على الدائري الشمالي بالرياض، مما أدى لتحطم 8 كراتين عطور زجاجية داخل صندوق المركبة.",
+        actors: ["السائق", "محقق نجم", "برج المراقبة", "شركة التأمين", "المستودع"],
+        steps: [
+          "يطمئن السائق على سلامته، ويتصل بنجم، ويضغط زر طوارئ / حادث في التطبيق.",
+          "يرفع السائق تقرير نجم وصور الشحنات المتضررة فوراً.",
+          "يتواصل برج المراقبة فوراً لتنسيق نقل الشحنات المتبقية السليمة عبر سائق إنقاذ.",
+          "تتجمد التسوية المالية للمهمة برمجياً ولا تصرف أرباح السائق لحين تقرير التأمين."
+        ],
+        techState: "complaints: holdsSettlement = true, category = 'damage'\nsettlement approval blocked via blockingComplaint()",
+        apiCode: "openComplaint('damage', holdsSettlement: true) ➔ settleHold",
+        finMath: [
+          { label: "قيمة البضاعة المتضررة المقدرة", val: "1,200.00 ريال" },
+          { label: "حالة أرباح السائق", val: "معلقة بحجز تحفظي" },
+          { label: "المسؤول المالي النهائي", val: "شركة التأمين بموجب محضر نجم" }
+        ]
+      },
+      {
+        id: "19",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "إعادة الترتيب الذكي للمسارات مع خرائط جوجل (Dynamic Routing)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "استلم السائق 28 شحنة موزعة على أحياء شمال وشرق الرياض، ويريد ترتيبها بأقصر مسار لتجنب ذروة طريق خريص والدائري.",
+        actors: ["السائق الميداني", "محرك مسارات جوجل Google Routes"],
+        steps: [
+          "يفتح السائق شاشة المسار (Route) في تطبيق فلاتر.",
+          "يضغط زر تحسين ترتيب التوقفات.",
+          "يستدعي التطبيق POST /driver/route/optimize مع إرسال نقاط التوقف وموقعه.",
+          "يقوم الخادم بمخاطبة خرائط جوجل وإعادة تسلسل المحطات بالأقصر زمناً.",
+          "يراجع السائق المسار ويبدأ الملاحة بنقرة واحدة عبر خرائط جوجل."
+        ],
+        techState: "routing.optimizeRoutePlan() invoked Google Routes API computeRoutes",
+        apiCode: "POST /driver/route/optimize ➔ Google Routes Waypoint Optimization",
+        finMath: [
+          { label: "عدد محطات التوصيل", val: "28 نقطة توقف" },
+          { label: "الوفر الزمني التقديري", val: "45 دقيقة قيادة" },
+          { label: "التكلفة المالية", val: "0.00 ريال (ميزة مضمنة)" }
+        ]
+      },
+      {
+        id: "20",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "تسوية المرتجعات الآجلة واستعادة السقف الائتماني (Postpaid Return Reconciliation)",
+        type: "آلي بالكامل",
+        badge: "badge-credit",
+        scenario: "طلب المستودع توصيل 40 شحنة على الحساب الآجل (سحب ائتماني محجوز 640 ريالاً). نجح السائق في تسليم 32 شحنة، وأعاد 8 شحنات إلى رصيف المستودع بسبب رفض الزبائن. قام المستودع بتأكيد استلام المرتجعات، فقام النظام فوراً بتخفيض الفاتورة الآجلة وإعادة 128 ريالاً لسقف الائتمان المتاح.",
+        actors: ["أمين رصيف المستودع", "السائق", "محرك الفوترة الآجلة بالمنصة"],
+        steps: [
+          "يعود السائق إلى رصيف المستودع ويسلم الـ 8 طرود المرتجعة.",
+          "يمسح موظف المستودع الباركود ويؤكد استلام المرتجعات في واجهة الرصيف.",
+          "يؤكد مشرف المستودع إغلاق الشفت على 32 طرداً مسلماً فقط.",
+          "تستدعي المنصة دالة releaseReserve: يتم إلغاء حجز الـ 8 طرود غير المسلمة (128 ريالاً).",
+          "تُعدل الفاتورة الآجلة للمستودع لتصبح 512 ريالاً فقط بدلاً من 640 ريالاً، مما يرفع سقف الائتمان المتاح فوراً."
+        ],
+        techState: "requests.reservedCents reduced by 12,800 halalas\nwalletAccounts: availableCredit restored by +128 SAR",
+        apiCode: "confirmDelivery(32) ➔ releaseReserve(128 SAR) ➔ updateAvailableCredit()",
+        finMath: [
+          { label: "السحب الائتماني المبدئي المحجوز", val: "640.00- ريال" },
+          { label: "قيمة الشحنات المسلمة (32 × 16 ريال)", val: "512.00 ريال" },
+          { label: "قيمة المرتجعات المعفاة (8 × 16 ريال)", val: "128.00 ريال" },
+          { label: "الرصيد الفعلي المقيد في الفاتورة الآجلة", val: "512.00- ريال" },
+          { label: "استعادة السقف الائتماني المتاح", val: "128.00+ ريال" }
+        ]
+      },
+      {
+        id: "21",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "تحويل مسار التسليم بطلب العميل مع قيد رسوم إضافية على الحساب الآجل (Mid-Route Diversion)",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "اتصل العميل بالسائق وطلب تحويل التوصيل من منزله بحي اليرموك إلى مقر عمله في المدينة الرقمية (مسافة 18 كم إضافية). وافق المستودع رقمياً على تحويل المسار، فقام النظام بإضافة رسم انحراف مسار (25 ريالاً) قُيدت على الفاتورة الآجلة للمستودع وحولت لحساب السائق.",
+        actors: ["العميل", "السائق الميداني", "مدير حسابات المستودع"],
+        steps: [
+          "يختار السائق بالتطبيق: طلب العميل تحويل العنوان ➔ إدخال الإحداثيات الجديدة.",
+          "يحسب النظام المسافة الإضافية (18 كم) ويحدد تسعيرة الانحراف بـ 25 ريالاً.",
+          "يصل إشعار لمشرف المستودع: هل توافق على قيد 25 ريالاً إضافية لتحويل مسار الطلب إلى المدينة الرقمية؟",
+          "يضغط المشرف موافقة، فيقيد النظام الـ 25 ريالاً فوراً على الحساب الآجل للمستودع بالسالب.",
+          "يتوجه السائق للعنوان الجديد ويسلم الشحنة مع استحقاق بدل الانحراف."
+        ],
+        techState: "requests.totalCents += 2500\nwallet.post(charge: 2500, idempotency: reroute_fee)",
+        apiCode: "POST /offers/:id/approve-reroute (surcharge: 25 SAR) ➔ post(ledgerAdjustment)",
+        finMath: [
+          { label: "أجر التوصيل الأصلي للطلب", val: "18.00 ريال" },
+          { label: "بدل انحراف المسار الإضافي (18 كم)", val: "25.00 ريال" },
+          { label: "إجمالي ما يقيد على الفاتورة الآجلة", val: "43.00 ريال" },
+          { label: "مستحقات السائق عن هذه الشحنة", val: "35.00 ريال" }
+        ]
+      },
+      {
+        id: "22",
+        cat: "cat2",
+        catName: "الميل الأخير واسترجاع المرتجعات الآجلة",
+        title: "رفض العميل للأجهزة المنزلية الكبيرة عند المعاينة وإجراءات الإرجاع العكسي",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "قام سائق دينا بنقل ثلاجة وغسالة (White-Glove Delivery) لفيلا العميل بحي حطين. عند فتح الكرتون للمعاينة، وجد العميل خدشاً في الباب الجانبي ورفض الاستلام رفضاً قاطعاً.",
+        actors: ["السائق وفريق التنزيل", "العميل", "قسم خدمة العملاء بالمستودع"],
+        steps: [
+          "يلتقط السائق صوراً تفصيلية للخدش بالثلاجة وكرتون التغليف ويرفقها بالتطبيق.",
+          "يحدد السائق سبب الرفض: customer_rejected_damage مع توقيع العميل على الرفض.",
+          "يوجه التطبيق السائق بإعادة تغليف الثلاجة بالبلاستيك الواقي وتحميلها بحذر بالدينا.",
+          "يصل إشعار فوري لخدمة عملاء المستودع لجدولة استبدال سريع للعميل.",
+          "يعود السائق بالثلاجة للمستودع ويستلم سند إرجاع، ويصرف له أجر النقل والمناولة كاملاً."
+        ],
+        techState: "offers.deliveredUnits = 0 | custody return logged\nreverseLogistics: item returned with damage inspection report",
+        apiCode: "driverApi.delivered(0, reason: 'damaged_refused') ➔ uploadPhotos()",
+        finMath: [
+          { label: "قيمة الأجهزة المرتجعة", val: "4,800.00 ريال" },
+          { label: "أجر شاحنة النقل والتحميل", val: "250.00 ريال (مستحق كاملاً للسائق)" },
+          { label: "المسؤولية عن الخدش", val: "تحال للتحقيق بين المستودع والمصنع" }
+        ]
+      },
+
+      // ─────────────────── CAT 3: Custody & Cash ───────────────────
+      {
+        id: "23",
+        cat: "cat3",
+        catName: "العهد والشبكة ومبالغ التحصيل",
+        title: "تسليم جهاز شبكة الدفع (mada POS) وإرجاعه السليم",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "يسلم المستودع السائق صباحاً جهاز نقاط بيع بنكي (مدى برقم تسلسلي S/N: 99482) لتحصيل مبالغ الشحنات التي يطلب أصحابها الدفع بالبطاقة.",
+        actors: ["أمين العهد بالمستودع", "السائق الميداني"],
+        steps: [
+          "يسجل المستودع تسليم العهدة: POST /offers/:id/custody مع رقم الجهاز والوصف.",
+          "يظهر إشعار للسائق، يفحص الجهاز ويضغط تأكيد استلام العهدة بالتطبيق.",
+          "يستخدم السائق الجهاز طوال الشفت لتحصيل المدفوعات البنكية.",
+          "عند عودته مساءً، يفحص أمين العهدة سلامة الجهاز ويضغط تأكيد استرجاع العهدة.",
+          "تقفل دورة العهدة بنجاح وتتاح أرباح السائق للصرف المالي دون أي عوائق."
+        ],
+        techState: "custodyItems: handed_over ➔ acknowledged ➔ returned",
+        apiCode: "POST /offers/:id/custody ➔ /custody/:id/acknowledge ➔ /custody/:id/return",
+        finMath: [
+          { label: "قيمة التأمين على الجهاز", val: "1,500.00 ريال" },
+          { label: "حالة الحجز على السائق", val: "لا يوجد (سجل نظيف)" },
+          { label: "حالة صرف الأرباح", val: "محررة وجاهزة للصرف" }
+        ]
+      },
+      {
+        id: "24",
+        cat: "cat3",
+        catName: "العهد والشبكة ومبالغ التحصيل",
+        title: "نسيان أو عدم إرجاع جهاز العهدة بعد نهاية الشفت",
+        type: "آلي بالكامل",
+        badge: "badge-alert",
+        scenario: "أنهى السائق عمله وأعاد الطرود المرتجعة، لكنه نسي جهاز الشبكة داخل مركبته وغادر المستودع متوجهاً لمنزله.",
+        actors: ["أمين العهدة", "السائق الميداني", "النظام المالي"],
+        steps: [
+          "يكتشف أمين العهدة غياب الجهاز ويتصل بالسائق دون رد.",
+          "يسجل في المنصة استرجاع بنتيجة: not_returned.",
+          "ينشئ النظام شكوى عاجلة تلقائياً، وتتوقف عملية صرف أرباح السائق بالكامل.",
+          "تظهر رسالة في محفظة السائق: أرباحك معلقة لعدم تسليم جهاز الشبكة للمستودع.",
+          "في صباح اليوم التالي، يسلم السائق الجهاز، فيفك أمين العهدة الحجز وتصرف الأرباح."
+        ],
+        techState: "custodyItems.status = 'not_returned'\ncomplaints.holdsSettlement = true ➔ settlement payout locked",
+        apiCode: "returnCustody('not_returned') ➔ blockingComplaint() active",
+        finMath: [
+          { label: "قيمة العهدة المفقودة", val: "1,500.00 ريال" },
+          { label: "أرباح السائق المعلقة", val: "320.00 ريال (محجوزة بالكامل)" },
+          { label: "شرط فك الحجز", val: "تسليم الجهاز الفعلي للمستودع" }
+        ]
+      },
+      {
+        id: "25",
+        cat: "cat3",
+        catName: "العهد والشبكة ومبالغ التحصيل",
+        title: "إرجاع جهاز عهدة متضرر أو مكسور الشاشة",
+        type: "تدقيق مالي",
+        badge: "badge-fin",
+        scenario: "سقط جهاز مسح الباركود من يد السائق على أرضية المستودع الخرسانية وانكسرت شاشة اللمس تماماً.",
+        actors: ["السائق", "مشرف العهد بالمستودع", "المحاسب المالي"],
+        steps: [
+          "يسلم السائق الجهاز المكسور للمستودع ويقر بالحادثة.",
+          "يسجل المستودع حالة العهدة damaged ويرفق فاتورة الصيانة (200 ريال).",
+          "يقوم المحاسب المالي بإجراء قيد تعديل مالي بالدفتر (wallet.adjust).",
+          "تخصم الـ 200 ريال تلقائياً من محفظة السائق وتقيد لصالح حساب المستودع."
+        ],
+        techState: "custodyItems.status = 'damaged'\nledgerEntries: kind = 'adjustment', debit = 200 SAR",
+        apiCode: "returnCustody('damaged') ➔ post(wallet.adjust, -20000 halalas)",
+        finMath: [
+          { label: "تكلفة صيانة شاشة الجهاز", val: "200.00 ريال" },
+          { label: "أرباح شفت السائق المستحقة", val: "350.00 ريال" },
+          { label: "الخصم المباشر للصيانة", val: "-200.00 ريال" },
+          { label: "صافي ما يحول لحساب السائق", val: "150.00 ريال" }
+        ]
+      },
+      {
+        id: "26",
+        cat: "cat3",
+        catName: "العهد والشبكة ومبالغ التحصيل",
+        title: "عجز مبالغ الدفع عند الاستلام النقدية (COD Discrepancy)",
+        type: "تدقيق مالي",
+        badge: "badge-fin",
+        scenario: "حصّل السائق مبالغ نقدية لـ 12 طلباً بمجموع 2,450 ريال. عند تسليم النقد لأمين الصندوق بالمستودع، أظهر العد وجود 2,350 ريال فقط (عجز 100 ريال).",
+        actors: ["السائق الميداني", "أمين الصندوق بالمستودع", "المحاسب المالي"],
+        steps: [
+          "يصدر الصندوق سند استلام بقيمة 2,350 ريال مع تسجيل عجز 100 ريال.",
+          "يرفع المستودع تذكرة مالية في المنصة برقم الحجز وسند الاستلام.",
+          "يوقع السائق على إقرار العجز المالي.",
+          "تخصم الـ 100 ريال آلياً من أرباح مشوار التوصيل عبر قيد الدفتر المالي وتودع للمستودع."
+        ],
+        techState: "tickets: category = 'payment_issue'\nsettlements.adjustmentCents = -10000",
+        apiCode: "post(adjustment, driver: -100 SAR, business: +100 SAR)",
+        finMath: [
+          { label: "النقد الواجب تحصيله", val: "2,450.00 ريال" },
+          { label: "النقد المسلم فعلياً للصندوق", val: "2,350.00 ريال" },
+          { label: "قيمة العجز المالي", val: "100.00 ريال" },
+          { label: "التسوية", val: "خصم آلي من أرباح السائق للتعويض" }
+        ]
+      },
+
+      // ─────────────────── CAT 4: Attendance & Fleet Management ───────────────────
+      {
+        id: "27",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "الحضور المنضبط وتسجيل الدخول السلس بنظام GPS",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "وصل السائق إلى رصيف المستودع عند 07:48 قبل موعد الشفت بـ 12 دقيقة، والتزم بالمواصفات والزي.",
+        actors: ["السائق الميداني", "حارس البوابة / المشرف", "النظام الآلي"],
+        steps: [
+          "يلتقط التطبيق إحداثيات السائق ضمن نطاق المستودع ويرسل POST /offers/:id/checkin.",
+          "تظهر شارة خضراء فورية في شاشة رصيف المستودع: السائق وصل البوابة.",
+          "ينقر المشرف زر تأكيد الحضور (present: true).",
+          "يتحول الطلب تلقائياً إلى حالة in_progress وتبدأ عمليات التحميل والتسليم."
+        ],
+        techState: "offers: accepted ➔ arrived ➔ attendance_confirmed\nrequests: assigned ➔ in_progress",
+        apiCode: "POST /offers/:id/checkin ➔ POST /offers/:id/attendance (present: true)",
+        finMath: [
+          { label: "موعد الحضور الرسمي", val: "08:00 صباحاً" },
+          { label: "موعد البصمة الجغرافية", val: "07:48 صباحاً (منضبط)" },
+          { label: "حالة تفعيل الشفت", val: "ساري ومغطى بالتأمين اللوجستي" }
+        ]
+      },
+      {
+        id: "28",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "تأخر السائق عن الحضور وتجاوز مهلة السماح (>15 دقيقة)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "موعد الشفت 08:00 صباحاً مع مهلة سماح 15 دقيقة. وصل السائق عند 08:45 دون أي اتصال، وكان المستودع قد فاتته خطة خروج الشاحنات.",
+        actors: ["مشرف المستودع", "السائق المتأخر", "برج المراقبة"],
+        steps: [
+          "يرفض المستودع دخول السائق المتأخر، وينقر رفض الحضور عبر POST /offers/:id/attendance.",
+          "يسجل النظام حالة السائق كغياب no_show.",
+          "تخفض دالة freeSlotAndReplace العداد slotsFilled، وتعيد الطلب لحالة filling.",
+          "يبث النظام عروض استبدال فورية للسائقين الاحتياطيين القريبين لتعويض الشفت."
+        ],
+        techState: "offers.status = 'no_show'\nrequests.status = 'filling' ➔ replacement dispatched",
+        apiCode: "confirmAttendance(false, 'arrived_45m_late') ➔ freeSlotAndReplace()",
+        finMath: [
+          { label: "مستحقات السائق المتأخر", val: "0.00 ريال (محروم لمخالفة الوقت)" },
+          { label: "أثر على حساب السائق", val: "تسجيل إنذار تأخير" },
+          { label: "الضمان المالي للمستودع", val: "محفوظ ومحول للسائق البديل" }
+        ]
+      },
+      {
+        id: "29",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "الغياب الكامل للسائق وتطبيق عقوبة الإيقاف الآلي (سياسة الـ 3 مخالفات)",
+        type: "آلي بالكامل",
+        badge: "badge-alert",
+        scenario: "أكد السائق قبول الشفت ليوم الأحد. جاء صباح الأحد وأغلق السائق هاتفه تماماً ولم يحضر للمستودع.",
+        actors: ["المستودع", "السائق الغائب", "محرك السياسات الآلي"],
+        steps: [
+          "يسجل المستودع غياب السائق عند الساعة 08:30.",
+          "يفحص محرك العقوبات سجل السائق خلال الـ 30 يوماً الماضية.",
+          "يكتشف النظام أن هذه هي المخالفة الثالثة للسائق (cancelSuspendAt = 3).",
+          "يقفل حساب السائق برمجياً لمدة 7 أيام (suspendedUntil = now + 7 days) وتتحول إتاحته لغير متاح."
+        ],
+        techState: "driverProfiles: suspendedUntil = now + 7 days, availability = 'unavailable'\nauditLogs recorded",
+        apiCode: "freeSlotAndReplace('no_show') ➔ auto_suspend strike evaluation",
+        finMath: [
+          { label: "المخالفة المسجلة", val: "مخالفة رقم 3 (غياب شفت معتمد)" },
+          { label: "العقوبة النظامية", val: "إيقاف الحساب عن العمل 7 أيام" },
+          { label: "التعويض للمستودع", val: "استبدال فوري دون أي تكلفة" }
+        ]
+      },
+      {
+        id: "30",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "تعطل مركبة السائق في الطريق واستبدالها عبر مكتب النقل (Fleet Swap)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "سائق تابع لـ مكتب الفارس للخدمات اللوجستية متجه بسيارة دينا للمستودع. عند 07:15 انفجر خرطوم التبريد على طريق خريص.",
+        actors: ["السائق التابع", "منسق مكتب النقل", "السائق البديل", "المستودع"],
+        steps: [
+          "يتصل السائق بمنسق مكتبه اللوجستي فوراً.",
+          "يفتح المنسق بوابة المكتب (/office/jobs) ويضغط استبدال السائق.",
+          "تستدعي المنصة دالة officeReplace: إلغاء السائق المتعطل وتوجيه الطلب حصرياً لسائقي المكتب.",
+          "يقبل سائق بديل من نفس المكتب خلال 5 دقائق.",
+          "تتحدث بيانات السائق الجديد ورقم اللوحة في شاشة المستودع دون تأخير."
+        ],
+        techState: "offers.status = 'replaced' (by office)\nfreeSlotAndReplace(onlyOfficeId: office.id)",
+        apiCode: "POST /office/offers/:id/replace ➔ officeReplace()",
+        finMath: [
+          { label: "التكلفة على المستودع", val: "0.00 ريال (نفس السعر المتفق عليه)" },
+          { label: "مستحقات المشوار", val: "تودع في محفظة مكتب النقل كاملة" },
+          { label: "الأثر التشغيلي", val: "حماية تقييم مكتب النقل من الهبوط" }
+        ]
+      },
+      {
+        id: "31",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "إصابة السائق بوعكة صحية طارئة أثناء التوصيل ومناقلة البضاعة",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "سلم السائق 10 طرود من أصل 30 طرداً. أصيب بضربة شمس وإرهاق شديد وتوقفت مركبته بحي النرجس وبداخله 20 طرداً متبقياً.",
+        actors: ["السائق المصاب", "سائق الإنقاذ", "برج المراقبة", "المستودع"],
+        steps: [
+          "يتصل السائق بطوارئ العمليات لنقله طبياً وحماية البضاعة.",
+          "يوجه برج المراقبة سائق إنقاذ قريب لموقع التوقف لمناقلة الشحنات.",
+          "يعد سائق الإنقاذ الطرود الـ 20 ويتأكد من سلامتها وينقلها لمركبته.",
+          "يعتمد برج المراقبة إنهاء مهمة السائق الأول عند 10 طرود، وإسناد الـ 20 لسائق الإنقاذ.",
+          "عند التسوية: يحاسب السائق الأول على 10 طرود، ويحاسب سائق الإنقاذ على 20 طرداً."
+        ],
+        techState: "staffReplace() split execution\nOffer A: finalUnits = 10 | Offer B: finalUnits = 20",
+        apiCode: "staffReplace() ➔ admin assign rescue driver ➔ balance split",
+        finMath: [
+          { label: "إجمالي قيمة الشفت (30 طرداً)", val: "450.00 ريال" },
+          { label: "مستحقات السائق الأول (10 طرود)", val: "150.00 ريال" },
+          { label: "مستحقات سائق الإنقاذ (20 طرداً)", val: "300.00 ريال" },
+          { label: "المعادلة المحاسبية", val: "150 + 300 = 450 (مطابقة 100%)" }
+        ]
+      },
+      {
+        id: "32",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "الاستبدال الوقائي الاستباقي لمكتب النقل قبل بدء الشفت",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "قبل 18 ساعة من موعد الشفت، لاحظ مدير مكتب النقل أن استمارة مركبة السائق (أ) ستنتهي منتصف الليل مما يمنعه نظامياً من العمل.",
+        actors: ["مدير مكتب النقل", "السائق (أ)", "السائق (ب) البديل"],
+        steps: [
+          "يفتح مدير المكتب لوحة التحكم ويختار مهمة الغد ويضغط تبديل السائق.",
+          "يختار السائق (ب) كبديل نظامي ساري الوثائق.",
+          "تنتقل المهمة فوراً للسائق (ب) دون أي إلغاء أو مساس بحجز المستودع.",
+          "يصل السائق (ب) في الموعد المحدد صباحاً وينفذ المهمة بانتظام."
+        ],
+        techState: "officeReplace() on upcoming job\nseamless reassignment without strike penalty",
+        apiCode: "POST /office/offers/:id/replace ➔ instant reassignment",
+        finMath: [
+          { label: "رسوم الاستبدال الاستباقي", val: "0.00 ريال (مجاني للمكتب)" },
+          { label: "الأثر على المستودع", val: "صفر (ضمان استمرارية الخدمة)" },
+          { label: "الحالة النظامية", val: "امتثال كامل للوائح النقل" }
+        ]
+      },
+      {
+        id: "33",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "تشغيل أسطول مكاتب النقل الجماعي على الحساب الآجل (Bulk Office Fleet Dispatch)",
+        type: "آلي بالكامل",
+        badge: "badge-credit",
+        scenario: "حجز مستودع تجزئة 8 سيارات فان ليوم الجمعة لنقل عروض التخفيضات الكبرى، وتم توجيه الحجز لـ 'مكتب الجزيرة اللوجستي' على الحساب الآجل بخصم 6,400 ريال من السقف الائتماني السالب. قام منسق المكتب بتسكين 8 سائقين من أسطوله بنقرة زر واحدة عبر ميزة الإسناد المجمع.",
+        actors: ["مدير عمليات المستودع", "منسق مكتب النقل الجزيرة", "8 سائقين تابعين"],
+        steps: [
+          "ينشئ المستودع طلباً جماعياً (8 فانات) ويحدد 'مكتب الجزيرة' كمكتب مفضل.",
+          "يوافق النظام فوراً بحجز 6,400 ريال من السقف الائتماني السالب للمستودع.",
+          "يصل إشعار حجز أسطول لمنسق مكتب الجزيرة في بوابته (/office/opportunities).",
+          "يختار المنسق 8 سائقين مؤهلين من أسطوله الداخلي ويضغط: إسناد الأسطول دفعة واحدة.",
+          "تتحول المقاعد الـ 8 فوراً إلى assigned، ويتلقى كل سائق مساره وتفاصيل رصيف التحميل."
+        ],
+        techState: "requests.quantity = 8 | slotsFilled = 8\noffice bulk allocation via batch offer assignment",
+        apiCode: "POST /office/requests/:id/bulk-assign ➔ 8 offers confirmed atomically",
+        finMath: [
+          { label: "عدد المركبات المسندة", val: "8 سيارات فان" },
+          { label: "إجمالي السحب من السقف الائتماني", val: "6,400.00- ريال" },
+          { label: "المستحقات المودعة لمحفظة المكتب", val: "5,120.00 ريال (عند الاكتمال)" },
+          { label: "دخل منصة JR الصافي", val: "1,280.00 ريال" }
+        ]
+      },
+      {
+        id: "34",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "المناقلة والدعم البيني في منتصف الشفت بين نطاقين مختلفين (Cross-Zone Intercept)",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "أنهى السائق (أ) تسليم شحناته الـ 20 في نطاق شمال الرياض مبكراً عند الساعة 13:00. في المقابل تعثر السائق (ب) في نطاق شرق الرياض بسبب عطل تكييف ولديه 15 شحنة متبقية. وجه برج المراقبة السائق (أ) لاعتراض السائق (ب) عند نقطة التقاء واستلام 10 شحنات لدعمه كشفت ملحق.",
+        actors: ["السائق (أ) الداعم", "السائق (ب) المتعثر", "منسق برج المراقبة"],
+        steps: [
+          "يرصد برج المراقبة انتهاء السائق (أ) المبكر وتأخر السائق (ب) في الخريطة الحية (/admin/map).",
+          "يتواصل المنسق مع السائقين ويحدد نقطة التقاء بمحطة وقود على طريق الدمام.",
+          "يستلم السائق (أ) 10 شحنات من السائق (ب) ويمسح باركود المناقلة بالتطبيق.",
+          "تنشئ المنصة مهمة إلحاقية (Sub-Job) للسائق (أ) بـ 10 شحنات إضافية.",
+          "ينتهي تسليم كامل الشحنات قبل نهاية اليوم، ويحصل السائق (أ) على مكافأة شفت داعم تقيد على الفاتورة الآجلة للمستودع."
+        ],
+        techState: "ops.liveMap() detects driver completion ➔ issue auxiliary manifest to Driver A",
+        apiCode: "adminAssign(driverA, subManifest: 10 units) ➔ balance split",
+        finMath: [
+          { label: "أجر الشفت الأصلي للسائق (أ)", val: "250.00 ريال" },
+          { label: "مكافأة الشفت الملحق الداعم (10 طرود)", val: "120.00 ريال" },
+          { label: "إجمالي دخل السائق (أ) اليومي", val: "370.00 ريال" },
+          { label: "حماية الشحنات من التأخير", val: "إنجاز 100% في نفس اليوم" }
+        ]
+      },
+      {
+        id: "35",
+        cat: "cat4",
+        catName: "الحضور وأساطيل مكاتب النقل",
+        title: "تعطل شاحنة تبريد في أطراف النطاق الخارجي وإرسال ورشة إنقاذ متنقلة",
+        type: "تدخل عمليات",
+        badge: "badge-alert",
+        scenario: "تعطلت سيارة فان مبردة محملة بلقاحات بيطرية على طريق الخرج السريع (نطاق أطراف الرياض). انطفأ المحرك ووحدة التبريد بدأت تفقد البرودة تدريجياً. قام مكتب النقل بإرسال سيارة ورشة متنقلة مزودة بمولد كهربائي ومولد تبريد لإنقاذ الشحنة قبل تلفها.",
+        actors: ["السائق", "مسؤول الطوارئ بمكتب النقل", "فني التبريد المتنقل", "المستودع"],
+        steps: [
+          "يضغط السائق زر استغاثة تبريد طارئة عبر التطبيق: Refrigerator Unit Failure.",
+          "يطلق برج المراقبة جرس إنذار فوري مع مهلة 40 دقيقة قبل وصول الحرارة للحد الحرج (+10°).",
+          "يحرك مكتب النقل سيارة صيانة إنقاذ متنقلة متواجدة بالقرب من كوبري الصناعية.",
+          "يصل الفني خلال 22 دقيقة، ويوصل كابل الكهرباء الاحتياطي بالثلاجة لإعادة التبريد لـ +4°.",
+          "تصل سيارة بديلة وتنقل الشحنة الحساسة ويكتمل تسليمها بمحاضر تبريد نظامية مثبتة."
+        ],
+        techState: "tickets: priority = 'urgent', category = 'cold_chain_emergency'\nlive telemetry temperature breach averted",
+        apiCode: "openTicket('cold_chain_emergency') ➔ dispatchMobileRescue()",
+        finMath: [
+          { label: "قيمة اللقاحات المنقذة من التلف", val: "45,000.00 ريال" },
+          { label: "تكلفة طوارئ الصيانة والإنقاذ", val: "تتحملها شركة النقل التابعة" },
+          { label: "حالة الفاتورة الآجلة للمستودع", val: "سارية دون أدنى خسائر" }
+        ]
+      },
+
+      // ─────────────────── CAT 5: Disputes & Credit Audit ───────────────────
+      {
+        id: "36",
+        cat: "cat5",
+        catName: "المنازعات وفواتير الائتمان المتنازع عليها",
+        title: "نزاع الطرود المفقودة (المستودع يؤكد 30 والسائق يدعي تسليم 25 وفقدان 5)",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "حمل المستودع 30 طرداً صباحاً. في المساء سجل السائق تسليم 25 ومرتجع صفر، وادعى: أنتم سلمتموني 25 فقط في الصباح. يصر المستودع على تحميل 30 ويتهم السائق بفقدان 5 طرود.",
+        actors: ["مدير مخزون المستودع", "السائق الميداني", "محقق العمليات"],
+        steps: [
+          "يرفع السائق تقرير تسليم 25 طرداً.",
+          "يضغط المستودع اعتراض على التسليم: POST /offers/:id/delivery-confirm.",
+          "يتحول العرض إلى qty_disputed وتتجمد التسوية المالية فوراً.",
+          "يفحص محقق العمليات السجل الصباحي: يجد تأكيد استلام السائق لـ 30 طرداً بصراحة.",
+          "يقرر المحقق مسؤولية السائق، وتخصم قيمة الـ 5 طرود من محفظة السائق لصالح المستودع."
+        ],
+        techState: "offers.status = 'qty_disputed'\ncomplaints: holdsSettlement = true ➔ settlement blocked",
+        apiCode: "confirmDelivery('dispute') ➔ resolveDispute(finalUnits: 25, liabilityDeduction)",
+        finMath: [
+          { label: "الكمية المقرة صباحاً بالتطبيق", val: "30 طرداً" },
+          { label: "الكمية المسلمة فعلياً", val: "25 طرداً" },
+          { label: "الكمية المفقودة بعهدة السائق", val: "5 طرود" },
+          { label: "القرار المالي", val: "خصم قيمة المفقودات من مستحقات السائق" }
+        ]
+      },
+      {
+        id: "37",
+        cat: "cat5",
+        catName: "المنازعات وفواتير الائتمان المتنازع عليها",
+        title: "كشف التقرير الكاذب للسائق والتسليم الوهمي (Ghost Deliveries)",
+        type: "تدقيق أمني",
+        badge: "badge-alert",
+        scenario: "سلم السائق 16 طرداً فقط وتعب عند 14:00، فقام بالضغط في التطبيق على تسليم 30 طرداً كاملاً للحصول على الأجر كاملاً دون عمل.",
+        actors: ["السائق المتلاعب", "مدقق المستودع", "محقق مكافحة الاحتيال"],
+        steps: [
+          "يرفع السائق تسليم 30 طرداً بالكامل.",
+          "يتلقى المستودع اتصالات من 14 عميلاً يشكون عدم استلام شحناتهم.",
+          "يعترض المستودع بالمنصة، ويفحص برج المراقبة مسار GPS والمسافات الزمنية.",
+          "يثبت الاحتيال: السائق لم يزر إحداثيات منازل الـ 14 عميلاً نهائياً.",
+          "تعدل الكمية النهائية لـ 16 طرداً، وترد قيمة الـ 14 طرداً للمستودع، ويوقف السائق نهائياً."
+        ],
+        techState: "auditLogs flagged GPS spoofing / omission\nfinalUnits corrected to 16 | driver suspended for fraud",
+        apiCode: "confirmDelivery('dispute') ➔ resolveDispute(16) ➔ user.status = 'suspended'",
+        finMath: [
+          { label: "الكمية المدعاة كذباً من السائق", val: "30 طرداً" },
+          { label: "الكمية المسلمة الحقيقية المثبتة", val: "16 طرداً" },
+          { label: "المبالغ المحرومة للاحتيال", val: "قيمة 14 طرداً تعاد للمستودع" },
+          { label: "الإجراء التأديبي", val: "إيقاف السائق وإحالته للقائمة السوداء" }
+        ]
+      },
+      {
+        id: "38",
+        cat: "cat5",
+        catName: "المنازعات وفواتير الائتمان المتنازع عليها",
+        title: "التحكيم التشغيلي وفض النزاع المعقد في برج المراقبة",
+        type: "تحكيم عمليات",
+        badge: "badge-ops",
+        scenario: "نزاع بين المستودع ومكتب النقل سببه طباعة المستودع بوالص شحن بباركود مكرر أدى لخلط الشحنات وعدم تمكن السائق من تسليم 6 طرود.",
+        actors: ["موظف تحكيم العمليات", "مدير المستودع", "مدير مكتب النقل"],
+        steps: [
+          "يفتح موظف العمليات ملف القضية في لوحة الإدارة (/admin/cases).",
+          "يراجع صور البوالص وتذاكر الدعم وسجل تواصل السائق.",
+          "يقرر الموظف تحميل المستودع نصف المسؤولية لخطأ الباركود، واعتماد تسليم 27 طرداً بشكل ملزم.",
+          "يستدعي دالة resolveDispute بـ 27 طرداً، فتتحول حالة العرض لـ pending_settlement ويفك التجميد."
+        ],
+        techState: "jobs.resolveDispute(staffUser, offerId, 27, 'Ops conciliation settlement')\ncomplaints.status = 'resolved'",
+        apiCode: "POST /admin/offers/:id/resolve-dispute ➔ completeIfReady()",
+        finMath: [
+          { label: "الكمية المتنازع عليها", val: "6 طرود مشوهة الباركود" },
+          { label: "قرار التسوية التوفيقية", val: "اعتماد 27 طرداً ملزماً للطرفين" },
+          { label: "حالة التجميد المالي", val: "فك الحجز وتحويل المستحقات فوراً" }
+        ]
+      },
+      {
+        id: "39",
+        cat: "cat5",
+        catName: "المنازعات وفواتير الائتمان المتنازع عليها",
+        title: "الاعتماد السلس والإغلاق التلقائي للشفت المكتمل",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "حمل السائق 30، وسلّم 30، ومرتجع صفر. فحص المشرف السجل ووجد كل الشحنات مسلمة بدقة وتواقيع المستلمين مكتملة.",
+        actors: ["السائق الميداني", "مشرف المستودع المعتمد"],
+        steps: [
+          "يرفع السائق تقرير تسليم 30 طرداً بالتطبيق.",
+          "يضغط المشرف زر تأكيد التسليم النهائي (units: 30).",
+          "تنفذ المنصة دالة completeIfReady: إنشاء سجل التسوية وإغلاق الطلب والعرض.",
+          "يصل إشعار اكتمال للمستودع والسائق مع إتاحة تقييم النجوم المتبادل."
+        ],
+        techState: "offers: delivered_reported ➔ pending_settlement ➔ completed\nrequests.status = 'completed'",
+        apiCode: "confirmDelivery('confirm', 30) ➔ completeIfReady() ➔ createSettlement()",
+        finMath: [
+          { label: "الكمية المحجوزة والمحملة", val: "30 طرداً" },
+          { label: "الكمية المسلمة المعتمدة", val: "30 طرداً (إنجاز 100%)" },
+          { label: "التسوية المالية", val: "محسوبة بالكامل ومحالة للمراجعة" }
+        ]
+      },
+      {
+        id: "40",
+        cat: "cat5",
+        catName: "المنازعات وفواتير الائتمان المتنازع عليها",
+        title: "اعتراض المستودع على الفاتورة الشهرية الآجلة وإصدار إشعار دائن (Credit Note)",
+        type: "تدقيق مالي",
+        badge: "badge-credit",
+        scenario: "أصدرت منصة JR الفاتورة الشهرية لمستودع ملابس بقيمة 42,000 ريال عن شحنات الشهر الماضي المسحوبة على المحفظة السالبة. اعترض المستودع على 3 شحنات قيمتها 180 ريالاً مؤكداً أن السائق لم يوصلها وأعادها تالفة.",
+        actors: ["المدير المالي للمستودع", "محاسب المدينين بمنصة JR", "مراجع الحسابات"],
+        steps: [
+          "يرفع المستودع اعتراضاً مالياً عبر بوابة الفواتير (/business/wallet) محدداً الأرقام المرجعية للشحنات الـ 3.",
+          "يدقق محاسب JR سجلات الرصيف وصور البوالص المرفقة في jobEvents.",
+          "يثبت التحقيق صحة اعتراض المستودع: تلفت الشحنات بسبب سوء قيادة السائق على الطريق.",
+          "تصدر المنصة إشعاراً دائناً ضريبياً معتمداً (Credit Note) بمبلغ 180 ريالاً شاملاً الضريبة.",
+          "يُقيد الإشعار الدائن فوراً في الدفتر المالي، فيقل الرصيد السالب المستحق على المستودع من 42,000 إلى 41,820 ريالاً."
+        ],
+        techState: "invoices.creditNote issued against invoice INV-2026-X\nwalletAccounts: availableCredit restored by +180 SAR",
+        apiCode: "issueCreditNote(invoiceId, 180 SAR) ➔ wallet.post(kind: 'adjustment')",
+        finMath: [
+          { label: "إجمالي الفاتورة الآجلة الأصلية", val: "42,000.00- ريال" },
+          { label: "قيمة الاعتراض المثبت على الشحنات", val: "180.00 ريال" },
+          { label: "الإشعار الدائن الصادر (Credit Note)", val: "180.00+ ريال" },
+          { label: "صافي المبلغ الواجب سداده", val: "41,820.00- ريال" }
+        ]
+      },
+      {
+        id: "41",
+        cat: "cat5",
+        catName: "المنازعات وفواتير الائتمان المتنازع عليها",
+        title: "كشف تزييف الموقع الجغرافي عند تسليم الشحنات الثمينة (Mock GPS Detection)",
+        type: "تدقيق أمني",
+        badge: "badge-alert",
+        scenario: "حاول سائق تسليم هاتف آيفون بقيمة 5,000 ريال عبر استخدام تطبيق تزييف مواقع (Fake GPS / Mock Location) وهو جالس في مقهى يبعد 8 كم عن فيلا العميل لتسجيل إتمام التسليم واختلاس الهاتف.",
+        actors: ["السائق المخترق", "وحدة الحماية الرقمية بالتطبيق", "فريق أمن العمليات"],
+        steps: [
+          "يضغط السائق تم التسليم من داخل تطبيق التزييف.",
+          "تكشف وحدة الأمان بتطبيق فلاتر استخدام تطبيقات تزييف المواقع (Mock Location Provider API).",
+          "يكشف النظام عدم وجود حركة في حساسات التسارع (Accelerometer) وتناقض برج الاتصال الخلوي (Cell Tower Mismatch).",
+          "يرفض التطبيق التسجيل فوراً ويقفل الشفت، ويرسل تنبيهاً أمنياً أحمر لبرج المراقبة: محاولة اختلاس وتزييف موقع.",
+          "يتم استدعاء السائق للتحقيق الأمني والتحفظ على مستحقاته وإحالته للجهات المختصة واسترجاع الهاتف."
+        ],
+        techState: "mobile security engine triggered: MOCK_LOCATION_DETECTED\noffer status locked | fraud alert broadcast",
+        apiCode: "securityGuard.assertRealGps() ➔ triggerSecurityLock() ➔ auditLog",
+        finMath: [
+          { label: "قيمة الشحنة المحمية من الاختلاس", val: "5,000.00 ريال" },
+          { label: "حالة حساب السائق", val: "إيقاف نهائي وقائمة سوداء" },
+          { label: "أثر على المستودع", val: "صفر (حماية البضاعة بنسبة 100%)" }
+        ]
+      },
+      {
+        id: "42",
+        cat: "cat5",
+        catName: "المنازعات وفواتير الائتمان المتنازع عليها",
+        title: "تدقيق التعمد الخاطئ في تصنيف نطاقات التوصيل (Zone Misclassification Audit)",
+        type: "تدقيق مالي",
+        badge: "badge-fin",
+        scenario: "قام مستودع مواد بناء عمداً بتصنيف 25 شحنة متجهة لمدينة سدير الصناعية (نطاق صناعي نائي 120 كم) على أنها 'شمال الرياض' لاقتناص تسعيرة النطاق الحضري الرخيصة (18 ريالاً بدل 65 ريالاً للشحنة).",
+        actors: ["نظام الفحص الجغرافي الآلي", "المستودع المخالف", "المراجع المالي لمنصة JR"],
+        steps: [
+          "ينشر المستودع الطلب على الحساب الآجل مستغلاً التصنيف اليدوي.",
+          "تقوم خوارزمية الفحص الجغرافي العكسي (Reverse Geocoding Audit) بمطابقة الإحداثيات مع حدود النطاقات.",
+          "تكتشف الخوارزمية أن 100% من العناوين تقع في محافظة المجمعة وسدير (خارج النطاق الحضري بـ 100 كم).",
+          "يوقف النظام الشفت قبل بدء التحميل، ويعدل التسعيرة تلقائياً لتعكس النطاق الصناعي الحقيقي (65 ريالاً).",
+          "يُخصم فرق التسعيرة البالغ 1,175 ريالاً من السقف الائتماني السالب للمستودع مع توجيه إشعار تدقيق رسمي."
+        ],
+        techState: "audit.zoneMisclassificationDetected(count: 25)\npricing override applied: industrial_remote_tier",
+        apiCode: "auditJobZones() ➔ recalculatePricingDifference() ➔ debitNegativeWallet()",
+        finMath: [
+          { label: "السعر المدعى من المستودع (25 × 18)", val: "450.00 ريال" },
+          { label: "السعر النظامي الحقيقي المعتمد (25 × 65)", val: "1,625.00 ريال" },
+          { label: "فرق التكلفة المقيد على الحساب الآجل", val: "1,175.00- ريال" },
+          { label: "النتيجة الرقابية", val: "حماية حقوق السائقين وتصحيح الفاتورة" }
+        ]
+      },
+
+      // ─────────────────── CAT 6: Ledger & Settlements ───────────────────
+      {
+        id: "43",
+        cat: "cat6",
+        catName: "الدفتر المالي وفك الضمان والتسويات",
+        title: "التسوية المالية القياسية وفصل المهام وإصدار فاتورة VAT",
+        type: "تدقيق واعتماد",
+        badge: "badge-fin",
+        scenario: "اكتمال مهمة 30 طرداً (سعر العميل 20 ريال = 600 ريال. تكلفة السائق 14 ريال = 420 ريال. ربح المنصة 180 ريال. شامل الضريبة 15%).",
+        actors: ["مراجع الحسابات", "معتمد الصرف المالي", "دفتر القيد المزدوج"],
+        steps: [
+          "ينشأ سجل التسوية المالية في المنصة بحالة pending_review.",
+          "يدخل المراجع المالي ويفحص السجلات وينقر مراجعة عبر reviewSettlement.",
+          "تطبيقاً لفصل المهام: يدخل مدير مالي آخر وينقر اعتماد عبر approveSettlement.",
+          "تنفذ المنصة الصرف عبر payoutTx: خصم المحجوز من المستودع، إيداع أرباح السائق، وقيد عمولة JR.",
+          "إصدار فاتورة ضريبية رسمية برقم تسلسلي موحد تشمل تفصيل ضريبة الـ 15%."
+        ],
+        techState: "settlements: pending_review ➔ reviewed ➔ approved ➔ paid\ninvoices: INV-000XXX generated with 15% VAT breakdown",
+        apiCode: "reviewSettlement() ➔ approveSettlement() ➔ payoutTx()",
+        finMath: [
+          { label: "المجموع الكلي للفاتورة شامل الضريبة", val: "600.00 ريال" },
+          { label: "ضريبة القيمة المضافة 15% المستخرجة", val: "78.26 ريال" },
+          { label: "المبلغ الخاضع للضريبة قبل الضريبة", val: "521.74 ريال" },
+          { label: "المحول لمحفظة السائق", val: "420.00 ريال" },
+          { label: "دخل منصة JR الصافي", val: "180.00 ريال" }
+        ]
+      },
+      {
+        id: "44",
+        cat: "cat6",
+        catName: "الدفتر المالي وفك الضمان والتسويات",
+        title: "فك الضمان التلقائي ورد الفائض عند التوصيل الجزئي (حجز 50 وتسليم 25)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "حجز المستودع 50 طرداً واقتطع النظام 800 ريال كضمان. تم تسليم 25 طرداً فقط واعتمد المشرف ذلك.",
+        actors: ["محرك الضمان المالي التلقائي", "محاسب المستودع"],
+        steps: [
+          "عند تأكيد تسليم 25 طرداً، تستدعي المنصة دالة finalizeRequest.",
+          "يحسب النظام: الضمان المحجوز = 800 ريال. الفعلي المطلوب = 25 × 16 = 400 ريال.",
+          "تستدعي المنصة releaseReserve لفك حجز الـ 400 ريال الفائضة فوراً.",
+          "يعاد مبلغ 400 ريال فوراً لحساب المستودع المتاح دون انتظار دورات البنوك."
+        ],
+        techState: "requests.reservedCents reduced by 40,000 halalas\nledgerEntries: kind = 'release_reserve', available = +400 SAR",
+        apiCode: "finalizeRequest() ➔ releaseReserve(tx, r, 40000) ➔ post()",
+        finMath: [
+          { label: "المبلغ المحجوز بالضمان مسبقاً", val: "800.00 ريال" },
+          { label: "المبلغ المستحق الفعلي للشحنات", val: "400.00 ريال" },
+          { label: "المبلغ المسترد فوراً لمحفظة المستودع", val: "400.00 ريال" },
+          { label: "زمن استرداد الفائض المالي", val: "لحظي (0 ثانية)" }
+        ]
+      },
+      {
+        id: "45",
+        cat: "cat6",
+        catName: "الدفتر المالي وفك الضمان والتسويات",
+        title: "تسوية مستحقات مكاتب النقل (الشركات اللوجستية الفرعية)",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "المهمة نفذها سائق يتبع لشركة مكتب الرياض السريع للخدمات اللوجستية.",
+        actors: ["السائق التابع", "محاسب مكتب النقل", "مالية JR"],
+        steps: [
+          "عند إنشاء العرض، سجل النظام تبعية السائق للمكتب (offers.officeId = office.id).",
+          "عند الصرف في دالة payoutTx: يوجه النظام الدفع لمحفظة المكتب وليس للسائق الفردي.",
+          "تودع مستحقات الشفت كاملة في المحفظة الرسمية لمكتب النقل.",
+          "تظهر تفاصيل العملية في بوابة المكتب مع كشف مسيرات السائقين لتحويل رواتبهم داخلياً."
+        ],
+        techState: "settlements.officeId snapshotted\npayee = ensureAccount(s.officeId ?? s.driverId)",
+        apiCode: "settlement.payoutTx() ➔ post(kind: 'payout', accountId: officeAccount)",
+        finMath: [
+          { label: "إجمالي مستحقات الشفت", val: "450.00 ريال" },
+          { label: "الحساب المستلم للمبلغ", val: "محفظة مكتب الرياض السريع" },
+          { label: "كشف المسيرات التفصيلي", val: "متاح للتصدير بـ Excel / PDF" }
+        ]
+      },
+      {
+        id: "46",
+        cat: "cat6",
+        catName: "الدفتر المالي وفك الضمان والتسويات",
+        title: "الإلغاء المتأخر من المستودع بعد وصول السائق للرصيف (تعويض الاستدعاء)",
+        type: "تدخل عمليات",
+        badge: "badge-ops",
+        scenario: "قبل السائق الطلب وقطع 20 كم ووصل المستودع عند 07:55. عند 08:15، قرر المستودع إلغاء الطلب فجأة بسبب عطل في نظام المبيعات لديهم.",
+        actors: ["مشرف المستودع", "السائق المتضرر", "مسؤول العمليات"],
+        steps: [
+          "يحاول المستودع الإلغاء ذاتياً، فيمنعه النظام برمجياً لبدء العمل وحضور السائق.",
+          "يتدخل موظف العمليات ويتأكد من تضرر السائق بعد وصوله للرصيف.",
+          "يعتمد الموظف الإلغاء مع خصم تعويض استدعاء (50 ريال) من ضمان المستودع وإيداعه للسائق.",
+          "يفك باقي الضمان المحجوز ويعاد لمحفظة المستودع المتاحة."
+        ],
+        techState: "started && !staff throws INVALID_TRANSITION\nstaff cancel executes with cancellation fee post()",
+        apiCode: "requests.cancelRequest() ➔ post(kind: 'payout', 50 SAR to driver)",
+        finMath: [
+          { label: "الضمان المحجوز مسبقاً للطلب", val: "500.00 ريال" },
+          { label: "تعويض السائق عن المشوار والاستدعاء", val: "50.00 ريال" },
+          { label: "المسترد لرصيد المستودع المتاح", val: "450.00 ريال" }
+        ]
+      },
+
+      // ─────────────────── CAT 7: Marketplace Matching & Fleet ───────────────────
+      {
+        id: "47",
+        cat: "cat7",
+        catName: "مطابقة السوق وسعة الأساطيل الكبيرة",
+        title: "انتهاء نافذة الأولوية لمكتب النقل وطرح الطلب للسوق المفتوح",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "نشر مستودع طلباً وفضّل إسناده لـ مكتب الصقر اللوجستي مع منحه نافذة حصرية مدتها 15 دقيقة. لم يتمكن المكتب من توفير سائق خلال المهلة.",
+        actors: ["المستودع", "مكتب النقل المفضل", "عموم السائقين بالرياض"],
+        steps: [
+          "ينشر الطلب مع قفل زمني: officeWindowEndsAt = now + 15m.",
+          "خلال الـ 15 دقيقة، لا يرى الطلب إلا سائقو مكتب الصقر فقط.",
+          "عند الدقيقة 16، يعمل المجدول الداخلي scheduler.ts ويلغي القفل الحصري.",
+          "تبث المنصة الطلب فوراً لجميع السائقين المؤهلين في مدينة الرياض المفتوحة.",
+          "يقبل أول سائق حر متاح العرض ويتم تأكيد المقعد بنجاح."
+        ],
+        techState: "scheduler.ts tick executed\nrequests.preferredOfficeId cleared ➔ dispatchOffers() broadcast",
+        apiCode: "maintenance.runMaintenance() ➔ dispatchOffers(all qualified drivers)",
+        finMath: [
+          { label: "مدة النافذة الحصرية الممنوحة", val: "15 دقيقة" },
+          { label: "التغير في تسعيرة الطلب", val: "0.00 ريال (نفس السعر المعتمد)" },
+          { label: "نتيجة البث العام", val: "سرعة التغطية وتفادي تعطل الشحنات" }
+        ]
+      },
+      {
+        id: "48",
+        cat: "cat7",
+        catName: "مطابقة السوق وسعة الأساطيل الكبيرة",
+        title: "طلب أسطول مركبات متعدد (حجز 5 شاحنات دينا) وتتبعها المستقل",
+        type: "آلي بالكامل",
+        badge: "badge-auto",
+        scenario: "مركز توزيع غذائي ضخم طلب 5 شاحنات دينا لنقل بضائع لسلسلة فروع بالرياض في حجز واحد متكامل.",
+        actors: ["مدير المستودع", "5 سائقين متنافسين", "محرك المطابقة والتوزيع"],
+        steps: [
+          "ينشئ المستودع طلباً واحداً بكمية quantity: 5 مع حجز ضمان يغطي الشاحنات الخمس.",
+          "يبث النظام العروض، ويتسابق السائقون لحجز المقاعد بأقفال ذرية FOR UPDATE.",
+          "مع كل قبول يرتفع عداد slotsFilled حتى يكتمل العدد 5 وتتحول الحالة لـ assigned.",
+          "تدير كل شاحنة شفتها باستقلالية تامة (شاحنة وصلت، شاحنة في الطريق، شاحنة انتهت).",
+          "إذا تعثر سائق واحد، يفتح مقعده هو فقط للاستبدال دون التأثير على الشاحنات الأربع الأخرى.",
+          "تكتمل التسوية النهائية للطلب تلقائياً فور إنهاء الشاحنات الخمس لمهامها."
+        ],
+        techState: "requests.quantity = 5 | requests.slotsFilled increments atomically\n5 separate offer rows tied to 1 master request row",
+        apiCode: "lockRequest() FOR UPDATE ➔ fillSlot() per winner ➔ completeIfReady()",
+        finMath: [
+          { label: "عدد الشاحنات المطلوبة", val: "5 شاحنات دينا" },
+          { label: "سعر الشاحنة باليوم", val: "650.00 ريال" },
+          { label: "إجمالي الضمان المحجوز للحجز", val: "3,250.00 ريال" },
+          { label: "المحاسبة والتسوية", val: "مستقلة لكل شاحنة بدفتر القيد" }
+        ]
+      }
+    ];
+
+    // Render Master Table
+    const tableBody = document.getElementById("masterTableBody");
+    tableBody.innerHTML = flowsData.map(f => `
+      <tr class="table-row-item" data-id="${f.id}" data-cat="${f.cat}" data-text="${f.title} ${f.scenario}">
+        <td class="table-num">#${f.id}</td>
+        <td><strong>${f.title}</strong></td>
+        <td>${f.scenario.substring(0, 70)}...</td>
+        <td><code style="font-size:11px;color:#38bdf8;">${f.techState.split('\n')[0]}</code></td>
+        <td style="color:#34d399;font-weight:600;">${f.finMath[f.finMath.length - 1].val}</td>
+        <td><span class="badge ${f.badge}">${f.type}</span></td>
+      </tr>
+    `).join("");
+
+    // Render Detailed Cards
+    const container = document.getElementById("flowsContainer");
+    
+    // Group by categories
+    const categories = [
+      { id: "cat1", name: "الفئة الأولى: رصيف المستودع وفروقات الكميات وسقف الائتمان السالب (التدفقات 1 إلى 9)", badgeClass: "" },
+      { id: "zones", name: "الفئة الثانية: نطاقات المستودع مقابل نطاقات منصة JR الجغرافية (التدفقات 10 إلى 13)", badgeClass: "badge-zones" },
+      { id: "cat2", name: "الفئة الثالثة: تنفيذ الميل الأخير واسترجاع المرتجعات الآجلة (التدفقات 14 إلى 22)", badgeClass: "" },
+      { id: "cat3", name: "الفئة الرابعة: العهد والمعدات وأجهزة نقاط البيع ومبالغ التحصيل (التدفقات 23 إلى 26)", badgeClass: "" },
+      { id: "cat4", name: "الفئة الخامسة: حضور السائقين، مكاتب النقل، وإدارة الأساطيل (التدفقات 27 إلى 35)", badgeClass: "" },
+      { id: "cat5", name: "الفئة السادسة: تدقيق الكميات، المنازعات، وفواتير الائتمان (التدفقات 36 إلى 42)", badgeClass: "" },
+      { id: "cat6", name: "الفئة السابعة: الدفتر المالي، فك الضمان، والتسويات (التدفقات 43 إلى 46)", badgeClass: "" },
+      { id: "cat7", name: "الفئة الثامنة: مطابقة السوق وسعة الأساطيل الكبيرة (التدفقات 47 إلى 48)", badgeClass: "" }
+    ];
+
+    container.innerHTML = categories.map(cat => {
+      const items = flowsData.filter(f => f.cat === cat.id);
+      return `
+        <section class="category-section" id="section-${cat.id}">
+          <div class="category-header">
+            <span class="category-badge ${cat.badgeClass}">${cat.id.toUpperCase()}</span>
+            <h2 class="category-title">${cat.name}</h2>
+          </div>
+          <div class="flows-grid">
+            ${items.map(f => {
+              let boxClass = "scenario-box";
+              if (f.cat === "zones") boxClass += " zone-box";
+              if (f.badge === "badge-credit") boxClass += " credit-box";
+              return `
+                <div class="flow-card" id="flow-${f.id}" data-cat="${f.cat}" data-text="${f.title} ${f.scenario} ${f.steps.join(' ')}">
+                  <div class="flow-card-header">
+                    <div class="flow-id-title">
+                      <span class="flow-id">تدفق #${f.id}</span>
+                      <h3 class="flow-title">${f.title}</h3>
+                    </div>
+                    <div class="flow-badges">
+                      <span class="badge ${f.badge}">${f.type}</span>
+                    </div>
+                  </div>
+
+                  <div class="flow-body">
+                    <div class="${boxClass}">
+                      <div class="scenario-label">السيناريو الواقعي الميداني:</div>
+                      <div class="scenario-text">${f.scenario}</div>
+                    </div>
+
+                    <div class="actors-line">
+                      <span class="actors-label">الأطراف المشاركة:</span>
+                      ${f.actors.map(a => `<span class="actor-tag">${a}</span>`).join("")}
+                    </div>
+
+                    <div class="steps-container">
+                      <div class="steps-label"><span>📌</span> خطوات التنفيذ الميداني والتقني:</div>
+                      <ol class="steps-list">
+                        ${f.steps.map((s, idx) => `
+                          <li class="step-item">
+                            <span class="step-num">${idx + 1}</span>
+                            <div>${s}</div>
+                          </li>
+                        `).join("")}
+                      </ol>
+                    </div>
+
+                    <div class="details-columns">
+                      <div class="detail-card">
+                        <div class="detail-card-title title-tech">
+                          <span>⚙️</span> مسار حالات النظام والـ API
+                        </div>
+                        <div class="code-line">${f.techState.replace(/\n/g, '<br>')}</div>
+                        <div class="code-line" style="color:#a78bfa;">${f.apiCode}</div>
+                      </div>
+
+                      <div class="detail-card">
+                        <div class="detail-card-title title-fin">
+                          <span>💰</span> الأثر المالي وضبط المحفظة والسقف الائتماني
+                        </div>
+                        <div class="fin-math">
+                          ${f.finMath.map(m => `
+                            <div class="fin-row ${m.val.includes('-') ? 'negative-credit' : ''}">
+                              <span>${m.label}</span>
+                              <span>${m.val}</span>
+                            </div>
+                          `).join("")}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </section>
+      `;
+    }).join("");
+
+    let currentCat = "all";
+
+    function setCategory(cat, el) {
+      currentCat = cat;
+      document.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
+      el.classList.add("active");
+      filterFlows();
+    }
+
+    function filterFlows() {
+      const q = document.getElementById("searchInput").value.trim().toLowerCase();
+      
+      // Filter detailed cards
+      document.querySelectorAll(".flow-card").forEach(card => {
+        const text = card.getAttribute("data-text").toLowerCase();
+        const cat = card.getAttribute("data-cat");
+        const matchCat = (currentCat === "all" || cat === currentCat);
+        const matchText = (!q || text.includes(q));
+        if (matchCat && matchText) {
+          card.style.display = "block";
+        } else {
+          card.style.display = "none";
+        }
+      });
+
+      // Filter section headers
+      categories.forEach(c => {
+        const sec = document.getElementById(`section-${c.id}`);
+        const allCards = sec.querySelectorAll(".flow-card");
+        if (currentCat !== "all" && currentCat !== c.id) {
+          sec.style.display = "none";
+        } else {
+          if (q) {
+            let hasVisible = false;
+            allCards.forEach(card => {
+              if (card.style.display !== "none") hasVisible = true;
+            });
+            sec.style.display = hasVisible ? "block" : "none";
+          } else {
+            sec.style.display = "block";
+          }
+        }
+      });
+
+      // Filter table rows
+      document.querySelectorAll(".table-row-item").forEach(row => {
+        const text = row.getAttribute("data-text").toLowerCase();
+        const cat = row.getAttribute("data-cat");
+        const matchCat = (currentCat === "all" || cat === currentCat);
+        const matchText = (!q || text.includes(q));
+        row.style.display = (matchCat && matchText) ? "" : "none";
+      });
+    }
+  </script>
+</body>
+</html>

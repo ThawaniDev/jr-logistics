@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { offers, requests, settlements, walletAccounts, complaints } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, publishedRequest, mkStaff, reqInput } from "../helpers/factories";
+import { offers, requests, settlements, walletAccounts, jobEvents } from "@/db/schema";
+import * as stops from "@/server/stops";
+import { currentStopOf, markRouteFinished, otpFor } from "@/server/shipments";
+import { runMaintenance } from "@/server/maintenance";
+import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, publishedRequest, mkStaff, reqInput, WAREHOUSE } from "../helpers/factories";
 import * as jobs from "@/server/jobs";
+import { work } from "../helpers/work";
 import * as settle from "@/server/settlement";
 import { ensureAccount, post } from "@/server/wallet";
 import { createDraft, publishRequest, cancelRequest } from "@/server/requests";
@@ -11,6 +15,7 @@ import { createDraft, publishRequest, cancelRequest } from "@/server/requests";
 beforeEach(resetDb);
 afterAll(shutdown);
 
+const dbTx = () => db as unknown as Parameters<typeof jobs.autoConfirmDelivery>[0];
 async function balance(userId: string) {
   const a = await ensureAccount(userId);
   const [r] = await db.select().from(walletAccounts).where(eq(walletAccounts.id, a.id));
@@ -41,30 +46,23 @@ describe("delivery lifecycle (happy path)", () => {
     expect((await db.select().from(requests).where(eq(requests.id, r.id)))[0].status).toBe("assigned");
     await expect(jobs.checkIn(driver, offer.id)).rejects.toMatchObject({ code: "INVALID_TRANSITION" }); // too early
     await db.update(requests).set({ startsAt: new Date(Date.now() + 3600_000) }).where(eq(requests.id, r.id));
-    await jobs.checkIn(driver, offer.id, { lat: 24.7, lng: 46.6 });
+    await expect(jobs.checkIn(driver, offer.id, { lat: 24.9, lng: 46.9 })).rejects.toMatchObject({ code: "TOO_FAR_FROM_WAREHOUSE" });
+    await jobs.checkIn(driver, offer.id, WAREHOUSE);
     await jobs.confirmAttendance(biz, offer.id, true);
-    await jobs.recordLoading(biz, offer.id, 10);
-    await jobs.acknowledgeLoading(driver, offer.id, true);
-    await jobs.reportDelivered(driver, offer.id, 9);
-    await jobs.confirmDelivery(biz, offer.id, { action: "confirm" });
+    const before = await totalMoney();
+    await work(biz, driver, offer.id, 9); // 9 delivered, 1 refused at the door and handed back
+    // E16/E18: finishing the route confirms the delivery and PAYS — no warehouse confirmation, no review / approval / payout steps.
+    expect((await db.select().from(offers).where(eq(offers.id, offer.id)))[0].status).toBe("completed");
 
     const req = (await db.select().from(requests).where(eq(requests.id, r.id)))[0];
     expect(req.status).toBe("completed");
     const [s] = await db.select().from(settlements).where(eq(settlements.requestId, r.id));
+    expect(s.status).toBe("paid");
     expect(s.finalUnits).toBe(9);
     expect(s.customerCents).toBe(90_00);
     expect(s.providerCents).toBe(63_00);
     expect(s.marginCents).toBe(27_00);
     expect(s.refundCents).toBe(10_00);
-
-    const before = await totalMoney();
-    const fin = await mkStaff(["settlements.review", "settlements.approve", "payouts.execute"]);
-    const fin2 = await mkStaff(["settlements.approve", "payouts.execute"]);
-    await settle.reviewSettlement(fin, s.id);
-    await expect(settle.approveSettlement(fin, s.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await settle.approveSettlement(fin2, s.id);
-    await settle.payoutSettlement(fin2, s.id);
-    await settle.payoutSettlement(fin2, s.id); // idempotent
 
     const b = await balance(biz.id), d = await balance(driver.id);
     expect(b.reservedCents).toBe(0);
@@ -74,6 +72,9 @@ describe("delivery lifecycle (happy path)", () => {
     const plat = (await db.select().from(walletAccounts).where(eq(walletAccounts.kind, "platform")))[0];
     expect(plat.availableCents).toBe(27_00);
     expect(b.availableCents + b.reservedCents + d.availableCents + plat.availableCents).toBe(500_00);
+    // paying again is a no-op (idempotent safety net)
+    expect(await settle.paySettlementsDue()).toBe(0);
+    expect((await balance(driver.id)).availableCents).toBe(63_00);
   });
 });
 
@@ -118,7 +119,7 @@ describe("concurrency", () => {
 });
 
 describe("disputes, cancellation, replacement", () => {
-  it("dispute holds settlement until resolved by ops", async () => {
+  it("the warehouse has nothing to confirm or dispute: the delivery is confirmed by the system when the driver finishes (and a leftover from the old flow is swept up)", async () => {
     const admin = await mkAdmin();
     await mkRule(admin);
     const biz = await mkBusiness({ fundsCents: 500_00 });
@@ -127,16 +128,23 @@ describe("disputes, cancellation, replacement", () => {
     const [o] = await db.select().from(offers).where(eq(offers.requestId, r.id));
     await jobs.acceptOffer(driver, o.id, true);
     await jobs.confirmAttendance(biz, o.id, true);
-    await jobs.reportDelivered(driver, o.id, 10);
-    await jobs.confirmDelivery(biz, o.id, { action: "dispute", note: "only 6 delivered" });
-    expect((await db.select().from(settlements)).length).toBe(0);
-    await expect(jobs.completeRequest(biz, r.id)).rejects.toMatchObject({ code: "DISPUTE_BLOCKS" });
-    const ops = await mkStaff(["requests.edit"]);
-    await jobs.resolveDispute(ops, o.id, 7, "agreed 7");
-    const [s] = await db.select().from(settlements);
-    expect(s.finalUnits).toBe(7);
-    const [c] = await db.select().from(complaints);
-    expect(c.status).toBe("resolved");
+    await work(biz, driver, o.id, 10);
+    const ev = (await db.select().from(jobEvents).where(eq(jobEvents.offerId, o.id))).filter((e) => e.type === "delivery_confirmed");
+    expect(ev).toHaveLength(1); expect(ev[0].payload).toMatchObject({ auto: true, units: 10 }); expect(ev[0].actorId).toBeNull();
+    expect((await db.select().from(settlements))[0].status).toBe("paid");
+    expect(await jobs.autoConfirmDelivery(await dbTx(), o.id)).toMatchObject({ status: "completed" }); // idempotent
+    // an offer the old flow left in "delivery reported" (it waited for a warehouse click) is confirmed and paid by the housekeeping tick
+    const d2 = await mkDriver(); const r2 = await publishedRequest(biz, { startsAt: new Date(Date.now() + 4 * 864e5) });
+    const o2 = (await db.select().from(offers).where(eq(offers.requestId, r2.id)))[0];
+    const drv = o2.driverId === driver.id ? driver : d2;
+    await jobs.acceptOffer(drv, o2.id, true); await jobs.confirmAttendance(biz, o2.id, true);
+    await jobs.recordLoading(biz, o2.id, undefined, { all: true }); await jobs.acknowledgeLoading(drv, o2.id, true); await stops.approveRoute(drv, o2.id);
+    for (let st = await currentStopOf(db, o2.id); st; st = await currentStopOf(db, o2.id)) { await stops.arriveAtStop(drv, o2.id, st.id); await stops.deliverStop(drv, o2.id, st.id, { code: st.code, otp: otpFor(st) }); }
+    await db.transaction(async (tx) => { await markRouteFinished(tx, (await tx.select().from(offers).where(eq(offers.id, o2.id)))[0], "delivery_reported", drv); });
+    expect((await db.select().from(offers).where(eq(offers.id, o2.id)))[0].status).toBe("delivered_reported");
+    await runMaintenance();
+    expect((await db.select().from(offers).where(eq(offers.id, o2.id)))[0].status).toBe("completed");
+    expect((await db.select().from(settlements).where(eq(settlements.offerId, o2.id)))[0].status).toBe("paid");
   });
 
   it("business cancel refunds the full reserve; started work blocks business cancel", async () => {

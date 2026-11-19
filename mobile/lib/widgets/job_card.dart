@@ -32,10 +32,15 @@ class JobCard extends StatelessWidget {
         const SizedBox(height: 12),
         _row(Icons.schedule, fmtDateTime(job.startsAt, lang)),
         const SizedBox(height: 6),
-        _row(Icons.route_outlined, '${t('city.${job.pickupCity}')} → ${t('city.${job.deliveryCity}')}'),
+        _row(Icons.route_outlined, '${cityLabel(context, job.pickupCity)} → ${cityLabel(context, job.deliveryCity)}'),
+        if (job.manifest) ...[const SizedBox(height: 6), _row(Icons.pin_drop_outlined, job.status == 'offered' ? t('ms.up_to_in_city', {'n': job.expectedUnits, 'city': cityLabel(context, job.deliveryCity)}) : t('ms.stops_in_city', {'n': job.stops.isEmpty ? job.expectedUnits : job.stops.length, 'city': cityLabel(context, job.deliveryCity)}))],
         if (job.vehicleType != null) ...[const SizedBox(height: 6), _row(Icons.local_shipping_outlined, '${t('vehicle.${job.vehicleType}')}${job.temperature != null ? ' · ${t('temp.${job.temperature}')}' : ''}')],
         const SizedBox(height: 6),
-        _row(Icons.inventory_2_outlined, '${job.expectedUnits} ${t(job.isDelivery ? 'unit.shipment' : 'unit.vehicle_day')}'),
+        _row(Icons.inventory_2_outlined, job.manifest ? t('ms.up_to_parcels', {'n': job.expectedUnits}) : '${job.expectedUnits} ${t(job.isDelivery ? 'unit.shipment' : 'unit.vehicle_day')}'),
+        if (_showCounters) ...[const SizedBox(height: 10), _counters(context)],
+        if (job.manifest && !job.allowPartial) ...[const SizedBox(height: 6), _row(Icons.groups_outlined, t('ms.all_or_nothing'), color: JR.gold)],
+        if (job.finalUnits != null) ...[const SizedBox(height: 6), _row(Icons.fact_check_outlined, '${t('units.final')}: ${job.finalUnits}')],
+        if (job.cancelReason != null) ...[const SizedBox(height: 6), _row(Icons.info_outline, t('job.cancel_reason', {'reason': job.cancelReason}))],
         if (job.earningHidden) ...[const SizedBox(height: 10), Text(t('job.paid_by_office'), style: const TextStyle(color: JR.muted, fontSize: 12))]
         else if (job.expectedEarningCents != null) ...[
           const SizedBox(height: 12),
@@ -45,7 +50,8 @@ class JobCard extends StatelessWidget {
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Flexible(child: Text(t('job.expected_earning'), overflow: TextOverflow.ellipsis, style: const TextStyle(color: JR.muted, fontSize: 13))),
               const SizedBox(width: 8),
-              Text(fmtMoney(job.expectedEarningCents, lang), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w800, fontSize: 16)),
+              // Scales down instead of overflowing when the amount is long and the text size is large.
+              Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(job.expectedEarningCents, lang), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w800, fontSize: 16)))),
             ]),
           ),
         ],
@@ -54,5 +60,25 @@ class JobCard extends StatelessWidget {
     );
   }
 
-  Widget _row(IconData i, String text) => Row(children: [Icon(i, size: 18, color: JR.cyan), const SizedBox(width: 8), Expanded(child: Text(text, style: const TextStyle(color: JR.muted)))]);
+  /// Compact counters for a per-parcel job under way: to deliver · delivered · not delivered · cash (same numbers as the stat cards on the job page).
+  bool get _showCounters {
+    if (!job.manifest || job.status == 'offered' || !job.isActive && job.status != 'completed') return false;
+    final s = job.stopsSummary;
+    return s.total > 0 && s.pending < s.total;
+  }
+
+  Widget _counters(BuildContext context) {
+    final t = context.tr;
+    final s = job.stopsSummary;
+    final cod = job.cod;
+    Widget chip(Key k, IconData icon, String text, Color color) => Row(key: k, mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 16, color: color), const SizedBox(width: 4), Flexible(child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)))]);
+    return Wrap(key: const Key('job-counters'), spacing: 14, runSpacing: 6, children: [
+      chip(const Key('counter-to-deliver'), Icons.local_shipping_outlined, t('fma.card_to_deliver', {'n': s.loaded}), JR.cyan),
+      chip(const Key('counter-delivered'), Icons.check_circle_outline, t('fma.card_delivered', {'n': s.delivered}), JR.accent),
+      if (s.notDelivered > 0) chip(const Key('counter-not-delivered'), Icons.cancel_outlined, t('fma.card_not_delivered', {'n': s.notDelivered}), JR.danger),
+      if (cod != null && cod.any) chip(const Key('counter-cash'), Icons.payments_outlined, t('fma.card_cash', {'collected': fmtMoney(cod.collectedCents, lang), 'total': fmtMoney(cod.collectedCents + cod.toCollectCents, lang)}), JR.gold),
+    ]);
+  }
+
+  Widget _row(IconData i, String text, {Color? color}) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(i, size: 18, color: color ?? JR.cyan), const SizedBox(width: 8), Expanded(child: Text(text, style: TextStyle(color: color ?? JR.muted)))]);
 }

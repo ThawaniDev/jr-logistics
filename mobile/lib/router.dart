@@ -3,16 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
+import 'features/cash/cash_screen.dart';
 import 'features/home/shell.dart';
 import 'features/home/today_screen.dart';
 import 'features/jobs/chat_screen.dart';
 import 'features/jobs/job_detail_screen.dart';
 import 'features/jobs/jobs_screen.dart';
 import 'features/jobs/offers_screen.dart';
-import 'features/jobs/route_screen.dart';
+import 'features/jobs/route_map_screen.dart';
 import 'features/profile/documents_screen.dart';
+import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/notifications_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/support/new_ticket_screen.dart';
+import 'features/support/support_screen.dart';
+import 'features/support/ticket_screen.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
 
@@ -49,10 +54,19 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen())]),
         ],
       ),
-      GoRoute(path: '/job/:id', builder: (_, s) => JobDetailScreen(offerId: s.pathParameters['id']!), routes: [GoRoute(path: 'chat', builder: (_, s) => ChatScreen(offerId: s.pathParameters['id']!))]),
-      GoRoute(path: '/route', builder: (_, _) => const RouteScreen()),
+      GoRoute(path: '/job/:id', builder: (_, s) => JobDetailScreen(offerId: s.pathParameters['id']!), routes: [
+        GoRoute(path: 'chat', builder: (_, s) => ChatScreen(offerId: s.pathParameters['id']!)),
+        GoRoute(path: 'map', builder: (_, s) => RouteMapScreen(offerId: s.pathParameters['id']!)),
+      ]),
+      GoRoute(path: '/profile/edit', builder: (_, _) => const EditProfileScreen()),
       GoRoute(path: '/documents', builder: (_, _) => const DocumentsScreen()),
       GoRoute(path: '/notifications', builder: (_, _) => const NotificationsScreen()),
+      GoRoute(path: '/cash', builder: (_, _) => const CashScreen()),
+      // '/support/new' is declared before '/support/:id' so "new" is never read as a ticket id.
+      GoRoute(path: '/support', builder: (_, _) => const SupportScreen(), routes: [
+        GoRoute(path: 'new', builder: (_, s) => NewTicketScreen(offerId: s.uri.queryParameters['offerId'])),
+        GoRoute(path: ':id', builder: (_, s) => TicketScreen(ticketId: s.pathParameters['id']!)),
+      ]),
     ],
   );
 });

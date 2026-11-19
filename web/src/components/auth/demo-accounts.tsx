@@ -16,7 +16,7 @@ export function DemoAccounts({ onPick, staff }: { onPick: (v: { phone?: string; 
       <p className="mb-3 text-xs text-muted">{t("auth.demo_hint")}</p>
       <div className="flex flex-wrap gap-2">
         {items.map((i) => (
-          <button key={(i.phone ?? i.email) as string} type="button" onClick={() => onPick(staff ? { email: i.email!, password: i.password ?? data.staffPassword } : { phone: i.phone! })} className="rounded-lg border border-line bg-bg2 px-3 py-1.5 text-xs hover:border-accent">
+          <button key={(i.phone ?? i.email) as string} type="button" onClick={() => onPick(staff ? { email: i.email!, password: i.password ?? data.staffPassword } : { phone: i.phone! })} className="min-h-10 rounded-lg border border-line bg-bg2 px-3 py-1.5 text-xs hover:border-accent">
             <span className="font-medium">{i.name}</span> <span className="text-muted">· {t(`role.${i.role}`)}</span>
           </button>
         ))}

@@ -64,3 +64,44 @@ Test locations: **V** = `web/tests/**` (Vitest, real Postgres) · **E** = `web/e
 | SHR-001 shared services | ✅ | catalog/profile/wallet/notifications/health | V/E |
 | NFR-004/005/006/007/008/010 | ✅/🟡 | security headers, field-level privacy, idempotent money, audit log, i18n parity (1022 keys ×3, test-enforced), correlation IDs | V i18n parity; V api; E headers via curl |
 | NFR-001/002/003/009/011/012 | 🟡 | no SLO/RPO/RTO/load/accessibility audits performed — owner targets needed; pagination removes hard caps | — |
+
+## Audit follow-up (rebuild vs old system) — defects found, fixed and pinned by `web/tests/integration/gaps.test.ts`
+| Finding | Fix | Test (V gaps.test) |
+|---|---|---|
+| Request `contents` never saved (inline comment swallowed the field) | `requests.ts rowFromInput` | *stores what the driver carries* |
+| Confirming one driver's attendance closed the remaining slots | `jobs.confirmAttendance` only moves a fully staffed request to `in_progress` | *does not close the remaining open slots* |
+| Offers: loading shown for rentals, Rate shown twice | server-driven `businessActions(o, ctx)`, `ratedByMe` | *offers only the actions that can work* |
+| Partly staffed requests held escrow forever | `maintenance` closes open slots +1 h after start, refunds escrow | *partly staffed request closes its open slots* |
+| Publish with no addresses / unready preferred office | `publishRequest` gates | *publishing needs both addresses…* |
+| Billing above booked/loaded quantity could strand a payout | `maxBillableUnits` caps driver report, business confirm, ops resolve, finance correction | *quantity can never exceed…* |
+| Dispute did not alert operations | `notifyOps(permission, …)` (admins + staff holding the permission) | *dispute notifies operations* |
+| External `Idempotency-Key` race; orphan drafts | claim-first idempotency, cleanup on failure | *two concurrent calls…*, *failed publish leaves no orphan* |
+| Webhook secret regenerated on every save | rotate only on URL change / explicit action | *saving the same webhook URL keeps the secret* |
+| Office could take another office's reserved request | guard in `assignDriver` | *cannot take over…* |
+| Stale office snapshot → settlement paid to wrong payee; cross-office re-link | `dropStaleOffers`, one-office rule, snapshot-only payee | *joining or leaving an office…*, *cannot invite…* |
+| Driver saw notes before accepting / addresses forever | `driverJobView` privacy | *completed jobs no longer expose…* |
+| Driver dead-end at `arrived`; unguarded no-work / contact reports | `reportNoWork`, `reportContactException` | *arrived … report once* |
+| Office replace used a faked admin actor | `officeReplace` with real actor, office-first dispatch | *office replaces its own driver…* |
+| Missing office reports/settlement detail/opportunity reasons | `officeReport`, `officeSettlements`, `officeOpportunities` | *office views…* |
+| Separation of duties bypassable; no correction/adjustment/ledger/invoice/batch views | `settlement.ts`, `adminviews.ts` | *approval needs a different reviewer*, *correct a quantity*, *manual adjustments*, *batch skips held* |
+| Staff privilege escalation; no password reset/unlock; `mustChangePassword` unenforced | `accounts.ts`, `router.ts` | *staff cannot escalate*, *temporary password blocks everything…* |
+| Clearing a suspension re-suspended instantly | `strikes_reset_at` (migration 0001) | *clearing a suspension restarts the strike count* |
+| Sensitive driver data / finance figures visible to wrong staff | masking, `adminStats(viewer)` | *sensitive driver data is masked*, *dashboard stats hide money…* |
+| Report preview/CSV silently capped at 100 rows; unknown type 500 | `pageSize` honoured, full CSV export, enum validation | *reports validate type and honour pageSize* |
+| Ratings / cancellations / city summary / invoices not viewable | `adminviews.ts` + `/admin/*` routes | *views … answer for the right permissions* |
+| Profile: IBAN/city unvalidated at sign-up, availability bypass, no vehicle edit | `registerUser`, `updateProfile` | *IBAN is validated and canonicalised…* |
+| Document type trusted from the client | header (magic-byte) check | V api *documents* (fake PNG → 422) |
+| External audit (`AUDIT_RESPONSE.md`): IP spoofing, webhook DNS rebinding, cron dependency, ephemeral storage, staff MFA | `lib/client-ip.ts`, `integrations.pinnedFetch`, `scheduler.ts` + `instrumentation.ts`, `storage-s3.ts`, `auth/mfa.ts` | V unit client-ip, ssrf, s3 (AWS vectors), mfa (RFC 6238 vectors); V integration scheduler, mfa; E gaps *two-step verification* |
+
+## B2C + per-shipment delivery (C-series, see DECISIONS.md and SHIPMENTS_API.md)
+| Requirement | Implementation | Tests |
+|---|---|---|
+| Warehouse provides each shipment's details (B2C consumer / B2B business) | `shipments` table, `prepareManifest`, manifest on `POST/PATCH /requests`, `MANIFEST_REQUIRED` at publish | `shipments.test.ts` manifest suite |
+| Driver goes one by one, never bulk | `stops.ts` (`STOP_LOCKED`), derived delivered count, `approveRoute`, `deferStop` once | "one stop at a time" suite |
+| Recipient proof: consumer OTP, business OTP or receipt photo | `otpFor` (derived, SMS'd), 5-try lock, resend ≤ 3, `saveProofPhoto` (magic bytes) | OTP / B2B receipt tests |
+| Parcel scan (code, own ref, number) at hand-over, delivery and return | `scanMatches`, `markLoaded`, `confirmReturns` | allocation + failed-stop tests |
+| Exact billing/escrow per parcel, balanced allocation, refunds | `slotShape`, `allocateToOffer`, `syncOfferUnits`, `buildQuote.totalShipments` | allocation suite |
+| Failed attempts, returns, re-ship, end route, replace guard | `failStop`, `releaseOfferShipments`, `endRoute`, `reshipFromRequest`, `guardReplaceManifest` | failed-stop / end-route tests |
+| Fix or cancel one parcel before hand-over | `updateShipment`, `cancelShipment` | "fixing or withdrawing" test |
+| All-or-nothing requests; office selection removed; no COD/POS | `allowPartial` + maintenance `calledOff`; `preferredOfficeId` ignored; `CUSTODY_ITEM_TYPES` | all-or-nothing + gaps tests |
+| Recipient SMS + public tracking + integrator API | `sendRecipientCodes`, `trackShipment`, `/jobs/:id/shipments`, webhooks | notification/tracking tests |
