@@ -10,6 +10,8 @@ import { logEvent } from "./events";
 import { notify, notifyMany } from "./notify";
 import { autoConfirmDelivery } from "./jobs";
 import { paySettlementsDue } from "./settlement";
+import { batchOf, recordShipmentEvents } from "./shipment-events";
+import { runCaptureTick } from "./snapshots";
 
 /**
  * Scheduled housekeeping (idempotent):
@@ -44,7 +46,8 @@ export async function runMaintenance() {
       if (!["published", "filling"].includes(l.status) || l.slotsFilled > 0) return;
       await releaseReserve(tx, l, l.reservedCents, `expire-release:${l.id}`);
       await tx.update(offers).set({ status: "expired", updatedAt: now }).where(and(eq(offers.requestId, l.id), eq(offers.status, "offered")));
-      await tx.update(shipments).set({ status: "cancelled", failReason: "unfulfilled", updatedAt: now }).where(and(eq(shipments.requestId, l.id), eq(shipments.status, "pending")));
+      const lapsedParcels = await tx.update(shipments).set({ status: "cancelled", failReason: "unfulfilled", updatedAt: now }).where(and(eq(shipments.requestId, l.id), eq(shipments.status, "pending"))).returning({ id: shipments.id });
+      await recordShipmentEvents(tx, batchOf(lapsedParcels.map((p) => p.id), l.id, "cancelled", { payload: { reason: "unfulfilled", by: "maintenance" } }));
       await tx.update(requests).set({ status: "expired", updatedAt: now }).where(eq(requests.id, l.id));
       await logEvent(tx, { requestId: l.id, type: "request_expired", oldStatus: l.status, newStatus: "expired" });
       await notify(l.businessId, "request_expired", { requestId: l.id, ref: l.ref }, tx);
@@ -63,8 +66,9 @@ export async function runMaintenance() {
       // Every driver still on the job goes — including one the business already confirmed (and even loaded): the request is called off.
       await tx.update(offers).set({ status: "cancelled", cancelReason: "not_fully_staffed", cancelledAt: now, updatedAt: now }).where(and(eq(offers.requestId, l.id), inArray(offers.status, ["offered", "accepted", "arrived", "attendance_confirmed"])));
       // Parcels still at the warehouse are withdrawn; any already handed over must come back (same rule as a cancelled request).
-      await tx.update(shipments).set({ status: sql`case when ${shipments.status} = 'loaded' then 'failed' else 'cancelled' end`, failReason: sql`case when ${shipments.status} = 'loaded' then 'request_cancelled' else 'not_fully_staffed' end`, failedAt: sql`case when ${shipments.status} = 'loaded' then now() else ${shipments.failedAt} end`, offerId: sql`case when ${shipments.status} = 'loaded' then ${shipments.offerId} else null end`, updatedAt: now })
-        .where(and(eq(shipments.requestId, l.id), inArray(shipments.status, ["pending", "loaded"])));
+      const calledOffParcels = await tx.update(shipments).set({ status: sql`case when ${shipments.status} = 'loaded' then 'failed' else 'cancelled' end`, failReason: sql`case when ${shipments.status} = 'loaded' then 'request_cancelled' else 'not_fully_staffed' end`, failedAt: sql`case when ${shipments.status} = 'loaded' then now() else ${shipments.failedAt} end`, offerId: sql`case when ${shipments.status} = 'loaded' then ${shipments.offerId} else null end`, updatedAt: now })
+        .where(and(eq(shipments.requestId, l.id), inArray(shipments.status, ["pending", "loaded"]))).returning({ id: shipments.id, status: shipments.status, offerId: shipments.offerId });
+      await recordShipmentEvents(tx, calledOffParcels.map((p) => ({ shipmentId: p.id, requestId: l.id, offerId: p.offerId, type: p.status === "failed" ? "failed" as const : "cancelled" as const, payload: { reason: p.status === "failed" ? "request_cancelled" : "not_fully_staffed", by: "maintenance" } })));
       await releaseReserve(tx, l, l.reservedCents, `allornothing-release:${l.id}`);
       await tx.update(requests).set({ status: "cancelled", cancelReason: "not_fully_staffed", cancelledAt: now, updatedAt: now }).where(eq(requests.id, l.id));
       await logEvent(tx, { requestId: l.id, type: "request_called_off", oldStatus: l.status, newStatus: "cancelled", payload: { requested: l.quantity, staffed: l.slotsFilled } });
@@ -88,7 +92,8 @@ export async function runMaintenance() {
       await releaseReserve(tx, l, Math.max(0, l.reservedCents - held), `partial-release:${l.id}`);
       await tx.update(offers).set({ status: "expired", updatedAt: now }).where(and(eq(offers.requestId, l.id), eq(offers.status, "offered")));
       const started = live.some((o) => ["attendance_confirmed", "delivered_reported", "pending_settlement"].includes(o.status));
-      await tx.update(shipments).set({ status: "cancelled", failReason: "unfulfilled", updatedAt: now }).where(and(eq(shipments.requestId, l.id), eq(shipments.status, "pending"), sql`${shipments.offerId} is null`));
+      const closedParcels = await tx.update(shipments).set({ status: "cancelled", failReason: "unfulfilled", updatedAt: now }).where(and(eq(shipments.requestId, l.id), eq(shipments.status, "pending"), sql`${shipments.offerId} is null`)).returning({ id: shipments.id });
+      await recordShipmentEvents(tx, batchOf(closedParcels.map((p) => p.id), l.id, "cancelled", { payload: { reason: "unfulfilled", by: "maintenance" } }));
       await tx.update(requests).set({ quantity: l.slotsFilled, status: started ? "in_progress" : "assigned", updatedAt: now }).where(eq(requests.id, l.id));
       await logEvent(tx, { requestId: l.id, type: "unfilled_slots_closed", oldStatus: l.status, newStatus: started ? "in_progress" : "assigned", payload: { requested: l.quantity, staffed: l.slotsFilled } });
       await notify(l.businessId, "request_partially_filled", { requestId: l.id, ref: l.ref, filled: l.slotsFilled, requested: l.quantity }, tx);
@@ -104,7 +109,8 @@ export async function runMaintenance() {
   await housekeeping(now);
   await db.insert(settings).values({ key: "maintenance_last_run", value: { at: now.toISOString() } }).onConflictDoUpdate({ target: settings.key, set: { value: { at: now.toISOString() }, updatedAt: now } });
   const unsuspended = await db.update(driverProfiles).set({ suspendedUntil: null }).where(lt(driverProfiles.suspendedUntil, now)).returning({ id: driverProfiles.userId });
-  return { remindedIncomplete: reminded, settledOffers: settled.offers, paidSettlements: settled.paid, expiredOffers: staleOffers.length, broadcast, expiredRequests: expired, partialClosed: partial, calledOff, driversRecomputed: drivers.length, unsuspended: unsuspended.length };
+  const captured = await runCaptureTick(now); // hourly / daily snapshots, request milestones, webhook log sync, retention (never throws)
+  return { capture: captured, remindedIncomplete: reminded, settledOffers: settled.offers, paidSettlements: settled.paid, expiredOffers: staleOffers.length, broadcast, expiredRequests: expired, partialClosed: partial, calledOff, driversRecomputed: drivers.length, unsuspended: unsuspended.length };
 }
 
 /**

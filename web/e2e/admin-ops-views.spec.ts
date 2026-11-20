@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Browser, type Page } from "@playwright/test";
-import { staffLogin, gotoReady, DEMO } from "./helpers";
+import { staffLogin, gotoReady, DEMO, apiLogin } from "./helpers";
 
 /**
  * Admin control center, operations, requests (list + detail), cancellations, reports and the live map (redesign F1–F12).
@@ -7,7 +7,7 @@ import { staffLogin, gotoReady, DEMO } from "./helpers";
  * admin views and cancels it at the end (which also refunds the business and puts one row on the cancellations page).
  */
 test.describe.configure({ mode: "serial" });
-const BASE = "http://localhost:3100";
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 const ADMIN = { email: "admin@jrlogistics.test", password: "E2e!Password2026" };
 const req: { id: string; ref: string; businessId: string } = { id: "", ref: "", businessId: "" };
 
@@ -15,13 +15,7 @@ async function api(ctx: APIRequestContext, method: "GET" | "POST", path: string,
   const res = await ctx.fetch(`${BASE}/api/v1${path}`, { method, data, headers: { origin: BASE, "content-type": "application/json" } });
   return { status: res.status(), json: await res.json().catch(() => null) };
 }
-async function businessApi(browser: Browser) {
-  const ctx = await browser.newContext();
-  const s = await api(ctx.request, "POST", "/auth/otp/send", { phone: DEMO.business });
-  const v = await api(ctx.request, "POST", "/auth/otp/verify", { phone: DEMO.business, code: s.json.demoCode });
-  expect(v.status).toBe(200);
-  return ctx;
-}
+const businessApi = (browser: Browser) => apiLogin(browser, DEMO.business); // the shared helper reuses the session of an earlier sign-in (the OTP endpoint is rate-limited per IP)
 const admin = (page: Page) => staffLogin(page, ADMIN.email, ADMIN.password);
 const group = (page: Page, name: string) => page.getByRole("group", { name, exact: true });
 
@@ -114,15 +108,20 @@ test("request view: header, sections, parcels, timeline and the admin actions (a
   await gotoReady(page, `/admin/requests/${req.id}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(req.ref);
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Requests" })).toHaveAttribute("href", "/admin/requests");
-  for (const name of ["Drivers", "Request details", "Business", "Cost", "Shipments", "Timeline"]) await expect(page.getByRole("heading", { name, exact: true }), name).toBeVisible();
+  // the order view is a layout with route sections (e2e/details-orders.spec.ts covers them in depth): the overview carries the details, the business, the cost and the latest events
+  for (const name of ["Milestones", "Request details", "Business", "Cost"]) await expect(page.getByRole("heading", { name, exact: true }), name).toBeVisible();
   await expect(page.getByTestId("admin-req-open-company")).toHaveAttribute("href", `/admin/companies/${req.businessId}`);
   await expect(page.getByTestId("admin-req-open-ledger")).toHaveAttribute("href", new RegExp(`^/admin/finance/ledger\\?request=${req.id}`));
+  await expect(page.getByText("Request published")).toBeVisible();
+  await gotoReady(page, `/admin/requests/${req.id}/drivers`);
+  await expect(page.getByRole("heading", { name: "Drivers", exact: true })).toBeVisible();
+  await gotoReady(page, `/admin/requests/${req.id}/parcels`);
+  await expect(page.getByRole("heading", { name: "Shipments", exact: true })).toBeVisible();
   await expect(page.getByTestId("admin-parcel-row")).toHaveCount(3);
   await page.getByRole("textbox", { name: "Search", exact: true }).fill("Customer 2"); // the parcel list has its own filters
   await expect(page.getByTestId("admin-parcel-row")).toHaveCount(1);
   await page.getByRole("textbox", { name: "Search", exact: true }).fill("");
   await expect(page.getByTestId("admin-parcel-row")).toHaveCount(3);
-  await expect(page.getByText("Request published")).toBeVisible();
   // assign: the dialog lists candidates and needs a driver AND a reason
   await page.getByTestId("admin-req-assign").click();
   const dlg = page.getByRole("dialog", { name: "Assign driver" });
@@ -174,24 +173,7 @@ test("operations: today's KPIs, the alert queue and the cities table; the page r
   await expect(page.getByTestId("admin-ops-updated")).toContainText("Updated");
 });
 
-test("reports: report types and periods are filters in the URL, the CSV export follows them", async ({ page }) => {
-  await admin(page);
-  await gotoReady(page, "/admin/reports");
-  await expect(page.getByRole("heading", { level: 1, name: "Reports", exact: true })).toBeVisible();
-  const type = group(page, "Report");
-  await expect(type.getByRole("button", { name: "Requests", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("admin-reports-export")).toHaveAttribute("href", /\/api\/v1\/admin\/reports\/requests\?format=csv/);
-  await type.getByRole("button", { name: "Start-time SLA" }).click();
-  await expect(page).toHaveURL(/type=sla/);
-  await expect(type.getByRole("button", { name: "Start-time SLA" })).toHaveAttribute("aria-pressed", "true");
-  await group(page, "Period").getByRole("button", { name: "Last 30 days" }).click();
-  await expect(page.getByTestId("admin-reports-export")).toHaveAttribute("href", /\/admin\/reports\/sla\?format=csv&from=/);
-  await page.getByTestId("admin-reports-clear").click();
-  await expect(page.getByTestId("admin-reports-export")).not.toHaveAttribute("href", /from=/);
-  // a report type the viewer may not see falls back to the first allowed one (support staff have no reports at all, so use finance for the positive case)
-  await gotoReady(page, "/admin/reports?type=nonsense");
-  await expect(type.getByRole("button", { name: "Requests", exact: true })).toHaveAttribute("aria-pressed", "true");
-});
+// The raw report tables that used to live on /admin/reports moved to the Data explorer; /admin/reports is now the Overview (see e2e/reports-overview.spec.ts).
 
 test("live map: KPIs, filters and the plot render (the demo database may have no live drivers)", async ({ page }) => {
   await admin(page);

@@ -9,6 +9,7 @@ import { hasPerm, useUser } from "@/components/layout/auth-context";
 import { hasAny, qs } from "./admin-common";
 import { LoadingRows } from "./admin-offices-common";
 import { daysUntil, documentRows } from "./admin-offices-lib";
+import { DocumentHistory } from "./admin-driver-docs";
 
 /**
  * Documents of one office or driver: the newest file per type plus the required types nobody uploaded yet.
@@ -46,4 +47,4 @@ export function OwnerDocuments({ ownerId, kind }: { ownerId: string; kind: "offi
   );
 }
 
-export function OfficeDocumentsTab({ id }: { id: string }) { return <OwnerDocuments ownerId={id} kind="office" />; }
+export function OfficeDocumentsTab({ id }: { id: string }) { return <div className="space-y-5"><OwnerDocuments ownerId={id} kind="office" /><DocumentHistory ownerId={id} kind="office" /></div>; }

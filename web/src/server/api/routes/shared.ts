@@ -3,12 +3,13 @@ import { defineRoutes } from "../router";
 import { jobAccess } from "@/server/access";
 import { listMessages, postMessage } from "@/server/support";
 import { timeline } from "@/server/views";
+import { timelineFor, walletPolicy } from "@/server/driver-wallet-policy";
 
 defineRoutes([
   { method: "GET", path: "/offers/:id/timeline", auth: "user", handler: async ({ user, params }) => {
     const a = await jobAccess(user, params.id);
     const all = await timeline(a.request.id);
-    const mine = all.filter((e) => !e.offerId || e.offerId === a.offer.id);
+    const mine = timelineFor(all.filter((e) => !e.offerId || e.offerId === a.offer.id), a.side === "driver" && (await walletPolicy(user.id)).managedByOffice); // J4: no "payout paid" for an office driver
     // The customer's price (and which rule priced it) is the business's and staff's business: drivers and offices only ever see their own earnings.
     const hidePrice = a.side === "driver" || a.side === "office";
     return { items: hidePrice ? mine.map((e) => (e.payload && typeof e.payload === "object" && ("totalCents" in e.payload || "ruleVersion" in e.payload)

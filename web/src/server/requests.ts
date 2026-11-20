@@ -12,6 +12,7 @@ import { audit } from "./audit";
 import { notifyMany } from "./notify";
 import { dispatchOffers } from "./matching";
 import { saveManifest, manifestCount, slotShape, type ShipmentInput } from "./shipments";
+import { recordShipmentEvents } from "./shipment-events";
 import { MAX_SHIPMENTS_PER_REQUEST } from "./catalog";
 import { ensurePickupPin, warehouseLocation } from "./warehouse";
 import { can } from "./auth/permissions";
@@ -107,7 +108,12 @@ export async function estimate(business: User, raw: RequestInput) {
   return { available: true as const, quote: publicQuote(q), wallet: { availableCents: acct.availableCents }, sufficientFunds: acct.availableCents + acct.creditLimitCents >= q.totalCents, creditLimitCents: acct.creditLimitCents };
 }
 
-export async function createDraft(business: User, raw: RequestInput, via: "web" | "api" | "mobile" = "web") {
+/**
+ * `opts.b2b` (J3, only matters while the platform has B2B shipments off): how `recipientType: "business"` rows are treated — `reject` → `422 B2B_DISABLED`
+ * (the portal / mobile default), `coerce` → stored as consumer parcels (the public API default: an import is never failed for it; a re-ship of old business parcels).
+ * `opts.report.coerced` receives the number of coerced rows so the caller can tell its client.
+ */
+export async function createDraft(business: User, raw: RequestInput, via: "web" | "api" | "mobile" = "web", opts: { b2b?: "reject" | "coerce"; report?: { coerced: number } } = {}) {
   const items = manifestItems(raw);
   const i = shaped(raw, items?.length ?? null);
   await validate(i, db);
@@ -116,8 +122,11 @@ export async function createDraft(business: User, raw: RequestInput, via: "web" 
   return db.transaction(async (tx) => {
     const ref = await nextRef(tx, "JR");
     const [r] = await tx.insert(requests).values({ ...rowFromInput(i), ref, businessId: business.id, status: "draft", createdVia: via }).returning();
-    if (SERVICE_MAP[i.service].hasShipments && items?.length) await saveManifest(tx, r, items, { allowIncomplete: !!raw.detailsLater });
+    const report = opts.report ?? { coerced: 0 };
+    const before = report.coerced;
+    if (SERVICE_MAP[i.service].hasShipments && items?.length) await saveManifest(tx, r, items, { allowIncomplete: !!raw.detailsLater, actor: { id: business.id, name: business.name, role: business.role }, b2b: opts.b2b ?? (via === "api" ? "coerce" : "reject"), report });
     await logEvent(tx, { requestId: r.id, actor: business, type: "request_created", newStatus: "draft" });
+    if (report.coerced > before) await logEvent(tx, { requestId: r.id, actor: business, type: "shipments_b2b_coerced", payload: { count: report.coerced - before, via } }); // J3: B2B is off — the import was kept, those parcels went to consumers
     return r;
   });
 }
@@ -134,7 +143,9 @@ export async function updateDraft(business: User, id: string, raw: RequestInput)
     const i = shaped(raw, n || null);
     await validate(i, tx);
     if (i.pickupLat == null) { const pin = r.pickupLat != null ? { lat: r.pickupLat, lng: r.pickupLng as number } : await warehouseLocation(r.businessId, tx); if (pin) { i.pickupLat = pin.lat; i.pickupLng = pin.lng; } }
-    if (items && SERVICE_MAP[i.service].hasShipments) await saveManifest(tx, r, items, { allowIncomplete: !!raw.detailsLater });
+    // J3: a draft that already holds business parcels (saved while B2B was on) may be re-saved with them; otherwise a business recipient is refused while B2B is off.
+    const hasBusiness = !!items && (await tx.select({ id: shipments.id }).from(shipments).where(and(eq(shipments.requestId, id), eq(shipments.recipientType, "business"))).limit(1)).length > 0;
+    if (items && SERVICE_MAP[i.service].hasShipments) await saveManifest(tx, r, items, { allowIncomplete: !!raw.detailsLater, actor: { id: business.id, name: business.name, role: business.role }, b2b: hasBusiness ? "keep" : "reject" });
     else if (!SERVICE_MAP[i.service].hasShipments) await tx.delete(shipments).where(eq(shipments.requestId, id));
     const [u] = await tx.update(requests).set({ ...rowFromInput(i), updatedAt: new Date(), version: r.version + 1 }).where(eq(requests.id, id)).returning();
     return u;
@@ -229,8 +240,9 @@ export async function cancelRequest(actor: User, id: string, reason: string) {
       await notifyMany(toCancel.map((o) => o.driverId), "request_cancelled", { ref: r.ref }, tx);
     }
     // Parcels not yet on a vehicle are withdrawn; any already handed over must come back to the warehouse.
-    await tx.update(shipments).set({ status: sql`case when ${shipments.status} = 'loaded' then 'failed' else 'cancelled' end`, failReason: sql`case when ${shipments.status} = 'loaded' then 'request_cancelled' else ${shipments.failReason} end`, offerId: sql`case when ${shipments.status} = 'loaded' then ${shipments.offerId} else null end`, updatedAt: new Date() })
-      .where(and(eq(shipments.requestId, id), inArray(shipments.status, ["pending", "loaded"])));
+    const withdrawn = await tx.update(shipments).set({ status: sql`case when ${shipments.status} = 'loaded' then 'failed' else 'cancelled' end`, failReason: sql`case when ${shipments.status} = 'loaded' then 'request_cancelled' else ${shipments.failReason} end`, offerId: sql`case when ${shipments.status} = 'loaded' then ${shipments.offerId} else null end`, updatedAt: new Date() })
+      .where(and(eq(shipments.requestId, id), inArray(shipments.status, ["pending", "loaded"]))).returning({ id: shipments.id, status: shipments.status, offerId: shipments.offerId });
+    await recordShipmentEvents(tx, withdrawn.map((w) => ({ shipmentId: w.id, requestId: id, offerId: w.offerId, type: w.status === "failed" ? "failed" as const : "cancelled" as const, actor: { id: actor.id, name: actor.name, role: actor.role }, payload: { reason: "request_cancelled", cancelReason: reason } })));
     // Funds still reserved (nothing has settled) go back to the business.
     const settledShare = live.filter((o) => o.status === "completed").reduce((a, o) => a + (r.unitPriceCents ?? 0) * o.expectedUnits, 0);
     await releaseReserve(tx, r, Math.max(0, r.reservedCents - settledShare), `cancel-release:${r.id}`, actor.id);

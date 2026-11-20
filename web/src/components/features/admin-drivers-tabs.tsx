@@ -1,14 +1,12 @@
 "use client";
-import { Section } from "@/components/ui";
-import { useI18n } from "@/i18n/provider";
-import { JobsTable } from "./admin-offices-jobs";
 import { OwnerDocuments } from "./admin-offices-documents";
+import { DocumentHistory } from "./admin-driver-docs";
+import { SecurityPanel } from "./admin-driver-security";
+import { PeopleActivity, PeopleNotes, PeopleRaw } from "./admin-driver-activity";
 
-/** Jobs tab of a driver (every job the driver worked or was assigned, filterable and paged). */
-export function DriverJobsTab({ id }: { id: string }) {
-  const { t } = useI18n();
-  return <Section title={t("office.jobs_title")} description={t("rdq.driver_jobs_sub")} flush><JobsTable endpoint={`/admin/drivers/${id}/jobs`} testid="rdq-driver-job" /></Section>;
-}
-
-/** Documents tab of a driver (same table as for offices). */
-export function DriverDocumentsTab({ id }: { id: string }) { return <OwnerDocuments ownerId={id} kind="driver" />; }
+/** The small route sections of a driver (`/admin/drivers/:id/…`): documents (current status + every submission), security, activity, notes and the raw record. */
+export function DriverDocumentsTab({ id }: { id: string }) { return <div className="space-y-5"><OwnerDocuments ownerId={id} kind="driver" /><DocumentHistory ownerId={id} kind="driver" /></div>; }
+export function DriverSecurityTab({ id }: { id: string }) { return <SecurityPanel id={id} kind="driver" />; }
+export function DriverActivityTab({ id }: { id: string }) { return <PeopleActivity id={id} />; }
+export function DriverNotesTab({ id }: { id: string }) { return <PeopleNotes id={id} />; }
+export function DriverRawTab({ id }: { id: string }) { return <PeopleRaw id={id} kind="driver" />; }

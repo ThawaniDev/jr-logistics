@@ -12,6 +12,7 @@ import { sendRecipientCodes } from "./shipments";
 import { lockOffer, expect as expectState, forDriver } from "./jobs";
 import { estimateLeg, geocodeAddress, planStops, type LatLng, type RouteProvider, type Stop } from "./routing";
 import { pickupPinOf } from "./warehouse";
+import { assertRoutingOn, isRoutingOn } from "./routing-mode";
 import type { User } from "@/db/schema";
 
 /**
@@ -55,6 +56,7 @@ export interface PlanOutcome { plan: StoredPlan | null; cached: boolean; changed
  * and the number of paid provider calls per job is capped. Without it, it is the system planning after hand-over.
  */
 export async function planOfferRoute(q: PlanRequest): Promise<PlanOutcome> {
+  await assertRoutingOn(); // J2: routing off → no planning, no Google call, `409 ROUTING_DISABLED`
   const [offer] = await db.select().from(offers).where(eq(offers.id, q.offerId));
   if (!offer) throw err("NOT_FOUND", "Offer not found");
   if (q.actor) forDriver(q.actor, offer);
@@ -170,6 +172,7 @@ export async function planOfferRoute(q: PlanRequest): Promise<PlanOutcome> {
  * and the parcels are in manifest order meanwhile.
  */
 export async function autoPlanRoute(offerId: string, fetcher?: typeof fetch): Promise<void> {
+  if (!(await isRoutingOn())) return; // J2: routing off → nothing is planned (and nothing is sent to Google)
   try {
     await Promise.race([
       planOfferRoute({ offerId, fetcher }),
@@ -206,6 +209,7 @@ export function routeView(o: Pick<Offer, "status" | "loadedAckByDriver" | "route
  */
 export async function reorderOfferRoute(driver: User, offerId: string, order: string[]) {
   const cfg = await getSettings();
+  if (!cfg.routingEnabled) throw err("ROUTING_DISABLED", "Route planning is turned off by the platform"); // J2: no manual re-ordering either
   if (!cfg.driverCanReorderRoute) throw err("FEATURE_DISABLED", "Re-ordering the route is turned off by the platform");
   let oldFirst: string | null = null, newFirst: string | null = null, approved = false;
   const plan = await db.transaction(async (tx) => {
@@ -251,6 +255,7 @@ export async function reorderOfferRoute(driver: User, offerId: string, order: st
 
 /** E6 — the legs of the stops still to do, in route order, for drawing on a map. `polyline: null` = an estimate: draw a straight line from→to. */
 export async function routeGeometry(driver: User, offerId: string) {
+  await assertRoutingOn(); // J2: no map / polyline data while routing is off
   const [o] = await db.select().from(offers).where(eq(offers.id, offerId));
   if (!o) throw err("NOT_FOUND", "Offer not found");
   forDriver(driver, o);

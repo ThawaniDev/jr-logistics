@@ -1,21 +1,32 @@
 import { test, expect } from "@playwright/test";
-import { otpLogin, staffLogin, gotoReady, DEMO } from "./helpers";
+import { otpLogin, staffLogin, gotoReady, uiSignIn, rememberLogin, DEMO } from "./helpers";
+import { setFieldModes, type FieldModes } from "./field-modes";
+import { openNext } from "./driver-ui";
 
 test.describe.configure({ mode: "serial" });
 
+let savedModes: FieldModes; // J2 / J3: routing and B2B shipments are OFF by default — this spec drives routes / "Approve route" / business parcels
+test.beforeAll(async ({ browser }) => { savedModes = await setFieldModes(browser, { routingEnabled: true, b2bShipmentsEnabled: true }); });
+test.afterAll(async ({ browser }) => { await setFieldModes(browser, savedModes); });
+
 test("landing renders, language switch flips direction, brand tokens applied", async ({ page }) => {
-  await page.goto("/");
+  await gotoReady(page, "/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Assign your deliveries");
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
-  await page.getByTestId("lang-switch").first().selectOption("ar");
+  // Each switch reloads the page; the <select> is server-rendered before React attaches its handler, so wait for hydration before the next change.
+  const switchTo = async (l: string) => {
+    await page.waitForSelector('html[data-hydrated="true"]');
+    await page.getByTestId("lang-switch").first().selectOption(l);
+    await expect(page.locator("html")).toHaveAttribute("lang", l);
+  };
+  await switchTo("ar");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
-  await expect(page.locator("html")).toHaveAttribute("lang", "ar");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("أسند توصيل");
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(bg).toBe("rgb(11, 19, 43)"); // #0B132B
-  await page.getByTestId("lang-switch").first().selectOption("ur");
+  await switchTo("ur");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
-  await page.getByTestId("lang-switch").first().selectOption("en");
+  await switchTo("en");
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
 });
 
@@ -30,23 +41,106 @@ test("route guards: anonymous → login; business cannot open admin", async ({ p
   await expect(page).toHaveURL(/\/business$/);
 });
 
-test("new user registers as a driver through the UI and sees verification gating", async ({ page }) => {
-  await gotoReady(page, "/login?role=driver");
-  await page.getByLabel("Mobile number").fill("0511122233");
-  await page.getByRole("button", { name: "Send code" }).click();
-  await page.getByLabel("Verification code").fill((await page.locator(".ltr-num.text-lg").textContent())!.trim());
-  await page.getByRole("button", { name: "Verify & continue" }).click();
+test("sign-in screen: username + password for every role, demo quick-fill, kind errors, old staff address redirects, no code step", async ({ browser }) => {
+  const ctx = await browser.newContext(); const page = await ctx.newPage();
+  await gotoReady(page, "/login");
+  await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByTestId("login-username")).toBeVisible();
+  await expect(page.getByText("Send code")).toHaveCount(0);
+  await expect(page.getByLabel("Mobile number")).toHaveCount(0);
+  // the password box hides what is typed until Show is pressed
+  await page.getByTestId("login-password").fill("Secret#Pass2026");
+  await expect(page.getByTestId("login-password")).toHaveAttribute("type", "password");
+  await page.getByTestId("login-password-toggle").click();
+  await expect(page.getByTestId("login-password")).toHaveAttribute("type", "text");
+  // wrong password and unknown user get the same kind message, and the typed values stay
+  await page.getByTestId("login-username").fill("demo.business");
+  await page.getByTestId("login-password").fill("Wrong#Pass2026");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("login-error")).toContainText("username or password is not correct");
+  await expect(page.getByTestId("login-username")).toHaveValue("demo.business");
+  await page.getByTestId("login-username").fill("nobody.at.all");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("login-error")).toContainText("username or password is not correct");
+  await expect(page.getByText(/ask your account manager or JR support/i)).toBeVisible();
+  // demo mode: one button per demo account fills both boxes
+  await expect(page.getByTestId("demo-accounts")).toBeVisible();
+  await page.getByTestId("demo-demo.driver").click();
+  await expect(page.getByTestId("login-username")).toHaveValue("demo.driver");
+  await expect(page.getByTestId("login-password")).not.toHaveValue("");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/driver/);
+  // every role: business, office and staff by username, the super admin by e-mail address as well
+  for (const [user, pw, home] of [["demo.business", DEMO.staffPw, /\/business/], ["demo.office", DEMO.staffPw, /\/office/], ["demo.ops", DEMO.staffPw, /\/admin/], ["Demo.Finance1", DEMO.staffPw, /\/admin/], ["admin@jrlogistics.test", "E2e!Password2026", /\/admin/]] as const) {
+    const c = await browser.newContext(); const p = await c.newPage();
+    await uiSignIn(p, user, pw);
+    await expect(p, user).toHaveURL(home);
+    await c.close();
+  }
+  // the old staff address lands on the one sign-in; the create-account link leads to the registration
+  await page.context().clearCookies();
+  await page.goto("/staff/login?expired=1");
+  await expect(page).toHaveURL(/\/login\?expired=1/);
+  await expect(page.getByText("Your session expired")).toBeVisible();
+  await page.goto("/staff/change-password");
+  await expect(page).toHaveURL(/\/login/); // not signed in: the change-password screen sends you to sign in
+  await gotoReady(page, "/login");
+  await page.getByTestId("login-register-link").click();
   await expect(page).toHaveURL(/\/register/);
+  await ctx.close();
+});
+
+test("new user registers as a driver through the UI (username + password, live availability) and sees verification gating", async ({ page, browser }) => {
+  await gotoReady(page, "/login?role=driver"); // the landing page's "register" links
+  await expect(page).toHaveURL(/\/register\?role=driver/);
+  await page.waitForSelector('html[data-hydrated="true"]');
   await page.getByRole("radio", { name: /Driver/ }).click();
-  await page.getByLabel(/Full name/).fill("Ahmed Test Driver");
+  const username = page.getByTestId("reg-username");
+  await username.fill("demo.driver"); // taken
+  await expect(page.getByText("This username is already taken")).toBeVisible();
+  await username.fill("ab"); // too short
+  await expect(page.getByText(/Use 3–30 letters, digits/)).toBeVisible();
+  await username.fill("admin"); // reserved
+  await expect(page.getByText("This username is reserved")).toBeVisible();
+  await username.fill("Ahmed.Driver");
+  await expect(page.getByTestId("reg-username-status")).toHaveText("Available");
+  await page.getByTestId("reg-password").fill("Short1");
+  await page.getByTestId("reg-confirm").fill("Different#Pass2026");
+  await page.getByTestId("reg-name").fill("Ahmed Test Driver");
   await page.getByLabel("City").selectOption("riyadh");
   await page.getByLabel("Vehicle type").selectOption("van");
   await page.getByLabel("Cargo temperature").selectOption("cold"); // appears only for van/dyna
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Create account" }).click();
+  await page.getByTestId("reg-submit").click();
+  await expect(page.getByText("The password needs at least 10 characters")).toBeVisible();
+  await page.getByTestId("reg-password").fill("Driver#Pass2026");
+  await expect(page.getByText("The passwords do not match")).toBeVisible();
+  await page.getByTestId("reg-confirm").fill("Driver#Pass2026");
+  await page.getByTestId("reg-submit").click();
+  await expect(page.getByTestId("reg-phone")).toHaveAttribute("aria-invalid", "true"); // the phone is required now (a contact number)
+  await page.getByTestId("reg-phone").fill("0511122233");
+  await page.getByTestId("reg-submit").click();
   await expect(page).toHaveURL(/\/driver$/);
   await expect(page.getByText("Your documents are not verified yet")).toBeVisible();
   await expect(page.getByRole("button", { name: "Go online" })).toBeDisabled();
+  // the new person can sign in again with the username (any capitalisation) and the password they chose
+  rememberLogin("0511122233", "ahmed.driver", "Driver#Pass2026");
+  const again = await browser.newContext(); const p2 = await again.newPage();
+  await uiSignIn(p2, "AHMED.driver", "Driver#Pass2026");
+  await expect(p2).toHaveURL(/\/driver$/);
+  // …and the profile shows the username and offers to change the password; another device is signed out by it
+  await gotoReady(p2, "/driver/profile");
+  await expect(p2.getByTestId("profile-username")).toHaveValue("ahmed.driver");
+  await expect(p2.getByTestId("password-card")).toBeVisible();
+  await p2.getByTestId("cp-current").fill("Driver#Pass2026");
+  await p2.getByTestId("cp-new").fill("Driver#Pass2027");
+  await p2.getByTestId("cp-confirm").fill("Driver#Pass2027");
+  await p2.getByTestId("cp-submit").click();
+  await expect(p2.getByText("Password changed", { exact: false }).first()).toBeVisible();
+  await expect.poll(async () => (await page.request.get("/api/v1/auth/me")).status()).toBe(401); // the first browser's session ended
+  expect((await p2.request.get("/api/v1/auth/me")).status()).toBe(200);                            // the one that changed it stays
+  rememberLogin("0511122233", "ahmed.driver", "Driver#Pass2027");
+  await again.close();
 });
 
 test("B2C + B2B parcels end to end: wizard (CSV) → accept → hand-over → stop by stop with recipient codes → returns → confirm → public tracking", async ({ browser }) => {
@@ -121,7 +215,8 @@ test("B2C + B2B parcels end to end: wizard (CSV) → accept → hand-over → st
   await expect(drv.getByText("Layla")).toHaveCount(0); // a later stop: not revealed yet
   await expect(biz.getByTestId("loading-progress")).toBeVisible();
 
-  // stop 1 (consumer): arrive — no countdown at the door any more — then parcel code + the recipient's one-time code
+  // stop 1 (consumer): open the shipment, arrive — no countdown at the door any more — then parcel code + the recipient's one-time code
+  await openNext(drv);
   await drv.getByRole("button", { name: "I've arrived" }).first().click();
   await expect(drv.getByText(/Wait at the address|wait .* min/i)).toHaveCount(0);
   await drv.getByLabel("Parcel code").fill(list[0].code);
@@ -133,6 +228,7 @@ test("B2C + B2B parcels end to end: wizard (CSV) → accept → hand-over → st
   await expect(drv.getByText("Acme Branch").first()).toBeVisible(); // next stop is now current
 
   // stop 2 (business): the branch refuses — every reason is selectable at once, no arrival / wait / note rules — not delivered, to be returned
+  await openNext(drv);
   await drv.getByTestId("stop-fail").click();
   await drv.getByTestId("fail-reason-refused").click();
   await drv.getByTestId("fail-continue").click();
@@ -140,6 +236,7 @@ test("B2C + B2B parcels end to end: wizard (CSV) → accept → hand-over → st
   await expect(drv.getByText("Layla").first()).toBeVisible();
 
   // stop 3 (consumer)
+  await openNext(drv);
   await drv.getByRole("button", { name: "I've arrived" }).first().click();
   await drv.getByLabel("Parcel code").fill(list[2].seq.toString()); // just the manifest number is accepted
   await drv.getByLabel("Delivery code").fill(list[2].demoOtp);
@@ -181,7 +278,7 @@ test("staff: finance staff see finance but not settings editing; admin dashboard
 
 test("admin console: pricing, verification, ops pages render with data", async ({ page }) => {
   await staffLogin(page, "admin@jrlogistics.test", "E2e!Password2026");
-  for (const [path, heading] of [["/admin/pricing", "Pricing"], ["/admin/verification", "Verification"], ["/admin/operations", "Operations"], ["/admin/requests", "Requests"], ["/admin/reports", "Reports"], ["/admin/audit", "Audit log"]] as const) {
+  for (const [path, heading] of [["/admin/pricing", "Pricing"], ["/admin/verification", "Verification"], ["/admin/operations", "Operations"], ["/admin/requests", "Requests"], ["/admin/reports", "Overview"], ["/admin/audit", "Audit log"]] as const) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }

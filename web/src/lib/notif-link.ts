@@ -13,6 +13,8 @@ export function notifHref(role: string, type: string, data: Record<string, unkno
   if (type === "agreement_pending") return "/office/agreement";
   if (type === "office_invite") return "/driver/profile";
   if (type === "invite_accepted" || type === "invite_declined" || type === "office_unlinked") return role === "office" ? "/office/drivers" : "/driver";
+  if (role === "business" && type === "partner_orders_new") return typeof d.connectionId === "string" ? `/business/integrations/orders?connectionId=${encodeURIComponent(d.connectionId)}` : "/business/integrations/orders";
+  if (role === "business" && type === "partner_sync_failed" && typeof d.connectionId === "string") return `/business/integrations/${encodeURIComponent(d.connectionId)}/failed`;
   if (role === "business" && /^partner_(cancel_conflict|sync_failed)$/.test(type)) return "/business/integrations"; // fix the connection, not the request
   if (role === "business" && typeof d.requestId === "string") return `/business/requests/${d.requestId}`;
   if (role === "business" && /^(request|driver|delivery|loading|shipment|shipments|route|returns?|partner)_/.test(type)) return "/business/requests";

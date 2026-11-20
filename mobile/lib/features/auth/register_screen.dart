@@ -7,25 +7,38 @@ import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import 'account_section.dart';
+import 'auth_rules.dart';
+import 'auth_session.dart';
+import 'username_field.dart';
 
+/// Driver sign-up: username + password + contact phone (no one-time code) and the same profile fields as before.
+/// The account is verified by the team through documents afterwards. `409` field errors (username / phone) are shown inline.
 class RegisterScreen extends ConsumerStatefulWidget {
-  const RegisterScreen({super.key, required this.token, required this.phone});
-  final String token;
-  final String phone;
+  const RegisterScreen({super.key});
   @override
   ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  final _username = TextEditingController(), _password = TextEditingController(), _confirm = TextEditingController(), _phone = TextEditingController();
   final _name = TextEditingController(), _plate = TextEditingController(), _nid = TextEditingController(), _bank = TextEditingController(), _iban = TextEditingController();
   String? _city, _vehicle, _temp;
   final _services = <String>{'delivery_driver'};
   bool _terms = false, _busy = false;
+  UsernameState _un = UsernameState.empty;
   Map<String, String> _errors = {};
 
   bool get _needTemp => _vehicle == 'van' || _vehicle == 'dyna';
   /// Optional at sign-up, but when typed it must be a Saudi IBAN (SA + 22 digits) — same rule as the server.
   bool get _ibanOk => _iban.text.trim().isEmpty || normalizeIban(_iban.text) != null;
+  bool get _passwordOk => checkPassword(_password.text).ok && _password.text == _confirm.text;
+
+  @override
+  void dispose() {
+    for (final c in [_username, _password, _confirm, _phone, _name, _plate, _nid, _bank, _iban]) { c.dispose(); }
+    super.dispose();
+  }
 
   Future<void> _submit() async {
     if (_busy) return;
@@ -33,19 +46,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() { _busy = true; _errors = {}; });
     try {
       final r = await ref.read(apiProvider).register({
-        'registrationToken': widget.token, 'role': 'driver', 'name': _name.text.trim(), 'city': _city, 'language': lang,
+        'role': 'driver', 'username': normalizeUsername(_username.text), 'password': _password.text, 'name': _name.text.trim(), 'phone': phoneDigits(_phone.text), 'city': _city, 'language': lang,
         'vehicleType': _vehicle, if (_needTemp) 'vehicleTemperature': _temp, 'services': _services.toList(), 'termsAccepted': _terms,
         if (_plate.text.isNotEmpty) 'vehiclePlate': _plate.text.trim(), if (_nid.text.isNotEmpty) 'nationalId': _nid.text.trim(),
         if (_bank.text.trim().isNotEmpty) 'bankName': _bank.text.trim(), if (_iban.text.trim().isNotEmpty) 'iban': normalizeIban(_iban.text),
       });
       final token = r['token'], user = r['user'];
       if (token is! String || user is! Map) throw ApiException('BAD_RESPONSE', 'register: missing token/user');
+      await ref.read(prefsProvider).setString(lastUsernameKey, normalizeUsername(_username.text));
       await ref.read(authProvider.notifier).signIn(token, user.cast<String, dynamic>());
     } catch (e) {
       if (!mounted) return;
-      final d = e is ApiException ? e.details : const <String, dynamic>{};
-      setState(() => _errors = {for (final k in d.keys) k: '${d[k]}'});
-      toast(context, errMessage(context, e), error: true);
+      final fields = registerFieldErrors(context.tr, e);
+      setState(() { _errors = fields; if (fields.containsKey('username')) _un = UsernameState.taken; });
+      toast(context, fields.isNotEmpty ? fields.values.first : errMessage(context, e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -61,17 +75,26 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final vehicles = ((cat?['vehicleTypes'] as List?) ?? const []).cast<String>();
     final svcs = ((cat?['services'] as List?) ?? const []).cast<Map>().where((s) => s['driverless'] != true);
     final termsText = (cat?['terms'] as Map?)?['driver'] as String? ?? '';
-    final ok = _name.text.trim().length >= 2 && _city != null && _vehicle != null && (!_needTemp || _temp != null) && _services.isNotEmpty && _ibanOk && _terms;
+    final ok = _un.submittable && _passwordOk && phoneValid(_phone.text) && _name.text.trim().length >= 2 && _city != null && _vehicle != null && (!_needTemp || _temp != null) && _services.isNotEmpty && _ibanOk && _terms;
+    Widget heading(String s) => Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(s, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)));
     return Scaffold(
       appBar: AppBar(leading: BackButton(onPressed: () => context.go('/login')), title: Text(t('reg.title'))),
       body: SafeArea(
         child: ListView(padding: const EdgeInsets.all(20), children: [
-          Text('${t('reg.sub')} ${widget.phone}', textDirection: TextDirection.ltr, style: const TextStyle(color: JR.muted)),
+          Text(t('m.au_reg_sub'), style: const TextStyle(color: JR.muted, height: 1.4)),
           const SizedBox(height: 20),
           // The city / vehicle / service lists come from the server. Without them the form is unusable: say why and offer a retry.
           if (catAsync.hasError && cat == null) ...[Banner2(key: const Key('catalog-error'), tone: Tone.warn, text: t('um.catalog_failed'), action: OutlinedButton.icon(onPressed: () => ref.invalidate(catalogProvider), icon: const Icon(Icons.refresh), label: Text(t('common.retry')))), const SizedBox(height: 16)]
           else if (cat == null) ...[const Padding(padding: EdgeInsets.only(bottom: 16), child: LinearProgressIndicator(color: JR.accent, backgroundColor: JR.line)),],
-          TextField(controller: _name, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: t('reg.full_name'), errorText: _errors['name'])),
+          heading(t('m.au_section_account')),
+          AccountSection(
+            username: _username, password: _password, confirm: _confirm, phone: _phone, errors: _errors, check: ref.read(apiProvider).usernameAvailable,
+            onUsernameState: (s) { _un = s; if (_errors.containsKey('username')) { _errors = {..._errors}..remove('username'); } if (mounted) setState(() {}); },
+            onChanged: () => setState(() { if (_errors.isNotEmpty) _errors = {}; }),
+          ),
+          const SizedBox(height: 24),
+          heading(t('m.au_section_you')),
+          TextField(key: const Key('name'), controller: _name, onChanged: (_) => setState(() {}), textInputAction: TextInputAction.next, decoration: InputDecoration(labelText: t('reg.full_name'), errorText: _errors['name'])),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(initialValue: _city, decoration: InputDecoration(labelText: t('reg.city')), items: [for (final c in cities) DropdownMenuItem(value: c['key'] as String, child: Text('${c[lang]}'))], onChanged: (v) => setState(() => _city = v)),
           const SizedBox(height: 14),
@@ -107,6 +130,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ])),
           const SizedBox(height: 20),
           FilledButton(key: const Key('register'), onPressed: ok && !_busy ? _submit : null, child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('reg.submit'))),
+          const SizedBox(height: 12),
+          Center(child: Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text(t('m.au_have_account'), style: const TextStyle(color: JR.muted)),
+            TextButton(key: const Key('back-to-login'), onPressed: _busy ? null : () => context.go('/login'), child: Text(t('m.au_sign_in'))),
+          ])),
         ]),
       ),
     );

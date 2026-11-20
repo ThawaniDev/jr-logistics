@@ -1,6 +1,6 @@
 import { getPool } from "@/db";
 import { processWebhookQueue } from "./integrations";
-import { processPartnerOutbox } from "./partners/service";
+import { pollPartners, processPartnerOutbox, prunePartnerData } from "./partners/service";
 import { runMaintenance } from "./maintenance";
 
 /** Arbitrary constant: the Postgres advisory-lock key that means "someone is running the housekeeping tick". */
@@ -19,6 +19,8 @@ export async function runSchedulerTick(): Promise<{ ran: boolean }> {
     try {
       await processWebhookQueue(50);
       await processPartnerOutbox(50);
+      await pollPartners().catch((e) => console.error("[scheduler] partner poll failed:", e instanceof Error ? e.message : e));
+      if (new Date().getUTCMinutes() === 7) await prunePartnerData().catch(() => undefined); // hourly is plenty
       await runMaintenance();
       return { ran: true };
     } finally {

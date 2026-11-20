@@ -8,7 +8,7 @@ import { otpLogin, gotoReady, DEMO, apiLogin } from "./helpers";
  */
 test.describe.configure({ mode: "serial" });
 test.use({ actionTimeout: 20_000 });
-const BASE = "http://localhost:3100";
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 
 async function api(ctx: APIRequestContext, method: "GET" | "POST" | "PUT", path: string, data?: unknown) {
   const res = await ctx.fetch(`${BASE}/api/v1${path}`, { method, data, headers: { origin: BASE, "content-type": "application/json" } });
@@ -188,24 +188,14 @@ test("settlements, payouts, reports and agreement", async () => {
   await expect(page.getByRole("region", { name: "Settlements behind your payouts" })).toBeVisible();
   await expect(page.getByTestId("wallet-withdraw")).toBeVisible();
 
-  // reports: period pills in the URL, a custom range with validation, and the table of jobs by status
+  // reports: the shared report filter bar (period preset in the URL), KPI cards and the CSV export
   await gotoReady(page, "/office/reports");
-  await expect(pill(page, /^All time/)).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("office-report")).toBeVisible();
-  const reportReq = page.waitForRequest((r) => r.url().includes("/api/v1/office/reports?") && r.url().includes("from="));
-  await pill(page, /^Last 7 days/).click();
-  await expect(page).toHaveURL(/[?&]period=7d/);
-  await reportReq;
-  await expect(page.getByTestId("office-report")).toBeVisible();
-  await pill(page, /^Custom/).click();
-  await page.getByLabel("From", { exact: true }).fill("2026-11-10");
-  await page.getByLabel("To", { exact: true }).fill("2026-11-01");
-  await expect(page.getByText("The start date must be on or before the end date.")).toBeVisible();
-  await page.getByRole("button", { name: "Clear period" }).click();
-  await expect(page.getByTestId("office-report")).toBeVisible();
-  await pill(page, /^All time/).click();
-  await expect(page.getByRole("heading", { name: "Jobs by status" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export CSV" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reports", exact: true })).toBeVisible();
+  await expect(page.getByTestId("kpi-grid").first()).toBeVisible();
+  await page.getByRole("button", { name: "7 days", exact: true }).click();
+  await expect(page).toHaveURL(/[?&]preset=7d/);
+  await expect(page.getByTestId("kpi-grid").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Export CSV/ }).first()).toBeVisible();
 
   // agreement: status KPI, the active terms and, when more than one version exists, the history
   const agreements = (await api(officeApi, "GET", "/office/agreements")).json.items as Array<{ version: number; status: string }>;

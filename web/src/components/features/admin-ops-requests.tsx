@@ -38,7 +38,7 @@ export function RequestsTable({ items, parcel }: { items: any[]; parcel?: string
           <tr key={x.id} data-testid="admin-request-row" data-ref={x.ref}>
             <Td label={t("req.ref")}>
               <CellPair
-                title={<Link href={`/admin/requests/${x.id}${parcel ? qs({ parcel }) : ""}`} className="ltr-num text-accent hover:underline" data-testid="admin-request-link">{x.ref}</Link>}
+                title={<Link href={`/admin/requests/${x.id}${parcel ? `/parcels${qs({ q: parcel })}` : ""}`} className="ltr-num text-accent hover:underline" data-testid="admin-request-link">{x.ref}</Link>}
                 sub={biz ? <>{canCompany && x.businessId ? <Link href={`/admin/companies/${x.businessId}`} className="hover:text-ink hover:underline" data-testid="admin-request-company">{biz}</Link> : biz}{x.businessPhone ? <> · <span className="ltr-num">{x.businessPhone}</span></> : null}</> : undefined}
               />
             </Td>

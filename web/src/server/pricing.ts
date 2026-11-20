@@ -1,7 +1,7 @@
-import { and, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db, type Exec } from "@/db";
-import { pricingRules, type User } from "@/db/schema";
+import { pricingRules, requests, users, type User } from "@/db/schema";
 import { err } from "@/lib/errors";
 import { SERVICE_MAP, TEMPERATURE_VEHICLES, VEHICLE_TYPES, type ServiceKey } from "./catalog";
 import { audit } from "./audit";
@@ -138,4 +138,61 @@ export async function listRules(filter: { service?: string; businessId?: string;
     filter.businessId ? eq(pricingRules.businessId, filter.businessId) : undefined,
     filter.includeRetired ? undefined : eq(pricingRules.status, "approved"),
   )).orderBy(desc(pricingRules.createdAt)).limit(500);
+}
+
+
+// ── Editing = a new version ──
+/** The rules that share a rule's scope (service, vehicle, temperature, cities, company): its versions. */
+const scopeOf = (r: Rule) => and(
+  eq(pricingRules.service, r.service),
+  r.vehicleType ? eq(pricingRules.vehicleType, r.vehicleType) : isNull(pricingRules.vehicleType),
+  r.temperature ? eq(pricingRules.temperature, r.temperature) : isNull(pricingRules.temperature),
+  r.pickupCity ? eq(pricingRules.pickupCity, r.pickupCity) : isNull(pricingRules.pickupCity),
+  r.deliveryCity ? eq(pricingRules.deliveryCity, r.deliveryCity) : isNull(pricingRules.deliveryCity),
+  r.businessId ? eq(pricingRules.businessId, r.businessId) : isNull(pricingRules.businessId),
+);
+
+export interface RulePatch { priceCents?: number; providerCostCents?: number; agreementRef?: string | null; expiresAt?: Date | null; notes?: string | null }
+export const RULE_FIELDS = ["priceCents", "providerCostCents", "agreementRef", "expiresAt", "notes"] as const;
+const same = (a: unknown, b: unknown) => (a instanceof Date || b instanceof Date ? (a ? +new Date(a as Date) : null) === (b ? +new Date(b as Date) : null) : (a ?? null) === (b ?? null));
+
+/**
+ * Edits a price rule. Rules are immutable records (orders and settlements point at the version they were quoted with), so an edit saves a NEW VERSION of the
+ * same scope: the active version of that scope is retired and the new one takes effect now. Orders already placed keep the price they were quoted.
+ * Applied to a retired rule it restores that version as the newest one (a roll-back). The scope itself (service, vehicle, cities, company) is never changed here.
+ */
+export async function editRule(actor: User, id: string, patch: RulePatch) {
+  const [r] = await db.select().from(pricingRules).where(eq(pricingRules.id, id));
+  if (!r) throw err("NOT_FOUND");
+  if (r.status === "draft") throw err("INVALID_TRANSITION", "A draft rule cannot be edited");
+  const next = {
+    priceCents: patch.priceCents ?? r.priceCents, providerCostCents: patch.providerCostCents ?? r.providerCostCents,
+    agreementRef: "agreementRef" in patch ? patch.agreementRef ?? null : r.agreementRef, expiresAt: "expiresAt" in patch ? patch.expiresAt ?? null : r.expiresAt,
+    notes: "notes" in patch ? patch.notes ?? null : r.notes,
+  };
+  const changed = RULE_FIELDS.filter((k) => !same(next[k], r[k]));
+  const restoring = r.status === "retired";
+  if (!restoring && changed.length === 0) throw err("VALIDATION", "Nothing changed");
+  if (next.expiresAt && +new Date(next.expiresAt) <= Date.now()) throw err("VALIDATION", "The expiry date must be in the future", { field: "expiresAt" });
+  const rule = await createRule(actor, {
+    service: r.service as ServiceKey, vehicleType: r.vehicleType, temperature: r.temperature, pickupCity: r.pickupCity, deliveryCity: r.deliveryCity, businessId: r.businessId,
+    priceCents: next.priceCents, providerCostCents: next.providerCostCents, agreementRef: next.agreementRef, expiresAt: next.expiresAt, notes: next.notes, effectiveAt: new Date(),
+  });
+  await audit(actor, restoring ? "pricing.restore" : "pricing.edit", "pricing_rule", rule.id, {
+    from: r.id, fromVersion: r.version, version: rule.version,
+    changes: Object.fromEntries(changed.map((k) => [k, { from: r[k] instanceof Date ? (r[k] as Date).toISOString() : r[k], to: next[k] instanceof Date ? (next[k] as Date).toISOString() : next[k] }])),
+  });
+  return rule;
+}
+
+/** Every version of a rule's scope, newest first, with who saved it and how many orders were quoted with it. */
+export async function ruleHistory(id: string) {
+  const [r] = await db.select().from(pricingRules).where(eq(pricingRules.id, id));
+  if (!r) throw err("NOT_FOUND");
+  const rows = await db.select({ rule: pricingRules, by: users.name }).from(pricingRules).leftJoin(users, eq(users.id, pricingRules.createdBy)).where(scopeOf(r)).orderBy(desc(pricingRules.version), desc(pricingRules.createdAt)).limit(100);
+  const ids = rows.map((x) => x.rule.id);
+  const used = ids.length ? await db.select({ rid: sql<string>`${requests.pricingSnapshot}->>'ruleId'`, n: sql<number>`count(*)::int` }).from(requests)
+    .where(and(inArray(sql`${requests.pricingSnapshot}->>'ruleId'`, ids), sql`${requests.status} <> 'draft'`)).groupBy(sql`${requests.pricingSnapshot}->>'ruleId'`) : [];
+  const usedBy = new Map(used.map((u) => [u.rid, u.n]));
+  return { current: r.id, scope: { service: r.service, vehicleType: r.vehicleType, temperature: r.temperature, pickupCity: r.pickupCity, deliveryCity: r.deliveryCity, businessId: r.businessId }, items: rows.map(({ rule, by }) => ({ ...rule, createdByName: by ?? null, usedBy: usedBy.get(rule.id) ?? 0 })) };
 }

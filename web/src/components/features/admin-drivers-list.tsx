@@ -11,6 +11,7 @@ import { hasAny, qs, useDebounced, useTx } from "./admin-common";
 import { LiftSuspensionButton } from "./admin-drivers-actions";
 import { ListEmpty, LoadingRows, RowLink, pagerFooter } from "./admin-offices-common";
 import { DRIVER_STATES, apiFilter, driverSuspension, parseDriverLink, parseDriverState, ratingText } from "./admin-offices-lib";
+import { AddAccountButton } from "./admin-create-pages";
 
 const SIZE = 25;
 
@@ -31,7 +32,7 @@ export function DriversList() {
   const head = [t("adm.col_driver"), t("wizard.vehicle"), t("driver.rating"), t("role.office"), t("verify.title"), t("common.status"), t("adm.availability"), { label: t("rdq.col_actions"), srOnly: true }];
   return (
     <>
-      <PageHeader title={t("nav.drivers")} subtitle={t("rdq.drivers_sub")} icon={<Truck className="size-5" />} />
+      <PageHeader title={t("nav.drivers")} subtitle={t("rdq.drivers_sub")} icon={<Truck className="size-5" />} actions={<AddAccountButton kind="driver" />} />
       <section aria-label={t("rdq.kpis")} className="mb-5">
         <StatGrid cols={4}>
           <Stat label={t("rdq.kpi_drivers_total")} value={n(s?.total)} loading={sl} icon={<Truck className="size-5" />} href="/admin/drivers" tone="accent" hint={s ? t("rdq.drivers_split", { office: s.withOffice, direct: s.direct }) : undefined} />

@@ -60,10 +60,28 @@ class FakeApi extends DriverApi {
   Future<Json> wallet() async => {'availableCents': 12500, 'heldCents': 0, 'reservedCents': 0, 'entries': []};
   @override
   Future<List<Json>> withdrawals() async => [];
+  // ── auth: username + password (no OTP) ──
+  /// What `POST /auth/login` and `POST /auth/register` answer.
+  Json loginResult = {'token': 'tok', 'user': {'id': 'u1', 'role': 'driver', 'name': 'Omar Test', 'username': 'demo.driver', 'phone': '+966500000011', 'language': 'en', 'mustChangePassword': false}};
   @override
-  Future<Json> sendOtp(String phone) async { calls.add('sendOtp:$phone'); _maybeThrow(); return {'sent': true, 'demoCode': '123456'}; }
+  Future<Json> login(String username, String password) async { calls.add('login:$username:$password'); await gate?.future; _maybeThrow(); return loginResult; }
+  /// Usernames the server would report as taken; every other valid name is available. [availabilityError] makes the next check fail (offline…).
+  final takenUsernames = <String>{};
+  Object? availabilityError;
   @override
-  Future<Json> verifyOtp(String phone, String code) async { calls.add('verifyOtp:$code'); _maybeThrow(); return {'isNew': false, 'token': 'tok', 'user': {'id': 'u1', 'role': 'driver', 'name': 'Omar Test', 'phone': phone, 'language': 'en'}}; }
+  Future<Json> usernameAvailable(String username) async {
+    calls.add('available:$username');
+    final e = availabilityError;
+    if (e != null) { availabilityError = null; throw e; }
+    return takenUsernames.contains(username) ? {'available': false, 'reason': 'taken'} : {'available': true};
+  }
+  Json? registered;
+  @override
+  Future<Json> register(Json body) async { calls.add('register:${body['username']}'); registered = body; await gate?.future; _maybeThrow(); return loginResult; }
+  /// `changePassword` fails with this once (e.g. a 401 for a wrong current password).
+  @override
+  Future<Json> changePassword(String currentPassword, String newPassword) async { calls.add('changePassword:$currentPassword>$newPassword'); await gate?.future; _maybeThrow(); return changePasswordResult; }
+  Json changePasswordResult = {'ok': true};
   @override
   Future<Json> checkIn(String offerId, {double? lat, double? lng}) async { calls.add('checkIn:$lat,$lng'); await gate?.future; _maybeThrow(); return checkInResult; }
   /// What `POST /offers/:id/checkin` answers (the offer): `arrived`, or `attendance_confirmed` when the warehouse needs no confirmation.

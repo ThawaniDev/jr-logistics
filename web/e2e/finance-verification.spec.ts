@@ -1,9 +1,14 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { staffLogin, gotoReady, DEMO, apiLogin } from "./helpers";
+import { setFieldModes, type FieldModes } from "./field-modes";
 
 test.describe.configure({ mode: "serial" });
 
-const BASE = "http://localhost:3100";
+let savedModes: FieldModes; // J2 / J3: routing and B2B shipments are OFF by default — this spec drives routes / "Approve route" / business parcels
+test.beforeAll(async ({ browser }) => { savedModes = await setFieldModes(browser, { routingEnabled: true, b2bShipmentsEnabled: true }); });
+test.afterAll(async ({ browser }) => { await setFieldModes(browser, savedModes); });
+
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 async function api(ctx: APIRequestContext, method: "GET" | "POST" | "PUT", path: string, data?: unknown) {
   const res = await ctx.fetch(`${BASE}/api/v1${path}`, { method, data, headers: { origin: BASE, "content-type": "application/json" } });
   return { status: res.status(), json: await res.json().catch(() => null) };
@@ -64,13 +69,12 @@ test("a finished job is paid at once: no review / approval / payout steps — th
 });
 
 test("driver uploads documents in the UI; HR staff approve them; driver becomes verified", async ({ page, browser }) => {
-  await gotoReady(page, "/login?role=driver");
-  await page.getByLabel("Mobile number").fill("0522233344");
-  await page.getByRole("button", { name: "Send code" }).click();
-  await page.getByLabel("Verification code").fill((await page.locator(".ltr-num.text-lg").textContent())!.trim());
-  await page.getByRole("button", { name: "Verify & continue" }).click();
-  await page.waitForURL(/register/);
+  await gotoReady(page, "/register?role=driver");
   await page.getByRole("radio", { name: /Driver/ }).click();
+  await page.getByTestId("reg-username").fill("doc.test.driver");
+  await page.getByTestId("reg-password").fill("Doc#Driver2026");
+  await page.getByTestId("reg-confirm").fill("Doc#Driver2026");
+  await page.getByTestId("reg-phone").fill("0522233344");
   await page.getByLabel(/Full name/).fill("Doc Test Driver");
   await page.getByLabel("City").selectOption("riyadh");
   await page.getByLabel("Vehicle type").selectOption("sedan");

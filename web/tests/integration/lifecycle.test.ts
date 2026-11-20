@@ -5,14 +5,15 @@ import { offers, requests, settlements, walletAccounts, jobEvents } from "@/db/s
 import * as stops from "@/server/stops";
 import { currentStopOf, markRouteFinished, otpFor } from "@/server/shipments";
 import { runMaintenance } from "@/server/maintenance";
-import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, publishedRequest, mkStaff, reqInput, WAREHOUSE } from "../helpers/factories";
+import { shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, publishedRequest, mkStaff, reqInput, WAREHOUSE } from "../helpers/factories";
+import { resetDbWithFieldModes } from "../helpers/field-modes";
 import * as jobs from "@/server/jobs";
 import { work } from "../helpers/work";
 import * as settle from "@/server/settlement";
 import { ensureAccount, post } from "@/server/wallet";
 import { createDraft, publishRequest, cancelRequest } from "@/server/requests";
 
-beforeEach(resetDb);
+beforeEach(resetDbWithFieldModes); // J2 / J3: routing and B2B shipments default to OFF — this suite exercises the route / approve-route / business-parcel behaviour
 afterAll(shutdown);
 
 const dbTx = () => db as unknown as Parameters<typeof jobs.autoConfirmDelivery>[0];

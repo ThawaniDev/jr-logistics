@@ -19,7 +19,7 @@ export async function work(biz: User, driver: User, offerId: string, deliver = I
     const s = await currentStopOf(db, offerId);
     if (!s) break;
     await stops.arriveAtStop(driver, offerId, s.id);
-    if (done < deliver) { await stops.deliverStop(driver, offerId, s.id, { code: s.code, otp: otpFor(s) }); done++; }
+    if (done < deliver) { await stops.deliverStop(driver, offerId, s.id, { code: s.code, otp: otpFor(s), ...(s.codCents > 0 ? { cashCollectedCents: s.codCents } : {}) }); done++; }
     else { await stops.failStop(driver, offerId, s.id, { reason: "refused" }); failed++; }
   }
   await jobs.reportDelivered(driver, offerId);

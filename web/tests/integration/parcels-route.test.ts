@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vites
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { jobEvents, notifications, offers, requests, shipments } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, publishedRequest, mkShipments, reqInput, WAREHOUSE } from "../helpers/factories";
+import { shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, publishedRequest, mkShipments, reqInput, WAREHOUSE } from "../helpers/factories";
+import { resetDbWithFieldModes } from "../helpers/field-modes";
 import { call } from "../helpers/api";
 import * as jobs from "@/server/jobs";
 import * as stops from "@/server/stops";
@@ -15,7 +16,7 @@ import { createSession } from "@/server/auth/session";
 import { DEFAULT_CITIES } from "@/server/catalog";
 import { demoShipments } from "@/server/demo-shipments";
 
-beforeEach(resetDb);
+beforeEach(resetDbWithFieldModes); // J2 / J3: routing and B2B shipments default to OFF — this suite exercises the route / approve-route / business-parcel behaviour
 afterAll(shutdown);
 
 const tok = async (u: { id: string }) => (await createSession(u.id, "mobile")).token;

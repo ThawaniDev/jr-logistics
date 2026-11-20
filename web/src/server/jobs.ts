@@ -14,8 +14,11 @@ import { lockRequest, releaseReserve } from "./requests";
 import { activeJobs, backfillOffersForDriver, dispatchOffers, driverHasConflict, evaluateCandidates, readyOfficeIds, earningFor } from "./matching";
 import { settleOffer, unpaidOfferIds } from "./settlement";
 import { assertAtWarehouse, effectiveOps } from "./warehouse";
-import { isManifestJob, allocateToOffer, markLoaded, markRouteFinished, releaseOfferShipments } from "./shipments";
+import { isManifestJob, allocateToOffer, markLoaded, markRouteFinished, releaseOfferShipments, currentStopOf, sendRecipientCodes } from "./shipments";
+import { isRoutingOn, autoStartRoute } from "./routing-mode";
 import { nextRef } from "./counters";
+import { recordAvailability } from "./data-capture";
+import { batchOf, recordShipmentEvents } from "./shipment-events";
 import { can } from "./auth/permissions";
 
 const actorOf = (u: User) => ({ id: u.id, name: u.name, role: u.role });
@@ -74,7 +77,7 @@ async function fillSlot(tx: Exec, driver: User, o: Offer, termsAccepted: boolean
   if (hard.length) throw err("NOT_ELIGIBLE", "You are not eligible for this job", { reasons: hard });
   await tx.insert(termsConsents).values({ userId: driver.id, role: "driver", termsVersion: s.termsVersion, context: "offer_accept" });
   // Per-parcel jobs: the winner receives their balanced share of the manifest (throws SLOT_TAKEN when nothing is left to carry).
-  if (await isManifestJob(tx, r.id)) await allocateToOffer(tx, r, o, r.quantity - r.slotsFilled);
+  if (await isManifestJob(tx, r.id)) await allocateToOffer(tx, r, o, r.quantity - r.slotsFilled, actorOf(driver));
   const filled = r.slotsFilled + 1;
   const newStatus = filled >= r.quantity ? "assigned" : "filling";
   await tx.update(requests).set({ slotsFilled: filled, status: newStatus, updatedAt: new Date() }).where(eq(requests.id, r.id));
@@ -214,7 +217,7 @@ async function recordLoadingTx(actor: User, offerId: string, units?: number, sel
     if (await isManifestJob(tx, r.id)) {
       // Parcel by parcel: the warehouse scans / ticks exactly what goes onto the vehicle. Anything not handed over returns to the pool.
       if (o.routeApprovedAt) throw err("INVALID_TRANSITION", "The driver has already started the route");
-      const res = await markLoaded(tx, r, o, sel);
+      const res = await markLoaded(tx, r, o, sel, actorOf(actor));
       const m = await setOffer(tx, offerId, { loadedUnits: res.loaded, loadedAt: new Date(), loadedAckByDriver: null });
       await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(actor), type: "loading_recorded", payload: { units: res.loaded, released: res.released, manifest: true } });
       await notify(o.driverId, "loading_recorded", { offerId: o.id, ref: r.ref, units: res.loaded }, tx);
@@ -229,20 +232,27 @@ async function recordLoadingTx(actor: User, offerId: string, units?: number, sel
 }
 
 export async function acknowledgeLoading(driver: User, offerId: string, ok: boolean, note?: string) {
-  return db.transaction(async (tx) => {
+  let first: string | null = null;
+  const out = await db.transaction(async (tx) => {
     const o = await lockOffer(tx, offerId);
     forDriver(driver, o);
     expect(o, "attendance_confirmed");
     if (o.loadedUnits == null) throw err("INVALID_TRANSITION", "No loaded quantity to confirm yet");
     const r = await lockRequest(tx, o.requestId);
-    const u = await setOffer(tx, offerId, { loadedAckByDriver: ok });
+    let u = await setOffer(tx, offerId, { loadedAckByDriver: ok });
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: ok ? "loading_confirmed" : "loading_disputed", payload: { units: o.loadedUnits, note } });
     if (!ok) {
       await openTicket(tx, driver, { category: "shipment_count_differs", subject: `Loaded quantity disputed (${r.ref})`, requestId: r.id, offerId, body: note });
       await notify(r.businessId, "loading_disputed", { requestId: r.id, ref: r.ref }, tx);
+    } else if (!(await isRoutingOn(tx)) && (await isManifestJob(tx, r.id))) {
+      // J2: routing is off — there is no "approve route" step, so confirming the load starts the route (the first recipient is texted, like the approval would).
+      u = await autoStartRoute(tx, u, actorOf(driver));
+      first = (await currentStopOf(tx, offerId))?.id ?? null;
     }
     return u;
   });
+  if (first) await sendRecipientCodes([first]);
+  return out;
 }
 
 /**
@@ -268,7 +278,7 @@ async function reportDeliveredTx(driver: User, offerId: string, unitsIn?: number
     const r = await lockRequest(tx, o.requestId);
     if (await isManifestJob(tx, r.id)) {
       // The count is not typed in: it IS the number of parcels delivered with a valid proof. Every stop must be resolved first.
-      if (!o.routeApprovedAt) throw err("INVALID_TRANSITION", "Approve the route and work through the stops first");
+      if (!o.routeApprovedAt && ((await isRoutingOn(tx)) || o.loadedAckByDriver !== true)) throw err("INVALID_TRANSITION", "Approve the route and work through the stops first"); // routing off: no approval — only loading must be confirmed
       const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(shipments).where(and(eq(shipments.offerId, offerId), eq(shipments.status, "loaded")));
       if (n > 0) throw err("STOPS_PENDING", `${n} stop(s) are still open`, { remaining: n });
       const { delivered } = await markRouteFinished(tx, o, "delivery_reported", actorOf(driver));
@@ -358,7 +368,8 @@ export async function resolveDispute(staff: User, offerId: string, finalUnits: n
     if (finalUnits > cap) throw err("VALIDATION", "Quantity is higher than this job allows", { field: "finalUnits", max: cap });
     const u = await setOffer(tx, offerId, { status: "pending_settlement", finalUnits, finalAt: new Date() });
     // Parcels still unaccounted for after the platform's decision are recorded as missing (visible to both sides, never silently dropped).
-    await tx.update(shipments).set({ status: "missing", updatedAt: new Date() }).where(and(eq(shipments.offerId, offerId), eq(shipments.status, "failed")));
+    const missing = await tx.update(shipments).set({ status: "missing", updatedAt: new Date() }).where(and(eq(shipments.offerId, offerId), eq(shipments.status, "failed"))).returning({ id: shipments.id });
+    await recordShipmentEvents(tx, batchOf(missing.map((m) => m.id), r.id, "missing", { offerId, actor: actorOf(staff), payload: { resolution } }));
     await tx.update(complaints).set({ status: "resolved", resolution, resolvedAt: new Date(), handlerId: staff.id, holdsSettlement: false, updatedAt: new Date() })
       .where(and(eq(complaints.offerId, offerId), eq(complaints.holdsSettlement, true), inArray(complaints.status, ["open", "in_progress"])));
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(staff), type: "dispute_resolved", oldStatus: "qty_disputed", newStatus: "pending_settlement", payload: { finalUnits, resolution } });
@@ -390,7 +401,8 @@ async function finalizeRequest(tx: Exec, r0: Request, live: Offer[], actor: User
   for (const o of ready) await finishOffer(tx, r, o);
   if (ready.length) r = (await tx.select().from(requests).where(eq(requests.id, r.id)))[0]; // payments above released their shares: work from the current reserve
   // Parcels nobody carried are withdrawn (their share of the escrow goes back below) and can be re-shipped in one click.
-  await tx.update(shipments).set({ status: "cancelled", failReason: "unfulfilled", updatedAt: new Date() }).where(and(eq(shipments.requestId, r.id), eq(shipments.status, "pending"), sql`${shipments.offerId} is null`));
+  const unfulfilled = await tx.update(shipments).set({ status: "cancelled", failReason: "unfulfilled", updatedAt: new Date() }).where(and(eq(shipments.requestId, r.id), eq(shipments.status, "pending"), sql`${shipments.offerId} is null`)).returning({ id: shipments.id });
+  await recordShipmentEvents(tx, batchOf(unfulfilled.map((m) => m.id), r.id, "cancelled", { payload: { reason: "unfulfilled" } }));
   const unitPrice = r.unitPriceCents ?? 0;
   const unpaid = await unpaidOfferIds(tx, live.map((o) => o.id)); // only shares whose settlement is not paid yet (held by a complaint) stay escrowed
   const held = live.filter((o) => unpaid.has(o.id)).reduce((a, o) => a + unitPrice * o.expectedUnits, 0);
@@ -455,7 +467,9 @@ export async function driverCancel(driver: User, offerId: string, reason: string
       const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(jobEvents).where(and(eq(jobEvents.type, "driver_cancelled"), eq(jobEvents.actorId, driver.id), sql`${jobEvents.createdAt} > now() - make_interval(days => ${s.cancelWindowDays})`,
         prof?.reset ? sql`${jobEvents.createdAt} > ${prof.reset}` : undefined));
       if (n >= s.cancelSuspendAt) {
+        const [was] = await tx.select({ a: driverProfiles.availability }).from(driverProfiles).where(eq(driverProfiles.userId, driver.id));
         await tx.update(driverProfiles).set({ suspendedUntil: new Date(Date.now() + s.cancelSuspendDays * 864e5), availability: "unavailable" }).where(eq(driverProfiles.userId, driver.id));
+        await recordAvailability(driver.id, was?.a ?? null, "unavailable", "system", "cancel_strikes", null, tx);
         strike = "suspended"; await notify(driver.id, "cancel_suspended", { days: s.cancelSuspendDays }, tx);
         await audit(null, "driver.auto_suspend", "user", driver.id, { cancellations: n }, tx);
       } else if (n >= s.cancelWarnAt) { strike = "warning"; await notify(driver.id, "cancel_warning", { count: n }, tx); }

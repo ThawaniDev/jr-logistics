@@ -9,6 +9,7 @@ import { getSettings, type Settings } from "./settings";
 import { notify } from "./notify";
 import { logEvent } from "./events";
 import { isManifestJob, poolSize } from "./shipments";
+import { touchRequest } from "./data-capture";
 
 export type Reason =
   | "not_verified" | "unavailable" | "suspended" | "service_mismatch" | "vehicle_mismatch" | "temp_mismatch"
@@ -182,7 +183,7 @@ export async function backfillOffersForDriver(driverId: string, max = 10, x: Exe
       requestId: r.id, driverId, officeId: c.officeId, status: "offered", source: "system", expectedUnits: snap.expectedUnits,
       expectedEarningCents: earningFor(snap.providerCostCents, snap.expectedUnits),
     }).onConflictDoNothing().returning({ id: offers.id });
-    if (ins.length) { created++; await notifyOffers(x, r, snap, [{ offerId: ins[0].id, driverId, officeId: c.officeId }], "offer_new"); }
+    if (ins.length) { created++; await notifyOffers(x, r, snap, [{ offerId: ins[0].id, driverId, officeId: c.officeId }], "offer_new"); await touchRequest(x, r.id, ["first_offer"]); }
   }
   return created;
 }

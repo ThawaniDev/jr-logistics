@@ -7,7 +7,7 @@ const nav = (page: Page) => page.getByRole("navigation", { name: "Main navigatio
 test.describe("sidebar (F5)", () => {
   test("admin: Finance is a group of separate pages; the active page and group are marked", async ({ page }) => {
     await admin(page);
-    for (const [name, href] of [["Overview", "/admin/finance"], ["Settlements", "/admin/finance/settlements"], ["Withdrawals", "/admin/finance/withdrawals"], ["Wallet ledger", "/admin/finance/ledger"], ["Invoices", "/admin/finance/invoices"], ["Cash on delivery", "/admin/finance/cod"], ["Pricing", "/admin/finance/pricing"]] as const) {
+    for (const [name, href] of [["Overview", "/admin/finance"], ["Settlements", "/admin/finance/settlements"], ["Withdrawals", "/admin/finance/withdrawals"], ["Drivers", "/admin/finance/drivers"], ["Wallet ledger", "/admin/finance/ledger"], ["Invoices", "/admin/finance/invoices"], ["Cash on delivery", "/admin/finance/cod"], ["Pricing", "/admin/finance/pricing"]] as const) {
       await expect(nav(page).locator(`a[href="${href}"]`), name).toBeVisible();
     }
     await nav(page).locator('a[href="/admin/finance/ledger"]').click();
@@ -42,9 +42,13 @@ test.describe("sidebar (F5)", () => {
 
   test("Ctrl+K opens the page switcher: filter, arrow keys, Enter navigates; Esc closes", async ({ page }) => {
     await admin(page);
-    await page.getByRole("main").click({ position: { x: 4, y: 4 } }); // a page without focus does not receive keystrokes
-    await page.keyboard.press("Control+k");
+    await page.mouse.click(760, 30); // the empty part of the top bar: a page without focus does not receive keystrokes
     const input = page.getByTestId("jump-input");
+    // The shell attaches its key handler a moment after the page reports "hydrated", so a chord pressed in that gap is lost: press again until the dialog opens.
+    await expect(async () => {
+      await page.keyboard.press("Control+k");
+      await expect(input).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
     await expect(input).toBeFocused();
     await input.fill("zzzz");
     await expect(page.getByText("No page matches")).toBeVisible();
@@ -61,7 +65,7 @@ test.describe("sidebar (F5)", () => {
   test("a restricted staff member only sees the pages they may open (support preset)", async ({ page }) => {
     await staffLogin(page, "support@jrlogistics.demo", DEMO.staffPw);
     for (const href of ["/admin/requests", "/admin/cases", "/admin/complaints", "/admin/users", "/admin/companies", "/admin/notifications"]) await expect(nav(page).locator(`a[href="${href}"]`), href).toBeVisible();
-    for (const href of ["/admin/finance", "/admin/finance/settlements", "/admin/finance/withdrawals", "/admin/finance/cod", "/admin/finance/pricing", "/admin/staff", "/admin/settings", "/admin/audit", "/admin/reports", "/admin/offices"]) await expect(nav(page).locator(`a[href="${href}"]`), href).toHaveCount(0);
+    for (const href of ["/admin/finance", "/admin/finance/settlements", "/admin/finance/withdrawals", "/admin/finance/drivers", "/admin/finance/cod", "/admin/finance/pricing", "/admin/staff", "/admin/roles", "/admin/settings", "/admin/audit", "/admin/reports", "/admin/offices"]) await expect(nav(page).locator(`a[href="${href}"]`), href).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Show or hide Finance/ })).toHaveCount(0); // a group with nothing to show is dropped, not left empty
   });
 

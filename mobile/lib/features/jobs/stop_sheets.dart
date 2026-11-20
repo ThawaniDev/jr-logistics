@@ -152,7 +152,7 @@ class _PostponeSheetState extends ConsumerState<PostponeSheet> {
     if (_busy || !_noteOk || !_photoOk) return;
     setState(() { _busy = true; _error = null; });
     final note = _note.text.trim().isEmpty ? null : _note.text.trim();
-    final stopId = widget.stop.id, offerId = widget.job.offerId;
+    final stopId = widget.stop.id, offerId = widget.job.offerId, defersBefore = widget.stop.deferCount, routing = widget.job.routingEnabled;
     final ok = await runStopAction(context, ref, offerId, () async {
       final api = ref.read(apiProvider);
       String? mediaId;
@@ -170,7 +170,7 @@ class _PostponeSheetState extends ConsumerState<PostponeSheet> {
       await api.deferStop(offerId, stopId, note: note, mediaId: mediaId);
     },
         success: 'ms.postponed_ok',
-        verify: (f) { final x = stopIn(f, stopId); return x != null && !x.current; },
+        verify: (f) { final x = stopIn(f, stopId); return x != null && (x.deferCount > defersBefore || (routing && !x.current)); }, // routing off: any stop can be postponed and may stay first, only the counter tells
         handle: (e) {
           if (!(e is ApiException && e.isTransient)) { _mediaId = null; _mediaPath = null; }
           if (e is ApiException && e.code == 'EVIDENCE_REQUIRED' && mounted) {

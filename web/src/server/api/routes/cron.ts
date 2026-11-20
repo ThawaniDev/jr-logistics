@@ -2,7 +2,7 @@ import { defineRoutes } from "../router";
 import { env } from "@/lib/env";
 import { err } from "@/lib/errors";
 import { processWebhookQueue } from "@/server/integrations";
-import { processPartnerOutbox } from "@/server/partners/service";
+import { pollPartners, processPartnerOutbox } from "@/server/partners/service";
 import { runMaintenance } from "@/server/maintenance";
 import { timingSafeEqual } from "node:crypto";
 
@@ -12,5 +12,5 @@ const guard = (req: Request) => {
   if (!env.cronSecret || a.length !== b.length || !timingSafeEqual(a, b)) throw err("UNAUTHENTICATED", "Invalid cron secret");
 };
 defineRoutes([
-  { method: "POST", path: "/cron/tick", auth: "public", handler: async ({ req }) => { guard(req); return { webhooks: await processWebhookQueue(50), partners: await processPartnerOutbox(50), maintenance: await runMaintenance() }; } },
+  { method: "POST", path: "/cron/tick", auth: "public", handler: async ({ req }) => { guard(req); return { webhooks: await processWebhookQueue(50), partners: await processPartnerOutbox(50), partnerPoll: await pollPartners(), maintenance: await runMaintenance() }; } },
 ]);

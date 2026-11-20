@@ -79,7 +79,7 @@ describe("queue KPIs", () => {
 describe("account links", () => {
   it("points each role at its account page and nothing else", () => {
     expect(entityHref("business", "b1")).toBe("/admin/companies/b1"); expect(entityHref("office", "o1")).toBe("/admin/offices/o1"); expect(entityHref("driver", "d1")).toBe("/admin/drivers/d1");
-    expect(entityHref("staff", "s1")).toBeNull(); expect(entityHref("business", null)).toBeNull(); expect(entityHref(undefined, "x")).toBeNull();
+    expect(entityHref("staff", "s1")).toBe("/admin/users/s1"); expect(entityHref("admin", "a1")).toBe("/admin/users/a1"); expect(entityHref("system", "x")).toBeNull(); expect(entityHref("business", null)).toBeNull(); expect(entityHref(undefined, "x")).toBeNull();
   });
 });
 

@@ -26,16 +26,17 @@ export function companyFlags(c: { status: string; verificationStatus: string }):
   return out;
 }
 
-export type CompanyTab = "overview" | "orders" | "warehouse" | "finance" | "documents";
-/** The tabs a staff member can open, mirroring the permission each tab's API calls need. */
+export const COMPANY_TABS = ["overview", "orders", "parcels", "finance", "warehouse", "integrations", "documents", "support", "security", "activity", "notes", "raw"] as const;
+export type CompanyTab = (typeof COMPANY_TABS)[number];
+/** The tabs a staff member can open, in tab-bar order, mirroring the permission each tab's API calls need. */
 export function companyTabs(can: (perm: string) => boolean): CompanyTab[] {
   const any = (...p: string[]) => p.some(can);
-  const tabs: CompanyTab[] = ["overview"];
-  if (can("requests.view")) tabs.push("orders");
-  if (any("users.view", "users.edit")) tabs.push("warehouse");
-  if (any("finance.view", "wallets.view", "cod.manage")) tabs.push("finance");
-  if (any("documents.review", "verification.manage")) tabs.push("documents");
-  return tabs;
+  const allowed: Record<CompanyTab, boolean> = {
+    overview: true, orders: can("requests.view"), parcels: can("requests.view"), finance: any("finance.view", "wallets.view", "cod.manage"), warehouse: any("users.view", "users.edit"),
+    integrations: any("requests.view", "users.view"), documents: any("documents.review", "verification.manage"), support: any("tickets.view", "complaints.manage"), security: can("users.view"),
+    activity: any("users.view", "offices.view"), notes: any("users.view", "offices.view"), raw: can("users.view"),
+  };
+  return COMPANY_TABS.filter((k) => allowed[k]);
 }
 export const companyTabHref = (id: string, tab: CompanyTab) => `/admin/companies/${id}${tab === "overview" ? "" : `/${tab}`}`;
 

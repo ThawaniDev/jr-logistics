@@ -8,14 +8,51 @@ import { useI18n } from "@/i18n/provider";
 
 /** Shared types and small helpers for warehouse-system integrations (business side). Contract: memory/INTEGRATIONS_API.md. */
 
-export type PushAction = "delivered" | "failed" | "returned" | "cancelled";
-export interface ProviderField { key: string; label: string; type: "text" | "url" | "password" | "boolean" | "select"; secret?: boolean; required?: boolean; placeholder?: string; help?: string; default?: string | boolean; options?: Array<{ value: string; label: string }> }
-export interface Capabilities { lookup: boolean; webhookIn: boolean; registerWebhook: boolean; push: PushAction[]; label: boolean }
-export interface Provider { key: string; label: string; description: string; docsUrl: string | null; fields: ProviderField[]; capabilities: Capabilities; inboundTokenHeaders: string[] }
+/** Every JR parcel event a warehouse system can hear about (server: JR_EVENTS in server/partners/types.ts). */
+export const JR_EVENTS = ["accepted", "assigned", "picked_up", "out_for_delivery", "arrived", "delivered", "failed", "postponed", "returned", "missing", "cancelled", "reshipped"] as const;
+export type JrEvent = (typeof JR_EVENTS)[number];
+/** @deprecated v1 name — every JrEvent can be written back now. */
+export type PushAction = JrEvent;
+export const EVENT_KINDS = ["status", "cancelled", "delivered", "returned", "failed"] as const;
+export type EventKind = (typeof EVENT_KINDS)[number];
+export type Mode = "carrier" | "merchant" | "custom";
+export interface ProviderField { key: string; label: string; type: "text" | "url" | "password" | "boolean" | "select"; secret?: boolean; required?: boolean; placeholder?: string; help?: string; default?: string | boolean; options?: Array<{ value: string; label: string }>; advanced?: boolean }
+export interface Capabilities { mode: Mode; lookup: boolean; webhookIn: boolean; webhookAuth: "header" | "url"; registerWebhook: boolean; importOrders: boolean; pollOrders: boolean; track: boolean; push: JrEvent[]; label: boolean; carrierApi: boolean }
+export interface StatusOption { value: string; label: string; hint?: string }
+export interface Provider {
+  key: string; label: string; description: string; docsUrl: string | null; fields: ProviderField[]; capabilities: Capabilities; inboundTokenHeaders: string[];
+  defaults: { sync: Partial<Record<JrEvent, boolean>>; statusOut: Partial<Record<JrEvent, string>>; importNew: boolean; pollMinutes: number };
+  statusOut: StatusOption[]; statusIn: Array<StatusOption & { kind: EventKind }>; pollChoices: number[]; events: JrEvent[]; kinds: EventKind[];
+}
+export interface ConnectionSettings { autoCancel: boolean; importNew: boolean; pollMinutes: number; sync: Partial<Record<JrEvent, boolean>>; statusOut: Partial<Record<JrEvent, string>>; statusIn: Record<string, EventKind> }
 export interface Connection {
-  id: string; provider: string; providerLabel: string; name: string; status: "active" | "disabled"; config: Record<string, string | boolean>; hasSecret: Record<string, boolean>;
-  settings: { autoCancel: boolean; sync: Partial<Record<PushAction, boolean>> }; capabilities: Capabilities | null; webhookUrl: string | null; tokenPrefix: string | null;
-  lastCheckedAt: string | null; lastOkAt: string | null; lastError: string | null; lastEventAt: string | null; createdAt: string;
+  id: string; provider: string; providerLabel: string; name: string; status: "active" | "disabled"; mode: Mode | null; config: Record<string, string | boolean>; hasSecret: Record<string, boolean>;
+  settings: ConnectionSettings; statusMap: Partial<Record<JrEvent, string | null>>;
+  statusInOptions: Array<{ value: string; label: string; labelAr: string | null; kind: EventKind }>; statusOutOptions: StatusOption[];
+  capabilities: Capabilities | null; webhookUrl: string | null; webhookAuth: "header" | "url" | null; webhookUrlTemplate: string | null; tokenPrefix: string | null;
+  carrier: { baseUrl: string; clientId: string; authModes: string[] } | null;
+  runtime: { webhookRegistered: boolean; webhookHost: string | null; webhookRegisteredAt: string | null; lastCarrierCallAt: string | null; authMode: string | null; lastOrderPollAt: string | null; statusCatalogAt: string | null };
+  lastCheckedAt: string | null; lastOkAt: string | null; lastError: string | null; lastEventAt: string | null; lastPollAt: string | null; createdAt: string; updatedAt: string;
+  orders?: { open: number; inJr: number };
+  /** Staff views only. */ business?: string | null; businessId?: string; stuckUpdates?: number;
+}
+/** Returned once by create / rotate-token: the credentials the partner needs. */
+export interface FreshCredentials { inboundToken: string | null; webhookUrl: string | null; carrier: { baseUrl: string; apiKey: string; clientId: string; clientSecret: string } | null }
+export type OrderState = "open" | "in_jr" | "delivered" | "undelivered" | "cancelled";
+export interface PartnerOrder {
+  id: string; connectionId: string; connectionName: string | null; businessId: string; businessName: string | null; provider: string; providerLabel: string; mode: Mode | null;
+  externalRef: string; externalId: string | null; invoice: string | null; awb: string | null; displayRef: string; state: OrderState; rawState: string;
+  recipientName: string | null; recipientPhone: string | null; phoneValid: boolean; recipientEmail: string | null; address: string | null; city: string | null; cityRaw: string | null;
+  lat: number | null; lng: number | null; codCents: number | null; currency: string | null; pieces: number | null; weightGrams: number | null; contents: string | null; notes: string | null;
+  pickup: Record<string, unknown> | null; items: Array<{ sku: string | null; name: string | null; qty: number | null }> | null; slot: { from?: string | null; to?: string | null } | null;
+  detailsComplete: boolean; partnerStatus: string | null; partnerStatusAt: string | null;
+  parcel: { id: string; code: string; status: string; requestId: string; requestRef: string; requestStatus: string; deliveredAt: string | null; failedAt: string | null; failReason: string | null } | null;
+  cancelledAt: string | null; cancelReason: string | null; cancelledBy: string | null; labelUrl: string | null; trackingUrl: string | null; createdAt: string; updatedAt: string;
+}
+export interface PartnerOrderDetail extends PartnerOrder {
+  extra: Record<string, unknown> | null;
+  events: Array<{ id: string; direction: string; kind: string; outcome: string; summary: string | null; createdAt: string }>;
+  updates: Array<{ id: string; action: string; status: string; attempts: number; lastError: string | null; createdAt: string; sentAt: string | null }>;
 }
 
 const NONE: Connection[] = [];

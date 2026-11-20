@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Download, FileText, Percent, Receipt, Sigma } from "lucide-react";
+import { ChevronRight, Download, FileText, Percent, Receipt, Sigma } from "lucide-react";
 import { Button, CellPair, PageHeader, Pagination, Stat, StatGrid, Table, Td, Toolbar } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
 import { fmtDateTime } from "@/lib/format";
@@ -47,15 +47,16 @@ export function InvoicesView() {
       </Toolbar>
       <ListBody error={list.error} loaded={!!list.data} isEmpty={items.length === 0} retry={() => list.mutate()}
         emptyState={<NoRows title={t("rdf.inv_empty")} hint={t("rdf.inv_empty_hint")} filtered={filtered} onReset={reset} icon={<FileText className="size-9" aria-hidden />} />}>
-        <Table stack label={t("nav.fin_invoices")} head={[t("adm.invoice_no"), t("foa.cod_order"), t("role.business"), { label: t("adm.subtotal"), align: "end" }, { label: t("adm.vat"), align: "end" }, { label: t("req.total"), align: "end" }]}>
+        <Table stack label={t("nav.fin_invoices")} head={[t("adm.invoice_no"), t("foa.cod_order"), t("role.business"), { label: t("adm.subtotal"), align: "end" }, { label: t("adm.vat"), align: "end" }, { label: t("req.total"), align: "end" }, { label: t("inv.col_open"), srOnly: true, align: "end" }]}>
           {items.map((i) => (
             <tr key={i.id}>
-              <Td label={t("adm.invoice_no")}><CellPair title={<span className="ltr-num">{i.number}</span>} sub={<span className="whitespace-nowrap">{fmtDateTime(i.createdAt, locale)}</span>} /></Td>
+              <Td label={t("adm.invoice_no")}><CellPair href={`/admin/finance/invoices/${i.id}`} title={<span className="ltr-num">{i.number}</span>} sub={<span className="whitespace-nowrap">{fmtDateTime(i.createdAt, locale)}</span>} /></Td>
               <Td label={t("foa.cod_order")}><Link href={`/admin/requests/${i.requestId}`} className="ltr-num font-medium text-accent hover:underline">{i.ref}</Link></Td>
               <Td label={t("role.business")}><CellPair href={partyHref("business", i.businessId)} title={i.business} /></Td>
               <Td label={t("adm.subtotal")} num><Money c={i.subtotalCents} /></Td>
               <Td label={t("adm.vat")} num><Money c={i.vatCents} /><span className="ms-1 text-xs text-muted">{i.vatPct}%</span></Td>
               <Td label={t("req.total")} num className="font-semibold"><Money c={i.totalCents} /></Td>
+              <Td label={t("inv.col_open")} align="end"><Link href={`/admin/finance/invoices/${i.id}`} aria-label={t("inv.open_invoice", { number: i.number })} title={t("inv.open_invoice", { number: i.number })} data-testid="fin-invoice-open" className="jr-tap inline-flex size-9 items-center justify-center rounded-lg border border-line text-muted transition hover:border-accent/60 hover:text-accent"><ChevronRight className="size-4 rtl:rotate-180" aria-hidden /></Link></Td>
             </tr>))}
         </Table>
         <Pagination page={page} total={list.data?.total ?? 0} pageSize={PAGE} onPage={setPage} />

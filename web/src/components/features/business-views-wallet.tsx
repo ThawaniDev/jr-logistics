@@ -24,7 +24,7 @@ export function InvoicesSection() {
           <Table bare stack label={t("req.invoices")} head={[t("rdz.inv_number"), t("common.date"), t("req.ref"), { label: t("rdz.inv_subtotal"), align: "end" }, { label: t("rdz.inv_vat"), align: "end" }, { label: t("req.total"), align: "end" }]}>
             {data.items.map((i) => (
               <tr key={i.id} data-testid="wallet-invoice">
-                <Td label={t("rdz.inv_number")}><span className="ltr-num font-semibold">{i.number}</span></Td>
+                <Td label={t("rdz.inv_number")}><Link href={`/business/wallet/invoices/${i.id}`} className="ltr-num font-semibold text-accent hover:underline" data-testid="wallet-invoice-link">{i.number}</Link></Td>
                 <Td label={t("common.date")} className="whitespace-nowrap text-muted">{fmtDate(i.createdAt, locale)}</Td>
                 <Td label={t("req.ref")}><Link href={`/business/requests/${i.requestId}/money`} className="ltr-num font-medium text-accent hover:underline">{i.requestRef}</Link></Td>
                 <Td label={t("rdz.inv_subtotal")} num>{fmtMoney(i.subtotalCents, locale)}</Td>

@@ -47,7 +47,7 @@ void main() {
       final c = _client(a, onUnauth: () => n++);
       await expectLater(c.get('/driver/overview'), throwsA(isA<ApiException>().having((e) => e.isAuth, 'auth', true)));
       expect(n, 1);
-      await expectLater(c.post('/auth/otp/verify'), throwsA(isA<ApiException>()));
+      await expectLater(c.post('/auth/login'), throwsA(isA<ApiException>()));
       expect(n, 1);
     });
 

@@ -1,0 +1,350 @@
+FORMAT: 1A
+HOST: https://rest.fizzpa.net/api
+
+# Fizzpa
+Fizzpa API allows you to connect your website or application with Fizzpa to provide adding , read/update orders information and content, etc.
+
+## Authentication [/Auth]
+
+### me [GET/Auth/me]
+Use this method to Get user profile 
+
++ Request (application/json)
+
+    + Headers
+
+            Authorization: <your key>
+            Referer:<URL>
+            
++ Response 200 (application/json)
+
+    + Body
+    
+            {
+                "success": true,
+                "message": null,
+                "href": null,
+                "userData": {
+                    "UserId": "Abc@abc.com",
+                    "FullName": "User name",
+                    "CompanyId": 10,
+                    "ActivationStatusId": 3,
+                    "StartDate": "2019-09-15T00:00:00",
+                    "EndDate": "2030-12-31T00:00:00",
+                    "IsActive": true,
+                    "RoleId": 51,
+                    "RoleName_Ar": "مدير المتجر",
+                    "RoleName_En": "Agent manger",
+                    "UserIdentity": null,
+                    "UserTimeZone": 3,
+                    "CompanyName_En": "Alnour for shipping",
+                    "CompanyName_Ar": "النور للشحن",
+                    "phonecode": 966,
+                    "Phone1": "542457271",
+                    "Mobilecode": 966,
+                    "Mobile1": "542457271",
+                    "CompanyStartDate": "2019-09-15T00:00:00",
+                    "CompanyEndDate": "2030-12-31T00:00:00",
+                    "CompanyTimeZone": 3,
+                    "Agentid": 20192,
+                    "AgentName": "Sweet agent",
+                    "AgentEmail": "prog.mohsen@yahoo.com",
+                    "AgentPhonecode1": 966,
+                    "AgentPhone1": "542457271",
+                    "AgentPhonecode2": 966,
+                    "AgentPhone2": "542457271",
+                    "AgentIdentity": null,
+                    "AgentNote": null,
+                },
+                "CompaniesSettings": null
+            }
+    
+## Orders [/orders]
+
+### Get order [GET/orders/{orderid}]
+Use this method to search for orders in your fizzpa account
++ Parameters
+    + orderid: 5562564 (number,required) - An unique identifier of the order.
+
++ Request (application/json)
+
+    + Headers
+
+            Authorization: <your key>
+            Referer:<URL>
+            
++ Response 200 (application/json)
+     
+     + Body
+     
+            {
+            "OrderId": 15202016,
+            "OrderDate": "2020-03-09T00:00:00",
+            "DueDate": "2020-03-16T17:55:41.743",
+            "AgentConfirmationId": 1,
+            "AgentConfirmationDate": "2020-03-09T17:55:41.743",
+            "AgentConfirmationType_Ar": "في التجهيز",
+            "AgentConfirmationType_En": "Preperation",
+            "CompanyConfirmationId": 1,
+            "CompanyConfirmationDate": "2020-03-09T17:55:41.743",
+            "CompanyConfirmationType_Ar": "في التجهيز",
+            "CompanyConfirmationType_En": "Preperation",
+            "OrderRef": "I-001",
+            "OrderNote": "Some Notes",
+            "IsDelivered": false,
+            "CollectionTypeId": 1,
+            "DeliveryFees": 0,
+            "DeliveryTax": 0,
+            "DeliveryTotal": 0,
+            "AgentSalesTotal": 100,
+            "AgentSalesTax": 0,
+            "AgentTotal": 100,
+            "PickupAddressId": 1,
+            "OrderStatusId": 1,
+            "CreatedUser": "admin@fizpa.net",
+            "CreatedDate": "2020-03-09T17:55:41.743",
+            "RecipientId": 1885,
+            "CustomerId": "966500000000",
+            "AgentId": 20000,
+            "CompanyId": xx,
+            "RecipientName": "test Recipient Name",
+            "Phonecode1": 966,
+            "Phone1": "00000000",
+            "Phonecode2": 966,
+            "Phone2": "",
+            "CountryId": 1,
+            "RecipientCountryName_En": "Saudi Arabia",
+            "RecipientCountryName_Ar": "المملكه العربيه السعوديه",
+            "iso": "SA",
+            "RegionId": 1,
+            "RecipientRegionName_En": "Middle Region",
+            "RecipientRegionName_Ar": "المنطقه الوسطى",
+            "CityId": 1,
+            "RecipientCityName_En": "Riyadh",
+            "RecipientCityName_Ar": "الرياض",
+            "RecipientAddress": "test Recipient Address",
+            "RecipientEmailAddress": "",
+            "RecipientLatitude": null,
+            "RecipientLongitude": null,
+            "RecipientAddressLine": null,
+            "RecipientNeighborhood": null,
+            "RecipientCity": null,
+            "RecipientAdminArea": null,
+            "RecipientCountryCode": null,
+            "RecipientCountryName": null,
+            "RecipientMapLink": null,
+            "CustomerName": "james bond",
+            "CustPhonecode1": 966,
+            "CustPhone1": "00000000",
+            "CustPhonecode2": 966,
+            "CustPhone2": "",
+            "CustEmailAddress": "",
+            "CustIdentity": "",
+            "Notes": "Customer Note Api",
+            "CustUserId": "admin@fizpa.net",
+            "AgentName": "Sweet agent",
+            "AgentEmailAddress": "admin@fizpa.net",
+            "AgentPhonecode1": 966,
+            "AgentPhone1": "00000000",
+            "AgentPhonecode2": 966,
+            "AgentPhone2": "00000000",
+            "AgentIdentity": null,
+            "AgentNote": null,
+            "RegistrationCode": "",
+            "ActivationStatusId": 3,
+            "StartDate": "2019-09-24T00:00:00",
+            "EndDate": "2020-12-31T00:00:00",
+            "PricePerPackage": 25,
+            "PiecesPerPackage": 2,
+            "PriceForExtraPiece": 5,
+            "AgentUserId": "admin@fizpa.net",
+            "PickupCityId": 24,
+            "PickupCityName_En": "Region",
+            "PickupCityName_Ar": "منطقة",
+            "PickupRegionId": 13,
+            "PickupRegionName_En": "Region",
+            "PickupRegionName_Ar": "منطقة",
+            "PickupCountryId": 1,
+            "PickupCountryName_En": "Saudi Arabia",
+            "PickupCountryName_Ar": "المملكه العربيه السعوديه",
+            "PickupAddress": "شارع الرمش",
+            "PickupIsActive": true,
+            "PickupDefaultZoneId": 0,
+            "PickupDefaultWarehouseId": 6,
+            "PickupLatitude": 24.78192257,
+            "PickupLongitude": 46.73012715,
+            "PickupAddressLine": "Unnamed Road, غرناطة، الرياض 13241، السعودية",
+            "PickupNeighborhood": "غرناطة",
+            "PickupCity": "الرياض",
+            "PickupAdminArea": "منطقة الرياض",
+            "PickupCountryCode": "SA",
+            "PickupCountryName": "السعودية",
+            "PickupMapLink": "",
+            "PickupIsDefault": true,
+            "PieceCount": 2,
+            "CompanyName_En": "Alnour for shipping",
+            "CompanyName_Ar": "النور للشحن",
+            "CollectionType_Ar": "بدون تحصيل",
+            "CollectionType_En": "Without Collection",
+            "AskForAddress": false,
+            "OrderStatus_Ar": "جديد",
+            "OrderStatus_En": "New",
+            "Pieces": []
+            }
+
+### Add a new order [POST]
+
+Use this method to add new orders to fizzpa
+
+    
++ Request (application/json)
+
+    + Attributes
+        + SenderPhone: 966500000000 (required, string) - Sender Phone
+        + SenderName: james bond (required, string) - Sender Name
+        + SenderEmail: abc@fizzpa.net (optional, string) - Sender email address
+        + SenderCityId: 1 (required, number) - you can download [Cities List](https://fizzpa.net/Cities.xlsx) Riyadh = 1
+        + SenderAddress: شارع الأمير عبدالرحمن ، حي المربع  12626 (required, string) -  Sender Address
+        + SenderNeighborhood: حطين (optional, string) - Sender Neighborhood
+        + SenderLatitude: 24.778463 (optional, number) - Sender Latitude
+        + SenderLongitude: 24.778463 (optional, number) - Sender Longitude
+        + SenderNationalAddress: RAHA3443  (optional, string) - Sender National Address
+        + RecipientCityId: 1 (required, number) - you can download [Cities List](https://fizzpa.net/Cities.xlsx) Riyadh = 1  
+        + RecipientName: john wick (required, string) - Recipient Name
+        + RecipientPhone1: 966500000000  (required, string) - recipient phone1 in 966500000000  format
+        + RecipientPhone2: 966500000000  (optional, string) - recipient phone1 in 966500000000  format
+        + RecipientAddress: شارع الأمير عبدالرحمن ، حي المربع  12626 (required, string) -  Recipient Address
+        + RecipientNeighborhood:  حي المربع   (optional, string) - Recipient Neighborhood
+        + RecipientLatitude:  24.77839110   (optional, number) - Recipient Latitude
+        + RecipientLongitude:  46.72053130   (optional, number) - Recipient Longitude
+        + RecipientNationalAddress: RAHA3443  (optional, string) - Recipient National Address
+        + RecipientEmail: info@fizzpa.net (optional,string) - Recipient email address
+        + OrderRef: I-001 (optional, string) - Order reference could be purchasing invoice number
+        + OrderNote: order notes (optional, string) - Any note related to order
+        + CodAmount: 100 (required, number) - If Not Cash on delivery put it 0
+        + OrderPiecesCount: 2 (required, number) - Pieces Count
+        + OrderTotalWeight: 1.5   (optional, number) - Order Total Weight 
+    + Headers
+
+            Authorization: <your key>
+            Referer:<URL>
+        
+    + Body       
+    
+            {
+            "SenderPhone":"966500000000",
+            "SenderName":"james bond",
+            "SenderCityId":1,
+            "SenderAddress":"Address in detailes",
+            "SenderNeighborhood":"Sender Neighborhood",
+            "SenderLatitude":0,
+            "SenderLongitude":0,
+            "RecipientCityId": 1,
+            "RecipientName":"john wick",
+            "RecipientPhone1":"966500000000",
+            "RecipientNeighborhood":"حي المربع",
+            "RecipientAddress":"Address in detailes",
+            "OrderRef":"I-001",
+            "CodAmount":100,
+            "OrderPiecesCount":1
+            }
+
+ 
+        
++ Response 200 (application/json)
+
+    + Body
+
+            {
+            "success": true,
+            "message": "saved successfully",
+            "OrderId": 15202016,
+            "CompanyId": 15,
+            "AgentId": 20192,
+            "CustomerId": "966542457766",
+            "RecipientId": 1885,
+            "OrderRef": "I-001",
+            "labelId": "https://fizzpa.net/pdf/bdb8ddaf-dee1-4504-9559-1d8d0bbea899.pdf"
+            }
+            
+
+### Delete Order [DELETE/orders/{orderid}]
+Use this method to Delete Order if not picked up.
++ Parameters
+    + orderid: 5562564 (number,required) - An unique identifier of the order.
++ Request (application/json)
+
+    + Headers
+    
+            Authorization: <your key>
+            Referer:<URL>
+            
++ Response 200 (application/json)
+
+     + Body
+     
+            {
+                "success": true,
+                "Message":"Deleted successfully"
+            }
+
+### Print order [GET/orders/label/{orderid}/{lingo}/{size}]
+Use this method to Print labels
++ Parameters
+    + orderid: 5562564 (number,required) - An unique identifier of the order.
+    + lingo: ar (required, string) - language ar or en.
+    + size: A4 (required, string) - label size A4 or A6.
+       
+       
+
++ Request (application/json)
+
+    + Headers
+    
+            Authorization: <your key>
+            Referer:<URL>
+            
++ Response 200 (application/json)
+    
+
+            
+## Tracking [/Tracking]
+### Get order [GET/Tracking/{orderid}]
+Use this method to track your order in  fizzpa 
++ Parameters
+    + orderid: 5562564 (number,required) - An unique identifier of the order.
+
++ Request (application/json)
+
+    + Headers
+
+            Authorization: <your key>
+            Referer:<URL>
+            
++ Response 200 (application/json)
+
+     + Body
+     
+            [
+                {
+                    "Trackid": 11042,
+                    "OrderId": 15202016,
+                    "CompanyId": 00,
+                    "TrackingStatus": 2,
+                    "WhereIN": "At Shop",
+                    "Note": "Shipping company confirm shipping order",
+                    "TrackingDate": "2020-03-10T00:00:00",
+                    "UserId": "Maad.est3@gmail.com"
+                },
+                {
+                    "Trackid": 11035,
+                    "OrderId": 15202016,
+                    "CompanyId": 00,
+                    "TrackingStatus": 1,
+                    "WhereIN": "At Shop",
+                    "Note": "Record Created",
+                    "TrackingDate": "2020-03-10T00:00:00",
+                    "UserId": "fardusalfardus1438@gmail.com"
+                }
+            ]
+            

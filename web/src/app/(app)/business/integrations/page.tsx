@@ -2,14 +2,16 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, ChevronRight, Plug, PlugZap, Plus, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ChevronRight, Inbox, Plug, PlugZap, Plus, TriangleAlert } from "lucide-react";
 import { Badge, Button, EmptyState, PageHeader, PageLoading, Section, Stat, StatGrid } from "@/components/ui";
 import { useI18n } from "@/i18n/provider";
 import type { Connection, Provider } from "@/components/features/business-shipments-partner";
 import { usePartnerConnections } from "@/components/features/business-shipments-partner";
+import { BUSINESS_SCOPE, connRoute, modeOf, ordersHref } from "@/components/features/partner-conn-lib";
+import { fmtNum } from "@/lib/format";
 import { AddDialog } from "./add-dialog";
 import { useIntegrations } from "./shell";
-import { DocsLink, Health, LimitsBox, TestResult, providerName, useTest } from "./parts";
+import { DocsLink, Health, LimitsBox, ModeBadge, TestResult, modeHint, providerName, useTest } from "./parts";
 
 const MAX_CONNECTIONS = 5;
 
@@ -49,24 +51,30 @@ function Integrations() {
             {conns.map((c) => <li key={c.id}><ConnectionCard conn={c} provider={providerOf(c)} /></li>)}
           </ul>
         )}
-      {adding && <AddDialog providers={providers} onClose={() => setAdding(false)} onCreated={(c, token) => { setAdding(false); reload(); if (token) setFresh({ conn: c, token, webhookUrl: c.webhookUrl ?? "", kind: "created" }); else router.push(`/business/integrations/${c.id}`); }} />}
+      {adding && <AddDialog providers={providers} onClose={() => setAdding(false)} onCreated={(c, creds) => { setAdding(false); void reload(); if (creds) setFresh({ conn: c, creds, kind: "created" }); else router.push(connRoute(BUSINESS_SCOPE, c.id)); }} />}
     </>
   );
 }
 
 function ConnectionCard({ conn, provider }: { conn: Connection; provider: Provider | undefined }) {
-  const { t } = useI18n(); const { mutate } = usePartnerConnections();
+  const { t, locale } = useI18n(); const { mutate } = usePartnerConnections();
   const test = useTest(conn, () => { void mutate(); });
   const name = providerName(t, conn.provider, conn.providerLabel);
+  const mode = modeOf(conn); const open = conn.orders?.open ?? 0;
   return (
     <div data-testid="connection-card" className="h-full"><Section title={<span className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-cyan/10 text-cyan" aria-hidden><Plug className="size-5" /></span><span className="min-w-0"><span className="block truncate">{conn.name}</span><span className="block text-xs font-normal text-muted">{name}</span></span></span>}
-      actions={<Badge tone={conn.status === "active" ? "success" : "neutral"}>{t(conn.status === "active" ? "intg.st_active" : "intg.st_disabled")}</Badge>} className="h-full">
+      actions={<><ModeBadge mode={mode} name={name} /><Badge tone={conn.status === "active" ? "success" : "neutral"}>{t(conn.status === "active" ? "intg.st_active" : "intg.st_disabled")}</Badge></>} className="h-full">
       <div className="flex h-full flex-col gap-4">
+        {mode && <p className="text-xs text-muted">{modeHint(t, mode, name)}</p>}
         <Health c={conn} compact />
         {test.result && <TestResult r={test.result} name={name} />}
+        <Link href={ordersHref(BUSINESS_SCOPE, conn.id)} className="flex items-center justify-between gap-2 rounded-xl border border-line px-3 py-2 text-sm transition hover:border-accent/50" data-testid="card-open-orders">
+          <span className="flex items-center gap-2"><Inbox className="size-4 text-muted" aria-hidden />{t("iv2.card_orders")}</span>
+          <span className="flex items-center gap-1.5"><span className={`ltr-num font-semibold ${open > 0 ? "text-cyan" : "text-muted"}`}>{fmtNum(open, locale)}</span><span className="text-xs text-muted">{t("iv2.card_orders_open")}</span><ChevronRight className="size-4 text-muted rtl:rotate-180" aria-hidden /></span>
+        </Link>
         <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
           <Button size="sm" variant="secondary" loading={test.busy} onClick={test.run} data-testid="card-test"><PlugZap className="size-4" aria-hidden />{t("intg.test")}</Button>
-          <Link href={`/business/integrations/${conn.id}`} className="ms-auto"><Button size="sm" variant="ghost" data-testid="manage-connection">{t("intg.manage")}<ChevronRight className="size-4 rtl:rotate-180" aria-hidden /></Button></Link>
+          <Link href={connRoute(BUSINESS_SCOPE, conn.id)} className="ms-auto"><Button size="sm" variant="ghost" data-testid="manage-connection">{t("intg.manage")}<ChevronRight className="size-4 rtl:rotate-180" aria-hidden /></Button></Link>
         </div>
         {provider?.docsUrl && <DocsLink href={provider.docsUrl} />}
       </div>

@@ -1,0 +1,2944 @@
+FORMAT: 1A
+HOST: https://prodapi.shipox.com
+
+# Shipox.com API Documentation
+
+## Creating API Account
+
+1. Contact your Account Manager who is a Shipox.com representative, or contact support@shipox.com, info@shipox.com to request for Merchant API Account creation.
+2. Your Account Manager will provide you with test and live environment access details for API, including the host_name for each environment.
+3. Once you have the access details and host_name provided, you can follow the rest of the documentation and request examples to use the API
+
+##  HTTP Request Errors 
+
+
+| Error Value | Error Message | Code |
+| ----------- | ------------- | ---- |
+| Access Denied | Doesn’t have token or expired | 401 |
+| Forbidden | Doesn’t have permission | 403 |
+| amount | Value can not be lower than 0 | 400 |
+| locations | Can not create order without sender or recipient locations | 400 |
+| locations | There can be only one pickup and drop-off location | 400 |
+| locations | Provide either lat and lon coordinates or city for pickup location | 400 |
+| locations | Provide either lat and lon coordinates or city for drop-off location | 400 |
+| locations | Provided sender city code and/or country id is not valid (Check <a href="#countries">Cities\Countries API<a/>) | 400 |
+| locations | Provided recipient city code and/or country id is not valid (Check <a href="#countries">Cities\Countries API</a>) | 400 |
+| payer | Only sender can be a payer when payment type is credit card | 400 |
+| recipient_not_available | We can’t leave the item to anyone if there is Cash to collect | 400 |
+| credit_balance_not_active | `credit_balance` payment type is not activated | 400 |
+| credit_balance | Sorry, you have reached `credit_balance` limit, select another payment type | 400 |
+| package | Same Day delivery is available for pickup between 10:00 and 16:00. Please try to select another service type or schedule parcel pickup to another date | 400 |
+| package | Package price with provided parameters not found (Check <a href="#service_type">Service Types</a> and <a href="#package_rules">Starting From API</a>) | 400 |
+| status | Status can not be `Unassigned` when driver is selected | 400 |
+| status | Status can not be `Assigned To Courier` when driver is selected | 400 |
+| charge_item | You cannot provide more than two charge items | 400 |
+| charge_item | You cannot provide two charge items with the same charge types | 400 |
+| reference_id | You cannot provide existing reference id | 400 |
+
+
+
+
+## Customer Webhook
+
+### Setting Customer Webhook URL
+<br/> Set <a name="customer_webhook">Webhook URL</a> to get order updates on your server.
+
+#####A. Setting Customer Webhook URL:
+1. Sign in to Shipox system as admin and go to Customers section. Find your customer, click on his ID and go to Finance Settings;
+2. Select Contract Owner in dropdown list and submit the Contract Owner section;
+3. On the Company section enter your company name and submit;
+4. You will see opened more sections, find EndPoint input field in the Company Endpoint section and paste your Webhook URL and press submit.
+#####B. Setting up Endpoint on your server which accepts Post request:
+1. Set the endpoint to get the request body data as raw content of json type;
+2. Here is the sample of json data:
+
+
+            {
+              "order_number": "1111111117",
+              "reference_id": "1070171717",
+              "status": "accepted",
+              "note": "The order 1111111117 was created for test",
+              "date": "2020-10-03T14:57:45.058Z",
+              "customer_id": 171717,
+              "driver": {
+                "id": 111777,
+                "name": "Aki Ahmed",
+                "phone": "+971333333333",
+                "email": "test_Aki@gmail.com"
+              }
+            }
+                              
+_Note: Driver object will appear only when the driver is assigned to the order!_
+
+
+##Typical Workflow for Consuming APIs
+
+1. Get the token in [Authorization](#/reference/0/authorization).
+2. Find the country id in [Countries API](#/reference/0/countries).
+3. Find the city id or code in [Cities API](#/reference/0/cities).
+4. Get the neighborhood in [Neighborhoods API](#/reference/0/neighborhoods) if it is necessary.
+5. Get the list of service types in [Service Types API](#/reference/0/service-types).
+6. Find the appropriate package price in [Package Prices](#/reference/0/package-prices).
+7. Gather the customer and parcel information.
+8. And finally [Create the Order](#/reference/0/creating-order-v-2).
+9. Then you can [Track the Order](#/reference/0/order-tracking).
+10. Get the [AWBZ Label](#/reference/0/awbz-label).
+
+
+## Authorization [/api/v1/customer/authenticate]
+
+Shipox.com provides REST API to interact with its system. To use authenticated API endpoints 
+you have to call Authorization API endpoint below and get your JWT token from response in 
+the field named id_token. This token will then be included for other authenticated API 
+requests in the request header. The token is valid for 24 hours from that time you received it.
+**After token expiration you should call Authorization API to renew the token.**
+
+_Add token in next requests headers._
+
+_Note: This is for test purposes only!_
+
+
+### Authorization [POST]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            
+    + Body
+    
+            {
+                "username": "customer@Shipox.com.ae",
+                "password": "12345678Ae",
+                "remember_me": true
+            }
+            
++ Response 200 (application/json)
+    
+        {
+            "data": {
+                "id_token": "12eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhYmFoYTIwQGdtYWlsLmNvbSIsInVzZXJJZCI6NzU1MzIzLCJleHAiOjE1NDg0MDI5NjB9.-0PLwe8jOV_vjKpRg5iumtlSXtLOfBG4vefT86lhMOsHi88btQY2hSTraUGKfnlYiQ79bBW6PFOnISHKNXZNmWw12",
+                "user": {
+                    "marketplace_id": 1,
+                    "user_id": 123123,
+                    "login": "customer@Shipox.com",
+                    "version": 0,
+                    "first_name": "Name ",
+                    "last_name": null,
+                    "email": "customer@gmail.com",
+                    "activated": true,
+                    "languages": "english",
+                    "phone": "+971333333333",
+                    "full_name": "Customer ",
+                    "valid_phone": true
+                }
+            },
+            "status": "success"
+        }
+        
+        
+        
+      
+      
+## Countries [/api/v2/customer/countries{?page,size,search}]  
+
+<br/> List Countries for indicating the pickup or drop-off country id.<br/>
+
+
++ Parameters
+    + page (number, optional) - The page number, by default it is set to 0
+        + Default: 0
+    + size (number, optional) - The size of the page, by default it is set to 20, max value 200
+        + Default: 20
+    + search (number, optional) - The Search Key filter
+
+### List All Countries [GET]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
++ Response 200 (application/json)
+
+    + Body
+          
+            {
+              "data": {
+                "total": 233,
+                "list": [
+                  {
+                    "id": 229,
+                    "name": "United Arab Emirates",
+                    "description": "ae"
+                  },
+                  {
+                    "id": 230,
+                    "name": "United Kingdom",
+                    "description": "gb"
+                  },
+                  {
+                    "id": 231,
+                    "name": "United States",
+                    "description": "us"
+                  }
+                ]
+              },
+              "status": "success"
+            }
+            
+      
+      
+## Cities [/api/v2/customer/cities{?country_id,page,size,search}]  
+
+<br/> List <a name="cities">Cities</a> for indicating the pickup or drop-off city code or id.
+
++ Parameters
+    + country_id (number, optional) - Country Id
+    + page (number, optional) - The page number, by default it is set to 0
+        + Default: 0
+    + size (number, optional) - The size of the page, by default it is set to 20, max value 200
+        + Default: 20
+    + search (number, optional) - The Search Key filter
+### List All Cities [GET]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
++ Response 200 (application/json)
+
+    + Body
+          
+            {
+                "data": {
+                    "total": 10,
+                    "list": [
+                        {
+                            "id": 1,
+                            "name": "Abu Dhabi",
+                            "description": "abudhabi"
+                        },
+                        {
+                            "id": 2,
+                            "name": "Ajman",
+                            "description": "ajman"
+                        },
+                        {
+                            "id": 9,
+                            "name": "Al Ain",
+                            "description": "al_ain"
+                        },
+                        {
+                            "id": 4,
+                            "name": "Dubai",
+                            "description": "dubai"
+                        }
+                    ]
+                },
+                "status": "success"
+            }
+            
+            
+            
+## Neighborhoods [/api/v2/customer/neighborhoods{?page,size,search,country_id,city_id}]  
+
+<br/>List <a name="neighborhoods">Neighborhoods</a> for providing exacter location.
+
++ Parameters
+    + page (number, optional) - The page number, by default it is set to 0
+        + Default: 0
+    + size (number, optional) - The size of the page, by default it is set to 20, max value 200
+        + Default: 20
+    + search (number, optional) - The Search Key filter
+    + country_id (number, optional) - If you need specific country neighborhood, you should to provide country ID. See `Countries` API
+    + city_id (number, optional) - If you need specific city neighborhood, you should to provide city ID. See `Cities` API
+
+
+### List All Neighborhoods [GET]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
++ Response 200 (application/json)
+
+    + Body
+          
+            {
+                "data": {
+                    "total": 6875,
+                    "list": [
+                        {
+                            "id": 181237138,
+                            "name": "1st Industrial Area"
+                        },
+                        {
+                            "id": 181238614,
+                            "name": "1st Water Conversion Station"
+                        },
+                        {
+                            "id": 181237484,
+                            "name": "24 Well Sites"
+                        },
+                        {
+                            "id": 181238903,
+                            "name": "2nd Industrial City"
+                        }
+                    ]
+                },
+                "status": "success"
+            }
+
+
+## Service Types [/api/v1/service_types]  
+
+<br/> <a name="service_type">Service types</a> are tariffs that determine the cost and delivery conditions.
+
+### List All Service Types [GET]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
++ Response 200 (application/json)
+
+    + Body
+          
+            {
+                "data": {
+                    "total": 11,
+                    "list": [
+                        {
+                            "id": 494517375,
+                            "code": "SUPER_EXPRESS",
+                            "name": "Super Express Delivery",
+                            "sorder": 0
+                        },
+                    ]
+                },
+                "status": "success"
+            }
+
+
+
+## Package prices [/api/v2/customer/packages/prices/starting_from{?from_latitude,from_longitude,to_latitude,to_longitude,to_country_id,from_country_id,dimensions_length,dimensions_weight,dimensions_width,dimensions_unit,logistic_type,parent_customer_id,is_sub_customer,sender_address_type,recipient_address_type,price_calculation_type,from_city_name,to_city_name,page,size}]
+
+<br/>
+
+*Description*: List <a name="package_rules">Packages prices</a> to get estimate prices for delivery.
+
+*Important*: If you do not have any result please recheck your package rules if 
+they are active or contact with the provider administrator.
+
+| Name | Required | Type | Description | Sample |
+| ---- | -------- | ---- | ----------- | ------- |
+| from_latitude | yes | Double | Latitude, where from parcel is going to be picked up | 25.137599 |
+| from_longitude | yes | Double | Longitude, where from parcel is going to be picked up | 55.23740 |
+| to_latitude | yes | Double | Latitude, where to parcel is going to be delivered | 25.076429 |
+| to_longitude | yes | Double | Longitude, where to parcel is going to be delivered | 55.140504 |
+| dimensions | yes | Object | Dimensions Data |  |
+| to_country_id | yes | Integer | Country id retrieved from <a href="#countries">Countries Api</a> | 229 |
+| from_country_id | yes | Integer | Country id retrieved from <a href="#countries">Countries Api</a> | 229 |
+| from_city_name | no | String | City name | 229 |
+| to_city_name | no | String | City name | 229 |
+| price_calculation_type | no | Sring | One of <b>TOTAL_WEIGHT</b>, <b>BOX_WEIGHT</b>, <b>BOX_COUNT</b>, <b>TOTAL_VOLUME</b> | <b>TOTAL_WEIGHT</b> |
+| parent_customer_id | no | Integer | Id of the parent customer| Default null|
+| is_sub_customer | no | Boolean | If its sub customer | |
+| sender_address_type | no | String optional | One of <b>ADDRESS</b>, <b>LOCKER</b>, <b>POST_OFFICE</b>, <b>TWAREHOUSE</b> | NULL |
+| recipient_address_type | no | String optional | One of <b>ADDRESS</b>, <b>LOCKER</b>, <b>POST_OFFICE</b>, <b>WAREHOUSE</b> | NULL |
+| logistic_type | no | String | One of <b>REGULAR</b>,<b>REVERSE</b>,<b>FOOD_DELIVERY</b> | <b>REGULAR</b> |
+| size | no | Integer | Size of result | 20 |
+| page | no | Integer | Page of result | 0 |
+
+### Get Package Prices [GET]
+
++ Parameters
+    + from_latitude (double, optional) - Latitude, where parcel is going to be picked up from
+        + Default: 25.137599
+    + from_longitude (double, optional) - Longitude, where parcel is going to be picked up from
+        + Default: 55.23740
+    + to_latitude (double, optional) - Latitude, where parcel is going to be delivered to
+        + Default: 25.076429
+    + to_longitude (double, optional) - Longitude, where parcel is going to be delivered to
+        + Default: 55.140504
+    + from_country_id (number, optional) - Country id where parcel is going to be delivered from
+        + Default: 229
+    + from_city_name (string, optional) - City name where parcel is going to be delivered from
+        + Default: 229
+    + to_country_id (number, optional) - Country id where parcel is going to be delivered to
+        + Default: null
+    + to_city_name (string, optional) - City name where parcel is going to be delivered to
+        + Default: null
+    + dimensions_length (number, optional) - Dimensions Data
+        + Default: 2
+    + dimensions_weight (number, optional) - Dimensions Data
+        + Default: 2
+    + dimensions_width (number, optional) - Dimensions Data
+        + Default: 2
+    + dimensions_unit (string, optional) - Dimensions Data
+        + Default: METRIC
+    + `price_calculation_type` (sring,optional) - One of <b>TOTAL_WEIGHT</b>, <b>BOX_WEIGHT</b>, <b>BOX_COUNT</b>, <b>TOTAL_VOLUME</b>
+        + Default: TOTAL_WEIGHT
+    + `parent_customer_id` (number, optional) - Parent Customer Id
+        + Default: null
+    + `is_sub_customer` (boolean, optional) - if its for sub customer
+        + Default: false
+    + `logistic_type` (string, optional) - One of <b>REGULAR</b>,<b>REVERSE</b>,<b>FOOD_DELIVERY</b>
+        + Default: REGULAR
+    + `sender_address_type` (string, optional) - One of <b>ADDRESS</b>, <b>LOCKER</b>, <b>POST_OFFICE</b>, <b>WAREHOUSE</b>
+        + Default: null
+    + `recipient_address_type` (string, optional) - One of <b>ADDRESS</b>, <b>LOCKER</b>, <b>POST_OFFICE</b>, <b>WAREHOUSE</b>
+        + Default: null
+    + page (number, optional) - The page number, by default it is set to 0
+        + Default: 0
+    + size (number, optional) - The size of the page, by default it is set to 20, max value 200
+        + Default: 20
+        
+
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+
++ Response 200 (application/json)
+
+    + Body
+    
+    
+            {
+              "data": {
+                "total": 1,
+                "list": [
+                      {
+                        "id": 655093395,
+                        "name": "Priority",
+                        "description": "By priority",
+                        "courier_type": {
+                          "type": "PRIORITY",
+                          "icon": "https://prodapi.shipox.com/content/images/api/couriertype/saver.png",
+                          "sort_order": 0
+                        },
+                        "vehicle_type": {
+                            "type" "MINIVAN":,
+                            "icon": "https://prodapi.shipox.com/content/images/api/couriertype/saver.png",
+                            "name": "Toyota"
+                        },
+                        "rule_id": 123,
+                        "has_supplier": false,
+                        "price": {
+                          "id": 687113794,
+                          "distance": 15.46,
+                          "duration": 936,
+                          "base": 10.0000,
+                          "reverse_base": 10.0000,
+                          "per_weight": 0.0000,
+                          "per_distance": 0.0000,
+                          "distance_included": 0.00,
+                          "total": 10.00,
+                          "old_total": 0.000000,
+                          "rto_total": 0.00,
+                          "margin_total": 10.00,
+                          "vat_total": 10.00,
+                          "chargeable_weight": 11,
+                          "unit": "metric",
+                          "currency": {
+                            "code": "AED",
+                            "name": "U.A.E. Dirham"
+                          },
+                          "chargeable_count": 11,
+                          "box_included": 1.0000,
+                          "per_box": 1.0000,
+                          "sample_item_id": 11,
+                          "volume_included": 100.0000,
+                          "per_volume": 10.0000,
+                          "chargeable_volume": 100.0000,
+                        }
+                      }
+                ]
+              },
+              "status": "success"
+            }
+    
+
+## Creating Order V2 [/api/v2/customer/order]
+
+*Important*: Before you paste the following JSON to your request for <a name="order_creation">creating order</a>, please make sure to change the `city code` or `city id` and `courier_type` values to the ones matching for your account. 
+If you decide to provide `city code` then you have to provide `country id`. 
+If you decide to provide `city id`, then there is no need to provide the `country id`. 
+If you decide to provide `latitude`&`longitude`, there is no need to indicate `city` and `country`.
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| sender_data | yes | Object | See <a href="#sender_resp">Sender and Recipient Data</a> section |
+| recipient_data | yes | Object | See <a href="#sender_resp">Sender and Recipient Data</a> section |
+| dimensions | yes | Object | See <a href="#dimensions">Dimensions Data</a> section |
+| package_type | yes | Object | <a href="#package">See Package Type</a> section |
+| charge_items | yes | Array | See <a href="#charge_items">Charge Items</a> section |
+| recipient_not_available | yes | String | Possible values: `do_not_deliver`, `leave_at_door`, `leave_with_concierge`. Note: if the payer is `recipient` then this value should be `do_not_deliver`. E.g. The order has a COD to be collected, and the recipient is not available, then it should not be delivered. |
+| payment_type | yes | String | Possible Values: `credit_balance`, `cash`, `wallet`, `paypal`,`stripe`,`ottu`,`credit_card`. For B2B customers, this value should be:  `credit_balance` |
+| payer | yes | String | Possible values: `recipient`, `sender` |
+| parcel_value | no | double | The price or approx value of the parcel to be sent |
+| fragile | no | Boolean | Indicate if the item is fragile for lean transportation |
+| note | no | String | Short description of the item(s) |
+| piece_count | no | Integer | Number of items |
+| force_create | no | Boolean | Must provide this as `true` to overcome our cut off times |
+| is_dangerous | no | Boolean | true/false |
+| reference_id | no | String | ID generated by your own System for the parcel. It can be used to search for the parcel or tracking. However, your parcel will also be assigned Shipox.com AWB, which is the main AWB |
+| logistic_type | no | String | One of <b>REGULAR</b>, <b>REVERSE</b>. By default <b>REGULAR</b> |
+| price_calculation_type | no | String | One of <b>TOTAL_WEIGHT</b>, <b>BOX_WEIGHT</b>, <b>BOX_COUNT</b>, <b>TOTAL_VOLUME</b>. By default <b>TOTAL_WEIGHT</b> |
+| supplier_id | no | Integer | id of the courier |
+| customer_id | no | Integer | id of the customer |
+| parent_customer_id | no | Integer | id of the parent customer |
+| sub_customer_id | no | Integer | id of the sub customer |
+| duty_type | no | String | One of <b>DDU</b>, <b>DDP</b>. By default <b>NULL</b>. |
+| boxes | no | Array | See <a href="#order_box">Order box Data</a> section |
+
+
+### <a name="sender_resp">Sender and Recipient Data</a>
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| adress_type | yes | String | Possible values: `residential`, `business`. The purpose is to prevent late, day off or holiday delivery attempts to business addresses. |
+| name | yes | String | Sender/recipient full name |
+| email | no | String | Sender/recipient email address |
+| phone_code | no | String | Sender/recipient phone country code |
+| phone | no | String | Sender/recipient phone number |
+| second_phone | no | String | Sender/recipient phone number |
+| third_phone | no | String | Sender/recipient phone number |
+| postcode | no | String | Postcode |
+| apartment | no | String | Apartment number/code |
+| building | no | String | Building number/name/code |
+| street | no | String | Street name |
+| landmark | no | String | Landmark |
+| city | yes | Object | See <a href="#city_object">City object</a>. Possible values can be retrieved from the <a href="#cities">Cities API</a> If you provide lat&lon skip this field |
+| country | yes | Object | See <a href="#country_object">Country object</a>. Possible values can be retrieved from <a href="#countries">Countries Api</a> If you provide lat&lon skip this field |
+| neighborhood | no | Object | See <a href="#neighborhood_object">Neighborhood object</a>. Possible values can be retrieved from the <a href="#neighborhoods">Neighborhoods API</a> |
+| lat | no | double | Latitude, if you provide city details and skip this, the coordinate is set to the city center |
+| lon | no | double | Longitude, if you provide city details and skip this, the coordinate is set to the city center |
+| saudi_address_id | no | string | Short address code for Saudi Post Office |
+
+### <a name="order_box">Order Box Data</a>
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| width | no | double | Width |
+| height | no | double | Height |
+| length | no | double | Length |
+| weight | no | double | Weight |
+| price_id | yes | Integer | id of the package price |
+| barcode | no | String | Barcode number |
+| description | no | String | Description |
+| line_items | no | Array | <a href="#order_item">Order Item</a> |
+| sample_item_id | no | Integer | Id of the sample  |
+| box_count | no | BigDecimal | Default 1.0000 |
+
+### <a name="order_item">Order Item Data</a>
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| name | yes | String | Name of the item|
+| desc | yes | String | Description about the item |
+| quantity | no | String | Quantity as text |
+| price | no | BigDecimal | Price |
+| price_per_unit | no | BigDecimal | Price per unit |
+| weight | no | BigDecimal | Weight |
+| origin_country | no | String | Country of Origin |
+| tax_code | no | String | Tax Code |
+| hs_code | no | String | HS Code (also known Harmonized System (HS) Codes) - is requested by many ecommerce or fullfilment APIs |
+| sku_code | no | String | SKU Code |
+| temperature_type | no | String | Temperature type |
+
+### <a name="city_object">City object<a/> 
+
+    + Sample
+           
+        {
+            "city": 
+                {
+                  "id": 4,
+                  "code": "dubai",
+                  "name": "Dubai"
+                }
+        }
+            
+        
+        
+### <a name="country_object">Country object<a/>
+    
+    + Sample
+    
+        {
+            "country": 
+                {
+                  "id": 229
+                }
+        }
+        
+        
+        
+        
+### <a name="neighborhood_object">Neighborhood object<a/>
+    
+    + Sample
+    
+        {
+            "neighborhood": 
+                {
+                  "id": 22,
+                  "name: "Industrial Area"
+                }
+        }
+            
+
+### <a name="dimensions">Dimensions</a>
+Shipox.com utilizes volumetric weight and actual weight to calculate the cost of the package delivery. You can just pass weight if you do not want to use volumetric weight. If both weight and volume details(width, height, length and unit) are provided then volumetric weight is calculated and compared to the provided weight. Whichever greater is used to calculate the delivery cost.
+
+Volumetric weight is calculated based on the formula below:
+`
+Volumetric Weight Metric = width * height * length / 5000
+Volumetric Weight Imperial = width * height * length / 139
+`
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| weight | Yes | Double | The total actual weight of the items to be delivered |
+| width | No | Double | Positive fractional/whole number |
+| height | No | Double | Positive fractional/whole number |
+| length | No | Double | Positive fractional/whole number. Length can be omitted for 2 dimensional items |
+| unit | No | String | Possible values: `metric`, `imperial` |
+| domestic | No | Boolean | If true, the weight rounding up is incremented by 1, (e.g. if the volumetric weight is 1.25 kg it is rounded to 2 kg). If false, the weight rounding up is incremented by 0.5 (e.g if the volumetric weight is 1.26 kg it is rounded to 1.5 kg) |
+
+### <a name="package">Package Type</a>
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| id | yes | integer | Possible Values can be retrieved from the <a href="#service_type">Service Types API</a> |
+| package_price | yes | Object | Possible Values can be retrieved from the <a href="#package_rules">Package prices API</a> |
+
+### <a name="charge_items">Charge Items</a>
+
+Charge items keep the information about charges for parcel(COD) and delivery service(service_custom).
+You should provide charge amount, charge type (cod and service_custom) and the payer.
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| charge_type | yes | String | Possible Values: `cod`, `service_custom`, `additional_charge` |
+| paid | no | Boolean | Indicate if charge is paid or not |
+| charge | yes | Double | The amount to be paid |
+| additional_charge_id | no | Integer | Id of the additional charge, required if `charge_type`='additional_charge' |
+| additional_charge_amount | no | BigDecimal | Amount of additional charge, required if `charge_type`='additional_charge' |
+| payer | yes | String | Possible Values: `recipient`, `sender`, `client` |
+
+***Note*: If you don't want your recipient to pay for delivery charge, provide `service_custom` charge type as 0, so that on the AWB label the charge for delivery will be shown as 0.**
+
+
+
+### Create Order V2 [POST]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
+    + Body
+    
+            {
+                "sender_data": {
+                    "address_type": "residential",
+                    "name": "Sherlock Holmes",
+                    "email": "mr.holmes@example.com",
+                    "apartment": "221",
+                    "building": "B",
+                    "street": "Baker Street",
+                    "city": {
+                      "code": "dubai"
+                    },
+                    "country": {
+                      "id": 229
+                    },
+                    "neighborhood": {
+                        "id":24876469,
+                        "name":"Al Quoz 1"
+                    },
+                    "phone": "+971541234567"
+                },
+                "recipient_data": {
+                    "address_type": "residential",
+                    "name": "Dr. Watson",
+                    "apartment": "221",
+                    "building": "B",
+                    "street": "Baker Street",
+                    "city": {
+                      "id": 4
+                    },
+                    "neighborhood": {
+                        "id":24876469,
+                        "name":"Al Quoz 1"
+                    },
+                    "phone": "+971543097580",
+                    "landmark": "Opposite to the Union Bus Station"
+                },
+                "dimensions": {
+                    "weight": 12,
+                    "width": 32,
+                    "length": 45,
+                    "height": 1,
+                    "unit": "METRIC",
+                    "domestic": true
+                },
+                    "package_type": {
+                       "id": 1849685422,
+                       "package_price": {
+                            "id": 1821429294
+                         }
+                     },
+                "charge_items": [
+                    {
+                      "paid": false,
+                      "charge": 100,
+                      "charge_type": "cod"
+                    }
+                ],
+                "recipient_not_available": "do_not_deliver",
+                "payment_type": "cash",
+                "payer": "sender",
+                "parcel_value": 100,
+                "fragile": true,
+                "note": "mobile phone",
+                "piece_count": 1,
+                "force_create": true
+            }
+            
++ Response 200 (application/json)
+    
+        {
+          "data": {
+            "id": 597417849,
+            "order_number": "9992844779680",
+            "sender_data": {
+              "name": "Sherlock Holmes",
+              "email": "mr.holmes@example.com",
+              "phone": "+971541234567",
+              "phone_without_code": {},
+              "phone_code": {},
+              "second_phone": {},
+              "third_phone": {},
+              "country": {
+                "id": 229,
+                "name": "United Arab Emirates",
+                "code": "AE"
+              },
+              "city": {
+                "id": 4,
+                "name": "Dubai",
+                "code": "dubai"
+              },
+              "neighborhood": {
+                "id": 24876524,
+                "name": "Dubai Investment Park 2",
+                "code": {}
+              },
+              "street": "Baker Street",
+              "building": "B",
+              "floor": {},
+              "apartment": "221",
+              "landmark": {},
+              "address_type": "residential",
+              "address": "Apt: 221 /Bldg: B /Str: Baker Street /Nbhd: Dubai Investment Park 2 /Lmk:",
+              "geo_address": {},
+              "province": {},
+              "save": {},
+              "lat": 24.9779701,
+              "lon": 55.1872444
+            },
+            "recipient_data": {
+              "name": "Dr. Watson",
+              "email": {},
+              "phone": "+971543097580",
+              "phone_without_code": {},
+              "phone_code": {},
+              "second_phone": {},
+              "third_phone": {},
+              "country": {
+                "id": 229,
+                "name": "United Arab Emirates",
+                "code": "AE"
+              },
+              "city": {
+                "id": 4,
+                "name": "Dubai",
+                "code": "dubai"
+              },
+              "neighborhood": {
+                "id": 24876524,
+                "name": "Dubai Investment Park 2",
+                "code": {}
+              },
+              "street": "Baker Street",
+              "building": "B",
+              "floor": {},
+              "apartment": "221",
+              "landmark": "Opposite to the Union Bus Station",
+              "address_type": "residential",
+              "address": "Apt: 221 /Bldg: B /Str: Baker Street /Nbhd: Dubai Investment Park 2 /Lmk: Opposite to the Union Bus Station",
+              "geo_address": {},
+              "province": {},
+              "save": {},
+              "lat": 24.9779701,
+              "lon": 55.1872444
+            },
+            "total_charge": 240,
+            "currency": {
+              "code": "AED",
+              "name": "U.A.E. Dirham"
+            },
+            "created_date": "2020-06-15T14:58:52.497Z",
+            "pickup_date": "2020-06-15T14:58:52.496Z",
+            "drop_off_date": {},
+            "pickup_attempts": 0,
+            "delivery_attempts": 0,
+            "dimensions": {
+              "width": 32,
+              "length": 45,
+              "height": 1,
+              "unit": "metric",
+              "domestic": true
+            },
+            "chargeable_weight": 12,
+            "photos": [],
+            "note": "mobile phone",
+            "actual_recipient_name": "Dr. Watson",
+            "actual_recipient_id_card": {},
+            "actual_recipient_signature": {},
+            "delivery_status": {},
+            "recipient_not_available": "do_not_deliver",
+            "payment_type": "cash",
+            "payer": "sender",
+            "charge_items": [
+              {
+                "id": 597417855,
+                "charge_type": "service",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 140,
+                "date": "2020-06-15T14:58:52.679Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417870,
+                "charge_type": "rto",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 0,
+                "date": "2020-06-15T14:58:55.880Z",
+                "paid": true,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417854,
+                "charge_type": "cod",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 100,
+                "date": "2020-06-15T14:58:52.676Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417868,
+                "charge_type": "service_custom",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 140,
+                "date": "2020-06-15T14:58:55.874Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417874,
+                "charge_type": "margin",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 0,
+                "date": "2020-06-15T14:58:55.884Z",
+                "paid": true,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417857,
+                "charge_type": "total",
+                "quantity": 1,
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 240,
+                "date": "2020-06-15T14:58:52.681Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417872,
+                "charge_type": "vat",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 6.67,
+                "date": "2020-06-15T14:58:55.882Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417856,
+                "charge_type": "cod_fee",
+                "quantity": 1,
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 0,
+                "date": "2020-06-15T14:58:52.680Z",
+                "paid": true,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              }
+            ],
+            "promo_code": {},
+            "reference_id": {},
+            "paid": false,
+            "fragile": true,
+            "status": "unassigned",
+            "pickup_timeslot_availability_id": {},
+            "pickup_timeslot_time": {},
+            "drop_off_timeslot_availability_id": {},
+            "drop_off_timeslot_time": {},
+            "driver": {},
+            "supplier": {},
+            "parcel_value": 100,
+            "merchant_promise_date": {},
+            "customer": {
+              "id": 597188843,
+              "name": "Customer Customer",
+              "description": {}
+            },
+            "package_type": {
+              "id": 597188871,
+              "name": "Express Delivery",
+              "description": {},
+              "courier_type": {
+                "type": "EXPRESS_DELIVERY",
+                "icon": "https://prodapi.shipox.com/content/images/api/couriertype/saver.png",
+                "sort_order": 0
+              },
+              "vehicle_type": {},
+              "has_supplier": false,
+              "price": {
+                "id": 597349937,
+                "distance": {},
+                "duration": {},
+                "base": {},
+                "per_weight": {},
+                "per_distance": {},
+                "distance_included": {},
+                "total": {},
+                "old_total": {},
+                "rto_total": {},
+                "margin_total": {},
+                "vat_total": {},
+                "chargeable_weight": {},
+                "unit": {},
+                "currency": {}
+              },
+              "supplier": {}
+            },
+            "warehouse": {},
+            "recipient": {},
+            "domestic": true,
+            "version": 2,
+            "device_details": "x-forwarded-for:[147.154.29.227, 23.217.129.140, 147.154.29.227, 10.0.0.76]; x-akamai-config-log-detail:[true]; x-forwarded-host:[private-amnesiac-5eb59e-shipox.apiary-proxy.com:443, prodapi.shipox.com]; x-real-ip:[23.217.129.140]; ",
+            "attachments": {},
+            "actual_recipient_id_card_id": {},
+            "actual_recipient_signature_id": {},
+            "payment_url": {}
+          },
+          "status": "success"
+        }
+
+
+
+
+## Creating Order V3 with Box data [/api/v3/customer/order]
+
+*Important*: Before you paste the following JSON to your request for <a name="order_creation">creating order</a>, please make sure to change the `city code` or `city id` and `courier_type` values to the ones matching for your account. 
+If you decide to provide `city code` then you have to provide `country id`. 
+If you decide to provide `city id`, then there is no need to provide the `country id`. 
+If you decide to provide `latitude`&`longitude`, there is no need to indicate `city` and `country`.
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| sender_data | yes | Object | See <a href="#sender_resp_v3">Sender and Recipient Data</a> section |
+| recipient_data | yes | Object | See <a href="#sender_resp_v3">Sender and Recipient Data</a> section |
+| dimensions | yes | Object | See <a href="#dimensions_v3">Dimensions Data</a> section |
+| package_type | yes | Object | <a href="#package_v3">See Package Type</a> section |
+| charge_items | yes | Array | See <a href="#charge_items_v3">Charge Items</a> section |
+| recipient_not_available | yes | String | Possible values: `do_not_deliver`, `leave_at_door`, `leave_with_concierge`. Note: if the payer is `recipient` then this value should be `do_not_deliver`. E.g. The order has a COD to be collected, and the recipient is not available, then it should not be delivered. |
+| payment_type | yes | String | Possible Values: `credit_balance`, `cash`. For B2B customers, this value should be:  `credit_balance` |
+| payer | yes | String | Possible values: `recipient`, `sender` |
+| parcel_value | no | double | The price or approx value of the parcel to be sent |
+| fragile | no | Boolean | Indicate if the item is fragile for lean transportation |
+| note | no | String | Short description of the item(s) |
+| force_create | no | Boolean | Must provide this as `true` to overcome our cut off times |
+| reference_id | no | String | ID generated by your own System for the parcel. It can be used to search for the parcel or tracking. However, your parcel will also be assigned Shipox.com AWB, which is the main AWB |
+| agent | no | String | Agent name |
+| boxes | yes | Object | Parcel's boxes and their content. See <a href="#boxes_resp_v3">Boxes Data</a> |
+| manifest | no | String | Manifest number |
+| placed_storage_address | no | String | The address where the parcel will be located for pick up |
+
+
+### <a name="sender_resp_v3">Sender and Recipient Data</a>
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| adress_type | yes | String | Possible values: `residential`, `business`. The purpose is to prevent late, day off or holiday delivery attempts to business addresses. |
+| name | yes | String | Sender/recipient full name |
+| passport_series | no | String | Sender/recipient passport series |
+| passport_number | no | String | Sender/recipient passport number |
+| email | no | String | Sender/recipient email address |
+| apartment | no | String | Apartment number/code |
+| building | no | String | Building number/name/code |
+| street | no | String | Street name |
+| landmark | no | String | Landmark |
+| city | yes | Object | See <a href="#city_object_v3">City object</a>. Possible values can be retrieved from the <a href="#cities">Cities API</a> If you provide lat&lon skip this field |
+| country | yes | Object | See <a href="#country_object_v3">Country object</a>. Possible values can be retrieved from <a href="#countries">Countries Api</a> If you provide lat&lon skip this field |
+| neighborhood | no | Object | See <a href="#neighborhood_object_v3">Neighborhood object</a>. Possible values can be retrieved from the <a href="#neighborhoods">Neighborhoods API</a> |
+| lat | no | double | Latitude, if you provide city details and skip this, the coordinate is set to the city center |
+| lon | no | double | Longitude, if you provide city details and skip this, the coordinate is set to the city center |
+
+### <a name="boxes_resp_v3">Boxes Data</a>
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| description | yes | String | Description of box |
+| height | yes | Integer | Box height (sm) |
+| length | yes | Integer | Box length (sm) |
+| weight | yes | Integer | Box weight (kg) |
+| width | yes | Integer | Box width (sm) |
+| line_items | yes | Object | Items inside the box. See <a href="#box_line_items_v3">Line Items Data</a> |
+
+### <a name="box_line_items_v3">Line Items Data</a>
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| name | yes | String | Name of item |
+| ean13_code | yes | String | Thirteen-digit EAN standard code |
+| origin_country | yes | String | Origin country |
+| price_per_unit | yes | Double | Per item quantity price |
+| price | yes | Double | Item price |
+| quantity | yes | String | Item quantity |
+| tax_code | yes | String | Tax code |
+| desc | yes | String | Description of item |
+| weight | yes | Integer | Item weight (kg) |
+
+### <a name="city_object_v3">City object<a/> 
+
+    + Sample
+           
+        {
+            "city": 
+                {
+                  "id": 4,
+                  "code": "dubai",
+                  "name": "Dubai"
+                }
+        }
+            
+        
+        
+### <a name="country_object_v3">Country object<a/>
+    
+    + Sample
+    
+        {
+            "country": 
+                {
+                  "id": 229
+                }
+        }
+        
+        
+        
+        
+### <a name="neighborhood_object_v3">Neighborhood object<a/>
+    
+    + Sample
+    
+        {
+            "neighborhood": 
+                {
+                  "id": 22,
+                  "name: "Industrial Area"
+                }
+        }
+            
+
+
+### <a name="dimensions_v3">Dimensions</a>
+Shipox.com utilizes volumetric weight and actual weight to calculate the cost of the package delivery. You can just pass weight if you do not want to use volumetric weight. If both weight and volume details(width, height, length and unit) are provided then volumetric weight is calculated and compared to the provided weight. Whichever greater is used to calculate the delivery cost.
+
+Volumetric weight is calculated based on the formula below:
+`
+Volumetric Weight Metric = width * height * length / 5000
+Volumetric Weight Imperial = width * height * length / 139
+`
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| weight | Yes | Double | The total actual weight of the items to be delivered |
+| width | No | Double | Positive fractional/whole number |
+| height | No | Double | Positive fractional/whole number |
+| length | No | Double | Positive fractional/whole number. Length can be omitted for 2 dimensional items |
+| unit | No | String | Possible values: `metric`, `imperial` |
+| domestic | No | Boolean | If true, the weight rounding up is incremented by 1, (e.g. if the volumetric weight is 1.25 kg it is rounded to 2 kg). If false, the weight rounding up is incremented by 0.5 (e.g if the volumetric weight is 1.26 kg it is rounded to 1.5 kg) |
+
+### <a name="package_v3">Package Type</a>
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| id | yes | integer | Possible Values can be retrieved from the <a href="#service_type">Service Types API</a> |
+| package_price | yes | integer | Possible Values can be retrieved from the <a href="#package_rules">Package prices API</a> |
+
+### <a name="charge_items_v3">Charge Items</a>
+
+Charge items keep the information about charges for parcel(COD) and delivery service(service_custom).
+You should provide charge amount, charge type (cod and service_custom) and the payer.
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| charge_type | yes | String | Possible Values: `cod`, `service_custom` |
+| paid | no | Boolean | Indicate if charge is paid or not |
+| charge | yes | Double | The amount to be paid |
+| payer | yes | String | Possible Values: `recipient`, `sender`, `client` |
+
+***Note*: If you don't want your recipient to pay for delivery charge, provide `service_custom` charge type as 0, so that on the AWB label the charge for delivery will be shown as 0.**
+
+
+
+### Create Order V3 with Box data [POST]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
+    + Body
+    
+            {
+                "sender_data": {
+                    "address_type": "residential",
+                    "name": "Sherlock Holmes",
+                    "email": "mr.holmes@example.com",
+                    "apartment": "221",
+                    "building": "B",
+                    "street": "Baker Street",
+                    "city": {
+                      "code": "dubai"
+                    },
+                    "country": {
+                      "id": 229
+                    },
+                    "neighborhood": {
+                        "id":24876469,
+                        "name":"Al Quoz 1"
+                    },
+                    "phone": "+971541234567"
+                },
+                "recipient_data": {
+                    "address_type": "residential",
+                    "name": "Dr. Watson",
+                    "passport_series": "AA",
+                    "passport_number": "12345678",
+                    "apartment": "221",
+                    "building": "B",
+                    "street": "Baker Street",
+                    "city": {
+                      "id": 4
+                    },
+                    "neighborhood": {
+                        "id":24876469,
+                        "name":"Al Quoz 1"
+                    },
+                    "phone": "+971543097580",
+                    "landmark": "Opposite to the Union Bus Station"
+                },
+                "dimensions": {
+                    "weight": 12,
+                    "width": 32,
+                    "length": 45,
+                    "height": 1,
+                    "unit": "METRIC",
+                    "domestic": true
+                },
+                    "package_type": {
+                       "id": 1849685422,
+                       "package_price": {
+                            "id": 1821429294
+                         }
+                    },
+                "charge_items": [
+                    {
+                      "paid": false,
+                      "charge": 100,
+                      "charge_type": "cod"
+                    }
+                ],
+                "recipient_not_available": "do_not_deliver",
+                "payment_type": "cash",
+                "payer": "sender",
+                "parcel_value": 100,
+                "fragile": true,
+                "note": "mobile phone",
+                "piece_count": 1,
+                "force_create": true,
+                "agent": "Karim",
+                "boxes": [
+                    {
+                      "description": "Big blue box",
+                      "height": 200,
+                      "length": 300,
+                      "line_items": [
+                        {
+                          "name": "Redmi note 8",
+                          "ean13_code": "8475624179572",
+                          "origin_country": "Uzbekistan",
+                          "price_per_unit": 10,
+                          "price": 100,
+                          "quantity": "10",
+                          "tax_code": "ZE0017",
+                          "desc": "Xiaomi mobile phones",
+                          "weight": 1
+                        }
+                      ],
+                      "weight": 1,
+                      "width": 300
+                    }
+                  ],
+                "manifest": "EA202117",
+                "placed_storage_address": "Tashkent, Mirzo-Ulugbek district, 100100"
+            }
+            
++ Response 200 (application/json)
+    
+        {
+          "data": {
+            "id": 597417849,
+            "order_number": "9992844779680",
+            "sender_data": {
+              "name": "Sherlock Holmes",
+              "email": "mr.holmes@example.com",
+              "phone": "+971541234567",
+              "phone_without_code": {},
+              "phone_code": {},
+              "second_phone": {},
+              "third_phone": {},
+              "country": {
+                "id": 229,
+                "name": "United Arab Emirates",
+                "code": "AE"
+              },
+              "city": {
+                "id": 4,
+                "name": "Dubai",
+                "code": "dubai"
+              },
+              "neighborhood": {
+                "id": 24876524,
+                "name": "Dubai Investment Park 2",
+                "code": {}
+              },
+              "street": "Baker Street",
+              "building": "B",
+              "floor": {},
+              "apartment": "221",
+              "landmark": {},
+              "address_type": "residential",
+              "address": "Apt: 221 /Bldg: B /Str: Baker Street /Nbhd: Dubai Investment Park 2 /Lmk:",
+              "geo_address": {},
+              "province": {},
+              "save": {},
+              "lat": 24.9779701,
+              "lon": 55.1872444
+            },
+            "recipient_data": {
+              "name": "Dr. Watson",
+              "email": {},
+              "phone": "+971543097580",
+              "phone_without_code": {},
+              "phone_code": {},
+              "second_phone": {},
+              "third_phone": {},
+              "country": {
+                "id": 229,
+                "name": "United Arab Emirates",
+                "code": "AE"
+              },
+              "city": {
+                "id": 4,
+                "name": "Dubai",
+                "code": "dubai"
+              },
+              "neighborhood": {
+                "id": 24876524,
+                "name": "Dubai Investment Park 2",
+                "code": {}
+              },
+              "street": "Baker Street",
+              "building": "B",
+              "floor": {},
+              "apartment": "221",
+              "landmark": "Opposite to the Union Bus Station",
+              "address_type": "residential",
+              "address": "Apt: 221 /Bldg: B /Str: Baker Street /Nbhd: Dubai Investment Park 2 /Lmk: Opposite to the Union Bus Station",
+              "geo_address": {},
+              "province": {},
+              "save": {},
+              "lat": 24.9779701,
+              "lon": 55.1872444
+            },
+            "total_charge": 240,
+            "currency": {
+              "code": "AED",
+              "name": "U.A.E. Dirham"
+            },
+            "created_date": "2020-06-15T14:58:52.497Z",
+            "pickup_date": "2020-06-15T14:58:52.496Z",
+            "drop_off_date": {},
+            "pickup_attempts": 0,
+            "delivery_attempts": 0,
+            "dimensions": {
+              "width": 32,
+              "length": 45,
+              "height": 1,
+              "unit": "metric",
+              "domestic": true
+            },
+            "chargeable_weight": 12,
+            "photos": [],
+            "note": "mobile phone",
+            "actual_recipient_name": "Dr. Watson",
+            "actual_recipient_id_card": {},
+            "actual_recipient_signature": {},
+            "delivery_status": {},
+            "recipient_not_available": "do_not_deliver",
+            "payment_type": "cash",
+            "payer": "sender",
+            "charge_items": [
+              {
+                "id": 597417855,
+                "charge_type": "service",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 140,
+                "date": "2020-06-15T14:58:52.679Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417870,
+                "charge_type": "rto",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 0,
+                "date": "2020-06-15T14:58:55.880Z",
+                "paid": true,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417854,
+                "charge_type": "cod",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 100,
+                "date": "2020-06-15T14:58:52.676Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417868,
+                "charge_type": "service_custom",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 140,
+                "date": "2020-06-15T14:58:55.874Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417874,
+                "charge_type": "margin",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 0,
+                "date": "2020-06-15T14:58:55.884Z",
+                "paid": true,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417857,
+                "charge_type": "total",
+                "quantity": 1,
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 240,
+                "date": "2020-06-15T14:58:52.681Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417872,
+                "charge_type": "vat",
+                "quantity": {},
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 6.67,
+                "date": "2020-06-15T14:58:55.882Z",
+                "paid": false,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              },
+              {
+                "id": 597417856,
+                "charge_type": "cod_fee",
+                "quantity": 1,
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "base_currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "exchange_rate": {},
+                "charge": 0,
+                "date": "2020-06-15T14:58:52.680Z",
+                "paid": true,
+                "refund": false,
+                "payer": {},
+                "paid_to_customer": false,
+                "paid_to_wing": {},
+                "receipt_id": {},
+                "receipt_number": {}
+              }
+            ],
+            "promo_code": {},
+            "reference_id": {},
+            "paid": false,
+            "fragile": true,
+            "status": "unassigned",
+            "pickup_timeslot_availability_id": {},
+            "pickup_timeslot_time": {},
+            "drop_off_timeslot_availability_id": {},
+            "drop_off_timeslot_time": {},
+            "driver": {},
+            "supplier": {},
+            "parcel_value": 100,
+            "merchant_promise_date": {},
+            "customer": {
+              "id": 597188843,
+              "name": "Customer Customer",
+              "description": {}
+            },
+            "package_type": {
+              "id": 597188871,
+              "name": "Express Delivery",
+              "description": {},
+              "courier_type": {
+                "type": "EXPRESS_DELIVERY",
+                "icon": "https://prodapi.shipox.com/content/images/api/couriertype/saver.png",
+                "sort_order": 0
+              },
+              "vehicle_type": {},
+              "has_supplier": false,
+              "price": {
+                "id": 597349937,
+                "distance": {},
+                "duration": {},
+                "base": {},
+                "per_weight": {},
+                "per_distance": {},
+                "distance_included": {},
+                "total": {},
+                "old_total": {},
+                "rto_total": {},
+                "margin_total": {},
+                "vat_total": {},
+                "chargeable_weight": {},
+                "unit": {},
+                "currency": {}
+              },
+              "supplier": {}
+            },
+            "warehouse": {},
+            "recipient": {},
+            "domestic": true,
+            "version": 2,
+            "device_details": "x-forwarded-for:[147.154.29.227, 23.217.129.140, 147.154.29.227, 10.0.0.76]; x-akamai-config-log-detail:[true]; x-forwarded-host:[private-amnesiac-5eb59e-shipox.apiary-proxy.com:443, prodapi.shipox.com]; x-real-ip:[23.217.129.140]; ",
+            "attachments": {},
+            "actual_recipient_id_card_id": {},
+            "actual_recipient_signature_id": {},
+            "payment_url": {},
+            "agent": "Karim",
+              "boxes": [
+                {
+                  "id": 1701707,
+                  "description": "Big blue box",
+                  "height": 200,
+                  "length": 300,
+                  "line_items": [
+                    {
+                      "id": 7721756,
+                      "name": "Redmi note 8",
+                      "ean13_code": "8475624179572",
+                      "origin_country": "Uzbekistan",
+                      "price": 100,
+                      "price_per_unit": 10,
+                      "quantity": "10",
+                      "tax_code": "ZE0017",
+                      "desc": "Xiaomi mobile phones",
+                      "weight": 1
+                    }
+                  ],
+                  "weight": 1,
+                  "width": 300
+                }
+              ],
+              "manifest": "EA202117",
+              "placed_storage_address": "Tashkent, Mirzo-Ulugbek district, 100100",
+          },
+          "status": "success"
+        }
+
+
+
+## Food Delivery [/api/v2/food/order] 
+Before you start using food order endpoints make sure your company configured properly:
+Couriers, Package Pricing Rules, Customers. 
+When you create package rule for courier make sure that customer and courier are set 
+and LogisticType must be FOOD_DELIVERY.
+
+Note: In order to use these endpoints you must be signedin as Customer
+
+### List Food Delivery Order [POST /api/v2/food/order/list]
+    Retrieves list of food order
+
++ Request (application/json)
+
+    + Headers
+    
+                Accept: application/json
+                Authorization: Bearer id_token
+                
+    + Body
+    
+            {
+                    "page": 0,
+                    "size": 20,
+                    "search": "search text",
+                    "status": "comma delimited list of status values",
+                    "paymentType":"cash"
+            }
++ Response 200 (application/json)
+
+        {
+            "data": {
+                "total": 1,
+                "list": [
+                    {
+                        "description": "string",
+                        "driver_tip": 0,
+                        "external_driver_fee": 0,
+                        "meta_data": [
+                            {
+                                "key": "string",
+                                "value": "string"
+                            }
+                        ],
+                        "payment_total": 0,
+                        "marketplace_id": 909678003,
+                        "reference_id": "ON00000001",
+                        "items_meta_data": [
+                            {"name":"Hotdog", "price_per_unit": 10.00 , "quantity": 10.00, "instruction": "string" }
+                        ],
+                        "pickup_datetime": "2021-02-01T11:34:13.354Z",
+                        "deliver_datetime": "2021-02-01T11:34:13.354Z",
+                        "courier_id": 935436297,
+                        "sender": {
+                            "name": "string",
+                            "email": "string",
+                            "phone": "string",
+                            "address": "string",
+                            "lat": 41.261009216308594,
+                            "lon": 69.27823638916016
+                        },
+                        "recipient": {
+                            "name": "string",
+                            "email": "string",
+                            "phone": "string",
+                            "address": "string",
+                            "lat": 41.28117752075195,
+                            "lon": 69.23995971679688
+                        },
+                        "payment_type": "cash",
+                        "id": 935515950,
+                        "status": "assigned_to_courier"
+                    }
+                ]
+            },
+            "status": "success"
+        }
+       
+
+### Get Food Delivery Order [GET /api/v2/food/order/{orderId}]
+    Rertrieves food order details
++ Parameters
+    + orderId (number) - ID of the food order
++ Response 200 (application/json)
+
+        {
+            "data": {
+                    "description": "string",
+                    "driver_tip": 0,
+                    "external_driver_fee": 0,
+                    "meta_data": [
+                        {
+                            "key": "string",
+                            "value": "string"
+                        }
+                    ],
+                    "payment_total": 0,
+                    "marketplace_id": 909678003,
+                    "reference_id": "ON00000001",
+                    "items_meta_data": [
+                        {"name":"Hotdog", "price_per_unit": 10.00 , "quantity": 10.00, "instruction": "string" }
+                    ],
+                    "pickup_datetime": "2021-02-01T11:32:00.238Z",
+                    "deliver_datetime": "2021-02-01T11:34:13.354Z",
+                    "courier_id": 935436297,
+                    "sender": {
+                        "name": "string",
+                        "email": "string",
+                        "phone": "string",
+                        "address": "string",
+                        "lat": 41.261011,
+                        "lon": 69.278234
+                    },
+                    "recipient": {
+                        "name": "string",
+                        "email": "string",
+                        "phone": "string",
+                        "address": "string",
+                        "lat": 41.281177,
+                        "lon": 69.239961
+                    },
+                    "payment_type": "cash",
+                    "id": 935515950,
+                    "status": "assigned_to_courier"
+            },
+            "status": "success"
+        }
+        
+### Create Food Delivery Order [POST /api/v2/food/order/create] 
+    Creates food order 
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+    + Body
+    
+            {
+            
+                "description": "string",
+                "driver_tip": 0,
+                "external_driver_fee": 0,
+                "meta_data": [
+                    {
+                        "key": "string",
+                        "value": "string"
+                    }
+                ],
+                "payment_total": 0,
+                "reference_id": "ON00000001",
+                "items_meta_data": [
+                    {"name":"Hotdog", "price_per_unit": 10.00 , "quantity": 10.00, "instruction": "string" }
+                ],
+                "pickup_datetime": "2021-02-03T09:43:05.144Z",
+                "deliver_datetime": "2021-02-01T11:34:13.354Z",
+                "courier_id": 935436297,
+                "sender": {
+                        "name": "string",
+                        "email": "string",
+                        "phone": "string",
+                        "address": "string",
+                        "city_name":"string",
+                        "lat": 41.261011,
+                        "lon": 69.278234
+                },
+                "recipient": {
+                        "name": "string",
+                        "email": "string",
+                        "phone": "string",
+                        "address": "string",
+                        "city_name":"string",
+                        "lat": 41.281177,
+                        "lon": 69.239961
+                },
+                "payment_type": "cash"
+            }
++ Response 201 (application/json)
+
+        {
+                "data": {
+                        "description": "string",
+                        "driver_tip": 0,
+                        "external_driver_fee": 0,
+                        "meta_data": [
+                            {
+                                "key": "string",
+                                "value": "string"
+                            }
+                        ],
+                        "payment_total": 0,
+                        "marketplace_id": 909678003,
+                        "reference_id": "ON00000001",
+                        "items_meta_data": [
+                            {"name":"Hotdog", "price_per_unit": 10.00 , "quantity": 10.00, "instruction": "string" }
+                        ],
+                        "pickup_datetime": "2021-02-01T11:32:00.238Z",
+                        "deliver_datetime": "2021-02-01T11:34:13.354Z",
+                        "courier_id": 935436297,
+                        "sender": {
+                            "name": "string",
+                            "email": "string",
+                            "phone": "string",
+                            "address": "string",
+                            "lat": 41.261011,
+                            "lon": 69.278234
+                        },
+                        "recipient": {
+                            "name": "string",
+                            "email": "string",
+                            "phone": "string",
+                            "address": "string",
+                            "lat": 41.281177,
+                            "lon": 69.239961
+                        },
+                        "payment_type": "cash",
+                        "id": 935515950,
+                        "status": "assigned_to_courier"
+                },
+                "status": "success"
+        }
+        
+### Update Food Delivery Order [POST /api/v2/food/order/update]
+    Updates food order
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+    + Body
+    
+            {
+                    "description": "string",
+                    "driver_tip": 0,
+                    "external_driver_fee": 0,
+                    "meta_data": [
+                        {
+                            "key": "string",
+                            "value": "string"
+                        }
+                    ],
+                    "payment_total": 0,
+                    "reference_id": "ON00000001",
+                    "items_meta_data": [
+                        {"name":"Hotdog", "price_per_unit": 10.00 , "quantity": 10.00, "instruction": "string" }
+                    ],
+                    "pickup_datetime": "2021-02-03T09:43:05.144Z",
+                    "deliver_datetime": "2021-02-01T11:34:13.354Z",
+                    "courier_id": 935436297,
+                    "sender": {
+                            "name": "string",
+                            "email": "string",
+                            "phone": "string",
+                            "address": "string",
+                            "city_name":"string",
+                            "lat": 41.261011,
+                            "lon": 69.278234
+                    },
+                    "recipient": {
+                            "name": "string",
+                            "email": "string",
+                            "phone": "string",
+                            "address": "string",
+                            "city_name":"string",
+                            "lat": 41.281177,
+                            "lon": 69.239961
+                    },
+                    "payment_type": "cash"
+            }
+    
++ Response 200 (application/json)
+
+        {
+                "data": {
+                        "description": "string",
+                        "driver_tip": 0,
+                        "external_driver_fee": 0,
+                        "meta_data": [
+                            {
+                                "key": "string",
+                                "value": "string"
+                            }
+                        ],
+                        "payment_total": 0,
+                        "marketplace_id": 909678003,
+                        "reference_id": "ON00000001",
+                        "items_meta_data": [
+                            {"name":"Hotdog", "price_per_unit": 10.00 , "quantity": 10.00, "instruction": "string" }
+                        ],
+                        "pickup_datetime": "2021-02-01T11:32:00.238Z",
+                        "deliver_datetime": "2021-02-01T11:34:13.354Z",
+                        "courier_id": 935436297,
+                        "sender": {
+                            "name": "string",
+                            "email": "string",
+                            "phone": "string",
+                            "address": "string",
+                            "lat": 41.261011,
+                            "lon": 69.278234
+                        },
+                        "recipient": {
+                            "name": "string",
+                            "email": "string",
+                            "phone": "string",
+                            "address": "string",
+                            "lat": 41.281177,
+                            "lon": 69.239961
+                        },
+                        "payment_type": "cash",
+                        "id": 935515950,
+                        "status": "assigned_to_courier"
+                },
+                "status": "success"
+        }
+  
+###Get Driver location [GET /api/v1/public/order/{public_id}/driver/location]
+    Retrieves driver's coordinates by order publicId. Only when driver assigned and on the way.
++ Parameters
+    + public_id - Public ID of the food order
+    
++ Response 200 (application/json)
+
+        {
+            "data": {
+                "id": "",
+                "user_id": 495230072,
+                "lat": number,
+                "lon": number,
+                "angle": number
+            },
+            "status": "success"
+        }
+        
+## Order Tracking [/api/v1/customer/order/{order_number}/history_items]
+
+<br/> <a name="order_tracking">Track order</a> to get the latest status updates.
+
+### Track order [GET]
+
++ Parameters
+    + order_number (string, required) - Order Number
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
+            
++ Response 200 (application/json)
+    
+        {
+          "data": {
+            "total": 2,
+            "list": [
+              {
+                "id": 17171717,
+                "status": "assigned_to_courier",
+                "status_desc": "Assigned to courier",
+                "date": "2020-10-15T19:38:47.034Z",
+                "created_by_user": {
+                  "id": 3,
+                  "name": "Test User",
+                  "description": "shipox.test@gmail.com"
+                },
+                "supplier": {
+                  "id": 17171717,
+                  "name": "Test Express",
+                  "phone": "+9713331717333"
+                }
+              },
+              {
+                "id": 1717171717,
+                "status": "unassigned",
+                "status_desc": "Order Received",
+                "date": "2020-10-15T19:38:38.794Z",
+                "created_by_user": {
+                  "id": 3,
+                  "name": "Test User",
+                  "description": "shipox.test@gmail.com"
+                }
+              }
+            ]
+          },
+          "status": "success"
+        }   
+        
+        
+
+    
+## Public Order Tracking [/api/v1/public/order/{order_number}/history_items]
+
+### Track order (Public) [GET]
+
+<br/> Additionally can be added parameter `marketplace_id` to Headers.
+
++ Parameters
+    + order_number (string, required) - Order Number
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            
+            
++ Response 200 (application/json)
+    
+        {
+          "data": {
+            "total": 2,
+            "list": [
+              {
+                "id": 232323232,
+                "status": "assigned_to_courier",
+                "status_desc": "Assigned to courier",
+                "date": "2020-10-15T19:38:47.034Z"
+              },
+              {
+                "id": 3434343434,
+                "status": "unassigned",
+                "status_desc": "Order Received",
+                "date": "2020-10-15T19:38:38.794Z"
+              }
+            ]
+          },
+          "status": "success"
+        }   
+        
+       
+## Canceling order [/api/v1/customer/order/{order_id}/status?status=cancelled]  
+
+### Cancel order [PUT]
+
++ Parameters
+    + order_id (number, required)
+
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
+            
++ Response 200 (application/json)
+
+    + Body
+    
+            {
+                "status": "success"
+            }
+            
+            
+            
+## AWBZ Label [/api/v1/customer/orders/airwaybill_mini{?ids,order_numbers}]  
+
+<br/> Get the link to Order <a name="order_awb">AWBZ Label</a> in PDF format.
+
+### AWBZ Label [GET]
+
++ Parameters
+    + ids (enum[number], required) - List of Order ID’s:
+        ids=123&ids=456&ids=789
+    + order_numbers (enum[string], optional) - List of Order Number’s:
+        order_numbers=a123&order_numbers=b456
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
++ Response 200 (application/json)
+
+    + Body
+          
+            {
+                "Data":{
+                    "Value":"url to download awb from s3" 
+                },
+                "status": "success"
+            }
+            
+            
+
+## Customer Orders [/api/v1/customer/orders{?page,size}]  
+
+| Name | Required | Type | Description |
+| ---- | -------- | ---- | ----------- |
+| from_date_time | No | String | Orders created from date |
+| to_date_time | No | String | Orders created to date |
+| status | No | Array[String] | The comma delimited list of status values |
+| search | No | String | The Search Key filter |
+| order_by | No | String |  Order by field |
+| page | No | Number | The page number |
+| size | No | Number | The size of the page |
+
+### Get customer orders [GET]
+
+
++ Parameters
+    + page (number, optional) - The page number, by default it is set to 0
+        + Default: 0
+    + size (number, optional) - The size of the page, by default it is set to 20, max value 200
+        + Default: 20
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
++ Response 200 (application/json)
+
+    + Body
+          
+            {
+              "data": {
+                "total": 1,
+                "list": [
+                  {
+                    "locations": [
+                      {
+                        "lat": 23.6234493,
+                        "lon": 53.7325783,
+                        "city": "Dubai",
+                        "pickup": true,
+                        "address": "Apt: 98, Nbhd:, Bldg: Springs, Madinat(Bada) Zayed, 21",
+                        "contact_name": "TEST ORDER",
+                        "email": "shipox.test@gmail.com",
+                        "phone": "9711000000",
+                        "confirmed_by_recipient": false,
+                        "address_type": "residential",
+                        "address_city": "Dubai",
+                        "address_street": "Bldg: Springs",
+                        "location_source_type": "region_center",
+                        "bad_address": false,
+                        "geo_address": "Bldg: Springs Madinat(Bada) Zayed - Dubai - United Arab Emirates"
+                      },
+                      {
+                        "lat": 23.6234493,
+                        "lon": 53.7325783,
+                        "city": "Dubai",
+                        "pickup": false,
+                        "address": "Apt: 12, Bldg: icon tower, Madinat(Bada) Zayed - Dubai - United Arab Emirates, Madinat(Bada) Zayed, 3232",
+                        "contact_name": "TEST ORDER",
+                        "phone": "971112121212",
+                        "confirmed_by_recipient": false,
+                        "address_type": "residential",
+                        "address_city": "Dubai",
+                        "location_source_type": "region_center",
+                        "accuracy_status": "accurate_to_area",
+                        "bad_address": false,
+                        "geo_address": " Madinat(Bada) Zayed - Dubai - United Arab Emirates"
+                      }
+                    ],
+                    "id": 171717,
+                    "order_number": "171717171717",
+                    "status": "assigned_to_courier",
+                    "type": "order",
+                    "created_date": "2020-10-19T08:54:14.866Z",
+                    "pickup_time": "2020-10-18T19:00:00.000Z",
+                    "last_status_date": "2020-10-19T08:54:14.952Z",
+                    "last_cod_status_date": "2020-10-19T08:54:14.953Z",
+                    "estimated_pickup_time": "2020-10-18T19:00:00.000Z",
+                    "fragile": false,
+                    "pickup_time_now": false,
+                    "amount": 0,
+                    "payment_type": "cash",
+                    "customer": {
+                      "id": 1717,
+                      "name": "Test customer",
+                      "description": "+171717171717",
+                      "phone": "+171717171717"
+                    },
+                    "supplier": {
+                      "id": 171717,
+                      "name": "Test Express",
+                      "phone": "+971333333333"
+                    },
+                    "charge_items": [
+                      {
+                        "id": 171717,
+                        "charge_type": "margin",
+                        "currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "base_currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "charge": 0,
+                        "date": "2020-10-19T08:54:16.461Z",
+                        "paid": true,
+                        "refund": false,
+                        "paid_to_customer": false
+                      },
+                      {
+                        "id": 171717,
+                        "charge_type": "vat",
+                        "currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "base_currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "charge": 0,
+                        "date": "2020-10-19T08:54:16.460Z",
+                        "paid": true,
+                        "refund": false,
+                        "paid_to_customer": false
+                      },
+                      {
+                        "id": 171717,
+                        "charge_type": "cod",
+                        "currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "base_currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "charge": 0,
+                        "date": "2020-10-19T08:54:14.952Z",
+                        "paid": true,
+                        "refund": false,
+                        "paid_to_customer": false
+                      },
+                      {
+                        "id": 171717,
+                        "charge_type": "rto",
+                        "currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "base_currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "charge": 0,
+                        "date": "2020-10-19T08:54:16.460Z",
+                        "paid": true,
+                        "refund": false,
+                        "paid_to_customer": false
+                      },
+                      {
+                        "id": 171717,
+                        "charge_type": "service_custom",
+                        "currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "base_currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "charge": 0,
+                        "date": "2020-10-19T08:54:16.459Z",
+                        "paid": true,
+                        "refund": false,
+                        "paid_to_customer": false
+                      },
+                      {
+                        "id": 171717,
+                        "charge_type": "service",
+                        "currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "base_currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "charge": 0,
+                        "date": "2020-10-19T08:54:14.950Z",
+                        "paid": true,
+                        "refund": false,
+                        "paid_to_customer": false
+                      },
+                      {
+                        "id": 171717,
+                        "charge_type": "total",
+                        "quantity": 1,
+                        "currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "base_currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "charge": 0,
+                        "date": "2020-10-19T08:54:14.951Z",
+                        "paid": true,
+                        "refund": false,
+                        "paid_to_customer": false
+                      },
+                      {
+                        "id": 171717,
+                        "charge_type": "cod_fee",
+                        "quantity": 1,
+                        "currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "base_currency": {
+                          "code": "AED",
+                          "name": "U.A.E. Dirham"
+                        },
+                        "charge": 0,
+                        "date": "2020-10-19T08:54:14.950Z",
+                        "paid": true,
+                        "refund": false,
+                        "paid_to_customer": false
+                      }
+                    ],
+                    "delivery_attempt_count": 0,
+                    "pick_up_attempt_count": 0,
+                    "size": "medium",
+                    "pickup_timeslot": {
+                      "id": 171717,
+                      "name": "All day Bekhruz",
+                      "start_time": "00:32:38",
+                      "end_time": "23:32:43",
+                      "type": "pickup",
+                      "sort_order": 1,
+                      "timeslot_availability_id": 17171717,
+                      "available": false
+                    },
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "allocated_from_warehouse": false,
+                    "internal_promise_date": "2020-10-20T23:59:14.867Z",
+                    "order_count": 0,
+                    "piece_count": 1,
+                    "scanned_piece_count": 0,
+                    "chargeable_weight": 5,
+                    "version": 2,
+                    "package": {
+                      "name": "Dragon delivery",
+                      "from_city": "Dubai",
+                      "to_city": "Dubai",
+                      "active": false,
+                      "from_city_id": 4,
+                      "to_city_id": 4,
+                      "rule_name": "Feruza",
+                      "id": 17171717,
+                      "courier_type": "DRAGON",
+                      "vehicle_type": "",
+                      "delivery_label": "Dragon delivery",
+                      "delivery_label_helper": "Urgent urgent ",
+                      "has_cutoff_time": false
+                    }
+                  }
+                ]
+              }
+            }
+            
+      
+      
+## Order details [/api/v1/customer/order/{id}/mobile]  
+
+### Get order details [GET]
+
++ Parameters
+    + id (number, required) - Order ID
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+            
++ Response 200 (application/json)
+
+    + Body
+          
+            {
+              "data": {
+                "id": 171717,
+                "order_number": "171717171717",
+                "sender_data": {
+                  "name": "TEST ORDER",
+                  "email": "",
+                  "phone": "9711000000",
+                  "phone_without_code": "1000000",
+                  "phone_code": "971",
+                  "country": {
+                    "id": 229,
+                    "name": "United Arab Emirates",
+                    "code": "AE"
+                  },
+                  "city": {
+                    "id": 1,
+                    "name": "Abu Dabi",
+                    "code": "abu_dhabi"
+                  },
+                  "neighborhood": {
+                    "id": 47125977,
+                    "name": "Madinat(Bada) Zayed"
+                  },
+                  "street": "Bldg: Springs",
+                  "building": "Nbhd:",
+                  "apartment": "Apt: 98",
+                  "landmark": "21",
+                  "address": "Apt: 98 /Bldg: Springs /Nbhd: /Lmk: 21",
+                  "lat": 23.76618003845215,
+                  "lon": 53.713836669921875,
+                  "default_address": false
+                },
+                "recipient_data": {
+                  "name": "TEST ORDER",
+                  "email": "",
+                  "phone": "971112121212",
+                  "phone_without_code": "112121212",
+                  "phone_code": "971",
+                  "country": {
+                    "id": 229,
+                    "name": "United Arab Emirates",
+                    "code": "AE"
+                  },
+                  "city": {
+                    "id": 1,
+                    "name": "Abu Dabi",
+                    "code": "abu_dhabi"
+                  },
+                  "neighborhood": {
+                    "id": 47125977,
+                    "name": "Madinat(Bada) Zayed"
+                  },
+                  "street": "",
+                  "building": "Bldg: icon tower",
+                  "apartment": "Apt: 12",
+                  "landmark": "3232",
+                  "address": "Apt: 12 /Bldg: icon tower /Nbhd: /Lmk: 3232",
+                  "lat": 23.76618003845215,
+                  "lon": 53.713836669921875,
+                  "default_address": false
+                },
+                "total_charge": 250,
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "created_date": "2020-10-15T19:38:21.544Z",
+                "pickup_date": "2020-10-15T19:38:38.058Z",
+                "pickup_attempts": 0,
+                "delivery_attempts": 0,
+                "dimensions": {
+                  "width": 42.17,
+                  "length": 42.17,
+                  "height": 42.17,
+                  "unit": "metric",
+                  "domestic": true
+                },
+                "chargeable_weight": 15,
+                "photos": [],
+                "note": "",
+                "actual_recipient_name": "TEST ORDER",
+                "recipient_not_available": "do_not_deliver",
+                "payment_type": "cash",
+                "payer": "recipient",
+                "charge_items": [
+                  {
+                    "id": 171717,
+                    "charge_type": "rto",
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "base_currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "charge": 28,
+                    "date": "2020-10-15T19:38:39.742Z",
+                    "paid": false,
+                    "refund": false,
+                    "paid_to_customer": false
+                  },
+                  {
+                    "id": 171717,
+                    "charge_type": "total",
+                    "quantity": 1,
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "base_currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "charge": 250,
+                    "date": "2020-10-15T19:38:38.793Z",
+                    "paid": false,
+                    "refund": false,
+                    "paid_to_customer": false
+                  },
+                  {
+                    "id": 171717,
+                    "charge_type": "cod_fee",
+                    "quantity": 1,
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "base_currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "charge": 0,
+                    "date": "2020-10-15T19:38:38.792Z",
+                    "paid": true,
+                    "refund": false,
+                    "paid_to_customer": false
+                  },
+                  {
+                    "id": 171717,
+                    "charge_type": "margin",
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "base_currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "charge": 0,
+                    "date": "2020-10-15T19:38:39.788Z",
+                    "paid": true,
+                    "refund": false,
+                    "paid_to_customer": false
+                  },
+                  {
+                    "id": 171717,
+                    "charge_type": "vat",
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "base_currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "charge": 5.33,
+                    "date": "2020-10-15T19:38:39.745Z",
+                    "paid": false,
+                    "refund": false,
+                    "paid_to_customer": false
+                  },
+                  {
+                    "id": 171717,
+                    "charge_type": "cod",
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "base_currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "charge": 250,
+                    "date": "2020-10-15T19:38:38.759Z",
+                    "paid": false,
+                    "refund": false,
+                    "paid_to_customer": false
+                  },
+                  {
+                    "id": 171717,
+                    "charge_type": "service",
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "base_currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "charge": 0,
+                    "date": "2020-10-15T19:38:38.787Z",
+                    "paid": true,
+                    "refund": false,
+                    "paid_to_customer": false
+                  },
+                  {
+                    "id": 171717,
+                    "charge_type": "service_custom",
+                    "currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "base_currency": {
+                      "code": "AED",
+                      "name": "U.A.E. Dirham"
+                    },
+                    "charge": 112,
+                    "date": "2020-10-15T19:38:38.772Z",
+                    "paid": false,
+                    "refund": false,
+                    "paid_to_customer": false
+                  }
+                ],
+                "paid": false,
+                "fragile": false,
+                "status": "assigned_to_courier",
+                "supplier": {
+                  "id": 171717,
+                  "name": "Test Express",
+                  "phone": "+971333333333"
+                },
+                "parcel_value": 109.99,
+                "customer": {
+                  "id": 1717,
+                  "name": "Test Customer"
+                },
+                "package_type": {
+                  "id": 27,
+                  "name": "Same Day",
+                  "description": "Delivery: within same day",
+                  "courier_type": {
+                    "type": "SAME_DAY",
+                    "sort_order": 3
+                  },
+                  "has_supplier": false,
+                  "price": {
+                    "id": 1717171717
+                  }
+                },
+                "package_rule": {
+                  "id": 1717171717,
+                  "name": "Code bug ",
+                  "description": "Same Day"
+                },
+                "domestic": true,
+                "version": 2,
+                "device_details": "EXCEL_IMPORT",
+                "attachments": []
+              },
+              "status": "success"
+            }
+            
+            
+
+## Customer Information [/api/v1/customer/account]
+
+### Get customer data [GET]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+            Authorization: Bearer id_token
+
++ Response 200 (application/json)
+
+
+            {
+              "data": {
+                "marketplace_id": 1,
+                "user_id": 754563,
+                "login": "jamie@houseofcomms.com",
+                "version": 0,
+                "first_name": "Jamie Wilks",
+                "email": "jamie@houseofcomms.com",
+                "activated": true,
+                "languages": "english",
+                "phone": "+971505068317",
+                "authorities": [
+                  "ROLE_CUSTOMER"
+                ],
+                "created_date": "2016-07-12T21:13:12.395Z",
+                "language_key": "en",
+                "support_page_enabled": false,
+                "customer_id": 756838,
+                "push_status": true,
+                "sms_status": true,
+                "hide_address_status": false,
+                "report_status": false,
+                "status": "active",
+                "merchant_type": "CASH_CLIENTS",
+                "country": {
+                  "id": 229,
+                  "name": "United Arab Emirates",
+                  "description": "AE",
+                  "lat": 25.13759994506836,
+                  "lon": 55.23740005493164
+                },
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "total_balance": 0,
+                "available_balance": 0,
+                "unlimited_credit": false,
+                "recipient_activated": true,
+                "decimal_point": 2,
+                "show_only_custom_packages": false,
+                "has_awb": false,
+                "full_name": "Jamie Wilks",
+                "valid_phone": true
+              },
+              "status": "success"
+            }
+            
+            
+            
+## Customer Sign Up [/api/v1/customer/register]  
+Important: Before you send JSON request for adding new customer/user to your account you have to  provide "company_id", which can be received using the authentication api, using your admin or client credentials.
+
+### Create customer [POST]
+
++ Request (application/json)
+
+    + Headers
+    
+            Accept: application/json
+
+    + Body
+    
+            {
+              "company_id": 0,
+              "username": "string",
+              "password": "string",
+              "phone": "string",
+              "first_name": "string",
+              "last_name": "string"
+            }
+
+
++ Response 201 (application/json)
+
+
+            {
+              "data": {
+                "marketplace_id": 1,
+                "user_id": 754563,
+                "login": "jamie@houseofcomms.com",
+                "version": 0,
+                "first_name": "Jamie Wilks",
+                "email": "jamie@houseofcomms.com",
+                "activated": true,
+                "languages": "english",
+                "phone": "+971505068317",
+                "authorities": [
+                  "ROLE_CUSTOMER"
+                ],
+                "created_date": "2016-07-12T21:13:12.395Z",
+                "language_key": "en",
+                "support_page_enabled": false,
+                "customer_id": 756838,
+                "push_status": true,
+                "sms_status": true,
+                "hide_address_status": false,
+                "report_status": false,
+                "status": "active",
+                "merchant_type": "CASH_CLIENTS",
+                "country": {
+                  "id": 229,
+                  "name": "United Arab Emirates",
+                  "description": "AE",
+                  "lat": 25.13759994506836,
+                  "lon": 55.23740005493164
+                },
+                "currency": {
+                  "code": "AED",
+                  "name": "U.A.E. Dirham"
+                },
+                "total_balance": 0,
+                "available_balance": 0,
+                "unlimited_credit": false,
+                "recipient_activated": true,
+                "decimal_point": 2,
+                "show_only_custom_packages": false,
+                "has_awb": false,
+                "full_name": "Jamie Wilks",
+                "valid_phone": true
+              },
+              "status": "success"
+            }
+      
+            
+# Group Installing & Setup Shipox Wordpress/Woocommerce Plugin
+#####A. Unzip and upload the plugin files to the website using dashboard/FTP
+#####B. Select your instance:
+1. Instance 1 for Shipox - Select instance 1 if you are a DMS user;
+2. Instance 2 for Safe Arrival - Select instance 2 if you are a Safe Arrival merchant.
+#####C. On the right menu, go to the Shipox Menu. There are 4 tabs with named as Service Configuration, Merchant Credentials, Merchant Address Details, and Order Settings. For Service Configuration:
+1. Debug Mode – It is a TEST or LIVE version of the plugin, No: LIVE version, Yes: TEST version;
+2. Auto Push – It can push the orders to the Shipox, after immediately received a new order.
+#####D. The second tab is named as Merchant Credentials:
+1. Enter your Shipox credentials and click Get Token. After that, you will be notified that you have successfully logged in;
+2. Then, click the Save Changes Button.
+#####E. Merchant Address Details Tab:
+1. Fill all fields, all fields are required except postcode and details;
+2. Latitude & Longitude Field is important so do not forget to fill it;
+3. Click the Save Changes Button.
+#####F. Order Settings Tab:
+1. International Order Availability – If your store has international orders, please select Available;
+2. Default Weight – is weight information of the order to push the Shipox. By default, it calculates the weight of each product of the order;
+3. Default Courier Type – By default selected one or some needed courier types as default courier type. It will be used on AUTO PUSH;
+4. Default Payment Option – It depends on Agreement with Shipox. According to DMS Company Agreement, you need to select Credit Balance or Cash;
+5. Above settings will be considered based on the agreement with DMS Company.
+#####G. If you want to disable packages from Shipox on your Checkout Page. Go to Woocommerce -> Settings -> Shipping -> Shipox. Enable/Disable to show the Checkout Page.
+#####H. Orders Page:
+1. To push the order to the Shipox (when AutoPush disabled or didn’t push the order automatically for some reasons) you can select Ship with Shipox Status and save the order;
+2. After that, any response can be shown on the Order Notes Section as follows.

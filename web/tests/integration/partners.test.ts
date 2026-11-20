@@ -143,7 +143,7 @@ describe("lookup by barcode / invoice", () => {
     const r = await partners.lookupPackages(biz, c.id, ["NEW-1", "LG-1", "GHOST-9", "NEW-1"]);
     expect(r.results).toHaveLength(3); // de-duplicated
     const by = Object.fromEntries(r.results.map((x: any) => [x.identifier, x]));
-    expect(by["NEW-1"]).toMatchObject({ found: true, recipientName: "Layla", recipientPhone: "0555123456", status: "READY_FOR_PICKUP", codAmount: 120.5, externalId: "77", alreadyInJr: null });
+    expect(by["NEW-1"]).toMatchObject({ found: true, recipientName: "Layla", recipientPhone: "+966555123456", status: "READY_FOR_PICKUP", codAmount: 120.5, externalId: "77", alreadyInJr: null });
     expect(by["LG-1"].alreadyInJr).toMatchObject({ status: "pending" });
     expect(by["GHOST-9"]).toMatchObject({ found: false, error: null });
     expect(calls.every((x) => x.headers["x-api-key"] === KEY)).toBe(true);
@@ -354,7 +354,7 @@ describe("write-back (JR → LogesTech)", () => {
     respond = (call) => ({ 1: { status: 503 }, 2: { status: 401 }, 3: { status: 400 } }[call.query.get("barcode") === "LG-1" ? 1 : call.query.get("barcode") === "LG-2" ? 2 : 3]!);
     const res = await partners.processPartnerOutbox();
     expect(res).toMatchObject({ processed: 3, sent: 2, failed: 2 }.processed === 3 ? { processed: 3 } : {});
-    const rows = Object.fromEntries((await db.select().from(partnerOutbox)).map((x) => [(x.payload as any).externalRef, x]));
+    const rows = Object.fromEntries((await db.select({ o: partnerOutbox, ref: shipments.externalRef }).from(partnerOutbox).innerJoin(shipments, eq(shipments.id, partnerOutbox.shipmentId))).map((x) => [x.ref, x.o]));
     expect(rows["LG-1"]).toMatchObject({ status: "retry_wait", attempts: 1 });
     expect(rows["LG-1"].nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
     expect(rows["LG-2"].status).toBe("dead");
@@ -392,7 +392,10 @@ describe("custom system (generic webhook adapter)", () => {
     await work(biz, d, off.id, 1);
     expect(await db.select().from(partnerOutbox).where(eq(partnerOutbox.action, "delivered"))).toHaveLength(1);
     await partners.processPartnerOutbox();
-    const cb = calls.find((x) => x.path.endsWith("/cb"))!;
+    // The custom system hears every default event, in order: picked up → out for delivery → (arrived is off by default) → delivered.
+    const events = calls.filter((x) => x.path.endsWith("/cb")).map((x) => x.body.event);
+    expect(events).toEqual(["parcel.picked_up", "parcel.out_for_delivery", "parcel.delivered"]);
+    const cb = calls.find((x) => x.path.endsWith("/cb") && x.body.event === "parcel.delivered")!;
     expect(cb.body).toMatchObject({ event: "parcel.delivered", reference: "LG-1" });
     const [t, v1] = String(cb.headers["x-jr-signature"]).split(",").map((s) => s.split("=")[1]);
     const secret = (await import("@/server/partners/crypto")).decryptSecrets((await db.select().from(partnerConnections).where(eq(partnerConnections.id, g.id)))[0].secretsEnc).signingSecret;
@@ -410,7 +413,7 @@ describe("back office overview", () => {
     const { biz } = await setup(); const c = await mkConn(biz, { sync: { cancelled: true } });
     const o = await partners.adminPartnerOverview();
     expect(o.items).toHaveLength(1);
-    expect(o.items[0]).toMatchObject({ id: c.id, business: biz.name, stuckUpdates: 0 });
+    expect(o.items[0]).toMatchObject({ id: c.id, business: `Co ${biz.name}`, businessId: biz.id, stuckUpdates: 0, orders: { open: 0, inJr: 0 } });
     expect(JSON.stringify(o)).not.toContain(KEY);
     expect(partnerEvents).toBeTruthy(); expect(createDraft).toBeTruthy();
   });

@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInput;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/format.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
+import '../../data/api_client.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../profile/language_sheet.dart';
+import 'auth_rules.dart';
+import 'auth_session.dart';
+import 'auth_widgets.dart';
 
+/// Username + password sign-in. The username of the last successful sign-in is remembered on the device (never the password).
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -15,51 +20,33 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _phone = TextEditingController();
-  final _code = TextEditingController();
-  bool _codeStep = false, _busy = false;
-  String? _demo, _error;
-  DateTime? _resendAt;
+  late final _username = TextEditingController(text: ref.read(prefsProvider).getString(lastUsernameKey) ?? '');
+  final _password = TextEditingController();
+  bool _busy = false;
+  String? _error;
 
-  String get _phoneDigits => latinDigits(_phone.text).replaceAll(RegExp(r'[\s\-()]'), '');
-  bool get _phoneOk => RegExp(r'^\+?\d{9,15}$').hasMatch(_phoneDigits);
-  bool get _codeOk => latinDigits(_code.text).trim().length >= 4;
+  String get _user => normalizeUsername(_username.text);
+  bool get _canSubmit => _user.isNotEmpty && _password.text.isNotEmpty;
 
   @override
-  void dispose() { _phone.dispose(); _code.dispose(); super.dispose(); }
+  void dispose() { _username.dispose(); _password.dispose(); super.dispose(); }
 
-  /// Resending is allowed after 30 s: stops accidental double sends (each is an SMS) while never leaving the driver stuck.
-  void _startCooldown() => _resendAt = DateTime.now().add(const Duration(seconds: 30));
-
-  Future<void> _send() async {
-    if (_busy || !_phoneOk) return;
+  Future<void> _submit() async {
+    if (_busy || !_canSubmit) return;
+    ref.read(passwordChangedNoticeProvider.notifier).set(false);
     setState(() { _busy = true; _error = null; });
     try {
-      final r = await ref.read(apiProvider).sendOtp(_phoneDigits);
-      if (!mounted) return;
-      setState(() { _codeStep = true; _demo = r['demoCode'] is String ? r['demoCode'] as String : null; });
-      _startCooldown();
+      final r = await ref.read(apiProvider).login(_user, _password.text);
+      final token = r['token'], user = r['user'];
+      // Staff / admin with two-step verification answer `mfaRequired` and have no session: like every non-driver account they belong on the web portal.
+      if (r['mfaRequired'] == true) { if (mounted) setState(() => _error = context.tr('m.driver_only')); return; }
+      if (token is! String || user is! Map) throw ApiException('BAD_RESPONSE', 'login: missing token/user');
+      if (user['role'] != 'driver') { if (mounted) setState(() => _error = context.tr('m.driver_only')); return; }
+      await ref.read(prefsProvider).setString(lastUsernameKey, _user);
+      TextInput.finishAutofillContext();
+      await ref.read(authProvider.notifier).signIn(token, user.cast<String, dynamic>());
     } catch (e) {
-      if (mounted) setState(() => _error = errMessage(context, e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _verify() async {
-    if (_busy || !_codeOk) return;
-    setState(() { _busy = true; _error = null; });
-    try {
-      final r = await ref.read(apiProvider).verifyOtp(_phoneDigits, latinDigits(_code.text).trim());
-      if (r['isNew'] == true) {
-        if (mounted) context.go('/register', extra: {'token': r['registrationToken'], 'phone': _phoneDigits});
-      } else {
-        final user = (r['user'] as Map).cast<String, dynamic>();
-        if (user['role'] != 'driver') { if (mounted) setState(() => _error = context.tr('m.driver_only')); return; }
-        await ref.read(authProvider.notifier).signIn(r['token'] as String, user);
-      }
-    } catch (e) {
-      if (mounted) setState(() => _error = errMessage(context, e));
+      if (mounted) setState(() => _error = loginErrorMessage(context, e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -68,7 +55,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.tr;
-    final expired = ref.watch(authProvider).value?.expired == true;
+    final auth = ref.watch(authProvider).value;
+    final changed = ref.watch(passwordChangedNoticeProvider);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -76,44 +64,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(onPressed: () => showLanguageSheet(context, ref), icon: const Icon(Icons.language), label: Text(langNames[ref.watch(localeProvider)]!))),
-                const SizedBox(height: 8),
-                Row(children: [
-                  ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset('assets/logo.png', width: 48, height: 48)),
-                  const SizedBox(width: 12),
-                  const Expanded(child: Text('JR Logistics', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))), // wraps instead of overflowing at large text sizes
-                ]),
-                const SizedBox(height: 32),
-                Text(t('auth.login_title'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                Text(t('auth.login_sub'), style: const TextStyle(color: JR.muted, height: 1.4)),
-                if (expired) ...[const SizedBox(height: 16), Banner2(text: t('auth.session_expired'), tone: Tone.warn)],
-                const SizedBox(height: 24),
-                TextField(
-                  key: const Key('phone'), controller: _phone, enabled: !_codeStep && !_busy, keyboardType: TextInputType.phone, textDirection: TextDirection.ltr, autofillHints: const [AutofillHints.telephoneNumber],
-                  inputFormatters: const [LatinDigitsFormatter()], textInputAction: TextInputAction.done, onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(labelText: t('auth.phone'), hintText: '05XXXXXXXX', prefixIcon: const Icon(Icons.phone_outlined)),
-                  onSubmitted: (_) => _codeStep ? null : _send(),
-                ),
-                if (_codeStep) ...[
-                  const SizedBox(height: 16),
-                  if (_demo != null) Banner2(tone: Tone.warn, title: t('auth.demo_code'), text: '${_demo!}\n${t('auth.demo_code_hint')}', action: OutlinedButton(onPressed: () => setState(() => _code.text = _demo!), child: Text(t('m.demo_fill')))),
-                  if (_demo != null) const SizedBox(height: 16),
-                  TextField(key: const Key('code'), controller: _code, autofocus: true, keyboardType: TextInputType.number, inputFormatters: digitsOnly(max: 6), autofillHints: const [AutofillHints.oneTimeCode], textInputAction: TextInputAction.done, textDirection: TextDirection.ltr, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, letterSpacing: 8, fontWeight: FontWeight.w700), decoration: InputDecoration(labelText: t('auth.code'), counterText: ''), onChanged: (_) => setState(() {}), onSubmitted: (_) => _verify()),
+              child: AutofillGroup(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(key: const Key('language'), onPressed: () => showLanguageSheet(context, ref), icon: const Icon(Icons.language), label: Text(langNames[ref.watch(localeProvider)]!))),
+                  const SizedBox(height: 8),
                   Row(children: [
-                    Expanded(child: Align(alignment: AlignmentDirectional.centerStart, child: TextButton(style: TextButton.styleFrom(minimumSize: const Size(0, 48)), onPressed: _busy ? null : () => setState(() { _codeStep = false; _code.clear(); _demo = null; _error = null; }), child: Text(t('auth.change_number'))))),
-                    DeadlineBuilder(
-                      key: ValueKey(_resendAt),
-                      deadline: _resendAt ?? DateTime.fromMillisecondsSinceEpoch(0),
-                      builder: (_, wait) => TextButton(key: const Key('resend-otp'), style: TextButton.styleFrom(minimumSize: const Size(0, 48)), onPressed: _busy || wait > 0 ? null : _send, child: Text(wait > 0 ? t('um.resend_in', {'time': fmtCountdown(wait)}) : t('ms.resend_code'))),
-                    ),
+                    ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset('assets/logo.png', width: 48, height: 48)),
+                    const SizedBox(width: 12),
+                    const Expanded(child: Text('JR Logistics', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))), // wraps instead of overflowing at large text sizes
                   ]),
-                ],
-                if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Semantics(liveRegion: true, child: Text(_error!, key: const Key('login-error'), style: const TextStyle(color: JR.danger, height: 1.4)))),
-                const SizedBox(height: 16),
-                FilledButton(key: const Key('submit'), onPressed: _busy || !(_codeStep ? _codeOk : _phoneOk) ? null : (_codeStep ? _verify : _send), child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(_codeStep ? t('auth.verify') : t('auth.send_code'))),
-              ]),
+                  const SizedBox(height: 32),
+                  Text(t('m.au_login_title'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  Text(t('m.au_login_sub'), style: const TextStyle(color: JR.muted, height: 1.4)),
+                  if (auth?.expired == true) ...[const SizedBox(height: 16), Banner2(text: t('auth.session_expired'), tone: Tone.warn)],
+                  if (changed) ...[const SizedBox(height: 16), Banner2(key: const Key('password-changed'), text: t('m.au_password_changed'), tone: Tone.success)],
+                  const SizedBox(height: 24),
+                  TextField(
+                    key: const Key('username'), controller: _username, readOnly: _busy, keyboardType: TextInputType.emailAddress, textDirection: TextDirection.ltr, autofillHints: const [AutofillHints.username],
+                    autocorrect: false, enableSuggestions: false, textCapitalization: TextCapitalization.none, inputFormatters: loginUsernameFormatters, textInputAction: TextInputAction.next, onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(labelText: t('m.au_username'), prefixIcon: const Icon(Icons.person_outline)),
+                  ),
+                  const SizedBox(height: 14),
+                  PasswordField(id: 'password', controller: _password, label: t('m.au_password'), readOnly: _busy, action: TextInputAction.done, onChanged: (_) => setState(() {}), onSubmitted: (_) => _submit()),
+                  if (_error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Semantics(liveRegion: true, child: Text(_error!, key: const Key('login-error'), style: const TextStyle(color: JR.danger, height: 1.4)))),
+                  const SizedBox(height: 16),
+                  FilledButton(key: const Key('submit'), onPressed: _busy || !_canSubmit ? null : _submit, child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('m.au_sign_in'))),
+                  const SizedBox(height: 14),
+                  Text(t('m.au_forgot'), key: const Key('forgot-hint'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
+                  const SizedBox(height: 28),
+                  Text(t('m.au_no_account'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted)),
+                  const SizedBox(height: 8),
+                  OutlinedButton(key: const Key('create-account'), onPressed: _busy ? null : () => context.go('/register'), child: Text(t('m.au_create_account'))),
+                ]),
+              ),
             ),
           ),
         ),

@@ -13,6 +13,7 @@ import { fmtMoney } from "@/lib/format";
 import { Modal } from "@/components/ui";
 import { useUser, hasPerm } from "./auth-context";
 import { activeItem, flatNav, visibleNav, type BadgeId, type NavGroup } from "./nav";
+import { relabelWalletNav } from "@/components/features/driver-nav-labels";
 
 export function LanguageSwitcher({ compact }: { compact?: boolean }) {
   const { locale, setLocale, t } = useI18n();
@@ -73,10 +74,13 @@ function useBadges(user: ReturnType<typeof useUser>): Partial<Record<BadgeId, nu
   const { data: stats } = useSWR(canStats ? "/admin/stats" : null, fetcher, { refreshInterval: 60_000, shouldRetryOnError: false });
   // Businesses see how many things wait for them on the Orders entry (a driver arrived and the warehouse has to confirm it).
   const { data: ov } = useSWR(user.role === "business" ? "/business/overview" : null, fetcher, { refreshInterval: 60_000 });
+  // Orders sent by connected warehouse systems that are still waiting to be put on a JR delivery order (Integrations → Incoming orders).
+  const { data: io } = useSWR(user.role === "business" ? "/integrations/orders?state=open&pageSize=1" : null, fetcher, { refreshInterval: 60_000, shouldRetryOnError: false });
   const pv = stats?.pendingVerification;
   return {
     notifications: n?.unread ?? 0,
     requests_action: ov?.pendingAttendance ?? 0,
+    incoming_orders: io?.counts?.open ?? 0,
     verification: pv ? (pv.business ?? 0) + (pv.office ?? 0) + (pv.drivers ?? 0) : 0,
     cases: stats?.openTickets ?? 0,
     complaints: stats?.openComplaints ?? 0,
@@ -136,7 +140,7 @@ function JumpDialog({ open, onClose, groups, onGo }: { open: boolean; onClose: (
   const [q, setQ] = useState(""); const [sel, setSel] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   // the native dialog focuses its first control (the close button) when it opens: move focus to the search box right after
-  useEffect(() => { if (!open) return; const id = requestAnimationFrame(() => input.current?.focus()); return () => cancelAnimationFrame(id); }, [open]);
+  useEffect(() => { if (!open) return; const id = requestAnimationFrame(() => input.current?.focus()); const t2 = setTimeout(() => input.current?.focus(), 80); return () => { cancelAnimationFrame(id); clearTimeout(t2); }; }, [open]);
   const all = useMemo(() => flatNav(groups), [groups]);
   const hits = useMemo(() => { const n = q.trim().toLowerCase(); return n ? all.filter(({ item, group }) => `${t(item.key)} ${group.key ? t(group.key) : ""}`.toLowerCase().includes(n)) : all; }, [all, q, t]);
   const idx = Math.min(sel, Math.max(0, hits.length - 1));
@@ -193,10 +197,11 @@ export function Shell({ children }: { children: ReactNode }) {
   const setOpen = (v: boolean) => setOpenPath(v ? path : null);
   const [jump, setJump] = useState(false);
   const { prefs, save } = useNavPrefs(user.role);
-  const groups = useMemo(() => visibleNav(user.role, (p) => hasPerm(user, p)), [user]);
-  const badges = useBadges(user);
   const showWallet = ["business", "driver", "office"].includes(user.role);
   const { data: w } = useSWR(showWallet ? "/wallet" : null, fetcher, { refreshInterval: 60_000 });
+  const managed = w?.managedByOffice === true; // J4: an office driver has no wallet balance to show (his sidebar entry is "Wallet & cash")
+  const groups = useMemo(() => relabelWalletNav(visibleNav(user.role, (p) => hasPerm(user, p)), managed), [user, managed]);
+  const badges = useBadges(user);
   const base = user.role === "admin" || user.role === "staff" ? "/admin" : `/${user.role}`;
 
   const current = activeItem(groups, path);
@@ -262,7 +267,7 @@ export function Shell({ children }: { children: ReactNode }) {
           {current && onSubPage && <Link href={current.href} className="flex min-w-0 items-center gap-1.5 rounded-lg py-1 text-sm text-muted hover:text-ink lg:hidden"><ArrowLeft className="size-4 shrink-0 rtl:rotate-180" aria-hidden /><span className="truncate">{title}</span></Link>}
           {current && <span className={cn("hidden min-w-0 items-center gap-2 truncate text-sm lg:flex")}>{currentGroup?.key && <><span className="text-muted">{t(currentGroup.key)}</span><span className="text-muted/50" aria-hidden>/</span></>}{onSubPage ? <Link href={current.href} className="truncate text-muted hover:text-ink">{title}</Link> : <span className="truncate font-semibold">{title}</span>}</span>}
           <div className="ms-auto flex items-center gap-2 sm:gap-3">
-            {showWallet && w && <Link href={`${base}/wallet`} aria-label={`${t(user.role === "business" ? "nav.wallet" : "nav.earnings")}: ${fmtMoney(w.availableCents, locale)}`} className={cn("flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-semibold", w.availableCents < 0 ? "border-danger/40 bg-danger/10 text-danger" : "border-gold/40 bg-gold/10 text-gold")}><Wallet className="size-4" aria-hidden /><span className="ltr-num tabular-nums">{fmtMoney(w.availableCents, locale)}</span></Link>}
+            {showWallet && w && !managed && <Link href={`${base}/wallet`} aria-label={`${t(user.role === "business" ? "nav.wallet" : "nav.earnings")}: ${fmtMoney(w.availableCents, locale)}`} className={cn("flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-semibold", w.availableCents < 0 ? "border-danger/40 bg-danger/10 text-danger" : "border-gold/40 bg-gold/10 text-gold")}><Wallet className="size-4" aria-hidden /><span className="ltr-num tabular-nums">{fmtMoney(w.availableCents, locale)}</span></Link>}
             <LanguageSwitcher compact />
             <Link href={`${base}/notifications`} className="jr-tap relative flex items-center justify-center rounded-xl border border-line p-2 text-muted hover:text-ink" aria-label={(badges.notifications ?? 0) > 0 ? `${t("nav.notifications")} (${badges.notifications})` : t("nav.notifications")}>
               <Bell className="size-[18px]" aria-hidden />{(badges.notifications ?? 0) > 0 && <span aria-hidden className="absolute -end-1 -top-1 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-ink">{(badges.notifications ?? 0) > 9 ? "9+" : badges.notifications}</span>}

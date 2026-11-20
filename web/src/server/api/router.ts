@@ -75,7 +75,8 @@ function errorResponse(e: unknown, correlationId: string, req?: Request) {
   if (pg === "23503" || pg === "23514") return fail("CONFLICT", "The change conflicts with related data", 409);
   if (pg === "22P02") return fail("VALIDATION", "Invalid identifier", 422);
   if (pg === "22003" || pg === "22007" || pg === "22008" || pg === "22001") return fail("VALIDATION", "A value is out of range", 422);
-  logError(e, { correlationId, method: req?.method, path: req ? new URL(req.url).pathname : undefined });
+  // A warehouse system's webhook URL carries its secret token as a path segment: never write it to the logs.
+  logError(e, { correlationId, method: req?.method, path: req ? new URL(req.url).pathname.replace(/(\/integrations\/hooks\/[^/]+\/)[^/]+/, "$1[redacted]") : undefined });
   return json({ error: { code: "INTERNAL", message: "Something went wrong", correlation_id: correlationId, details: {} } }, 500, h);
 }
 

@@ -38,7 +38,8 @@ const OTHER_DISTRICTS = ["Al Nahda", "Al Salam", "Al Rawdah", "Al Hamra", "Al Sa
 function rng(seed: number) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const hash = (s: string) => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 
-export function demoShipments(cityKey: string): DemoShipment[] | null {
+/** `b2b: false` (the platform has B2B shipments off, J3) → every demo parcel is a consumer parcel (the picker feeds manifests, which refuse business recipients then). */
+export function demoShipments(cityKey: string, opts: { b2b?: boolean } = {}): DemoShipment[] | null {
   const city = DEFAULT_CITIES.find((c) => c.key === cityKey && c.delivery);
   if (!city) return null;
   const rand = rng(hash(cityKey));
@@ -59,7 +60,7 @@ export function demoShipments(cityKey: string): DemoShipment[] | null {
     const business = i % 4 === 3; // every 4th parcel goes to a business (20 of 80)
     const n = i + 1;
     out.push({
-      n, ref: `DEMO-${String(n).padStart(3, "0")}`, recipientType: business ? "business" : "consumer",
+      n, ref: `DEMO-${String(n).padStart(3, "0")}`, recipientType: business && opts.b2b !== false ? "business" : "consumer",
       recipientName: business ? SHOPS[(i >> 2) % SHOPS.length] : `${pick(FIRST)} ${pick(LAST)}`,
       recipientPhone: `05000${String(n).padStart(5, "0")}`, // 0500000001 … 0500000080 — fictitious
       address: `Building ${1000 + Math.floor(rand() * 8999)}, ${pick(STREETS)}, ${district}, ${city.en}`,

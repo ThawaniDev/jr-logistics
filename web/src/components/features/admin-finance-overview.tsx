@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { mutate as refreshGlobal } from "swr";
-import { ArrowDownToLine, Banknote, ChevronRight, CircleCheck, Coins, Hourglass, Landmark, PauseCircle, PiggyBank, ShieldCheck, SlidersHorizontal, Wallet } from "lucide-react";
+import { ArrowDownToLine, Banknote, ChevronRight, CircleCheck, Coins, Hourglass, Landmark, PauseCircle, PiggyBank, ShieldCheck, SlidersHorizontal, Truck, Wallet } from "lucide-react";
 import { Button, CellPair, EmptyState, ErrorState, Notice, PageHeader, PageLoading, Section, Stat, StatGrid, Table, Td } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
 import { cn } from "@/lib/cn";
@@ -55,7 +55,9 @@ export function FinanceOverview() {
   return (
     <>
       <PageHeader title={t("nav.finance")} subtitle={t("foa.fin_sub")} icon={<Banknote className="size-5" />}
-        actions={hasAny(me, "wallet.adjust", "refunds.manage") && <Button variant="secondary" data-testid="fin-adjust-open" onClick={() => setAdjust(true)}><SlidersHorizontal className="size-4" aria-hidden />{t("adm.adjust")}</Button>} />
+        actions={<>
+          <Link href="/admin/finance/drivers" data-testid="fin-open-drivers" className="jr-tap inline-flex h-10 items-center gap-2 rounded-xl border border-line bg-bg2 px-3 text-sm hover:bg-card"><Truck className="size-4" aria-hidden />{t("nav.fin_drivers")}</Link>
+          {hasAny(me, "wallet.adjust", "refunds.manage") && <Button variant="secondary" data-testid="fin-adjust-open" onClick={() => setAdjust(true)}><SlidersHorizontal className="size-4" aria-hidden />{t("adm.adjust")}</Button>}</>} />
       {ov.error ? <div className="mb-5"><ErrorState error={ov.error} retry={() => ov.mutate()} /></div> : (
         <div className="mb-5"><StatGrid cols={3}>
           <Stat label={t("fin.platform_revenue")} value={s && <Money c={s.platformRevenueCents} />} hint={t("rdf.paid_settlements_n", { n: s?.paidSettlements ?? 0 })} icon={<Landmark className="size-5" />} tone="accent" loading={!s} href="/admin/finance/settlements?status=paid" />

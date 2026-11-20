@@ -32,9 +32,12 @@ export const emptyRow = (over: Partial<ManifestRow> = {}): ManifestRow => ({ uid
 /** Halalas of a cash-on-delivery box (0 when blank or not a valid amount — validateRow reports the latter before anything is sent). */
 export const codCentsOf = (cod: string) => { const v = validateCod(cod); return v.error ? 0 : v.cents; };
 
-/** What the API expects for one parcel (the city is always the request's delivery city, so it is left out). Blank text is sent as null, never as "". */
-export const toWire = (r: ManifestRow) => ({
-  recipientType: r.recipientType, recipientName: r.recipientName.trim() || null, recipientPhone: r.recipientPhone.trim() || null, address: r.address.trim() || null,
+/**
+ * What the API expects for one parcel (the city is always the request's delivery city, so it is left out). Blank text is sent as null, never as "".
+ * `b2b` = the platform's B2B switch (J3): while it is off the type is always "consumer" (the API refuses "business" with B2B_DISABLED).
+ */
+export const toWire = (r: ManifestRow, b2b = true) => ({
+  recipientType: b2b ? r.recipientType : ("consumer" as RType), recipientName: r.recipientName.trim() || null, recipientPhone: r.recipientPhone.trim() || null, address: r.address.trim() || null,
   contents: r.contents.trim() || null, notes: r.notes.trim() || null, externalRef: r.externalRef.trim() || null,
   ...(codCentsOf(r.cod) > 0 ? { codCents: codCentsOf(r.cod) } : {}),
   ...(r.lat != null && r.lng != null ? { lat: r.lat, lng: r.lng } : {}),
@@ -158,23 +161,26 @@ export function parseDelimited(textIn: string): string[][] {
 }
 
 export interface ParsedCsvRow { line: number; row: ManifestRow; errors: RowErrors }
-export interface ParsedCsv { rows: ParsedCsvRow[]; header: boolean; rowCount: number }
+export interface ParsedCsv { rows: ParsedCsvRow[]; header: boolean; rowCount: number; /** B2B off: rows that said "business" and were imported as individuals. */ coerced: number }
 
 /** Header row optional: detected when ≥ 2 cells are known column names (English or Arabic). Without it the order is name, phone, address, type, ref, contents, notes. */
-export function parseManifestCsv(text: string, existingRefs: Map<string, number> = new Map(), opts: { partial?: boolean } = {}): ParsedCsv {
+export function parseManifestCsv(text: string, existingRefs: Map<string, number> = new Map(), opts: { partial?: boolean; b2b?: boolean } = {}): ParsedCsv {
+  const b2b = opts.b2b !== false; // B2B shipments off: the type column is ignored and every row is an individual (counted in `coerced` when it asked for "business")
   const grid = parseDelimited(text);
-  if (grid.length === 0) return { rows: [], header: false, rowCount: 0 };
+  if (grid.length === 0) return { rows: [], header: false, rowCount: 0, coerced: 0 };
   const first = grid[0].map((c) => aliasToField.get(squash(c)) ?? null);
   const header = first.filter(Boolean).length >= 2;
-  const map: Array<CsvField | null> = header ? first : COLUMNS;
+  const map: Array<CsvField | null> = header ? first : b2b ? COLUMNS : COLUMNS.filter((c) => c !== "recipientType"); // no header: name, phone, address, [type,] ref, contents, notes, cod
   const body = header ? grid.slice(1) : grid;
+  let coerced = 0;
   const parsed: ParsedCsvRow[] = body.map((cells, i) => {
     const v: Partial<Record<CsvField, string>> = {};
     cells.forEach((c, ci) => { const f = map[ci]; if (f && v[f] === undefined) v[f] = c.trim(); });
     const errors: RowErrors = {};
     const typeRaw = (v.recipientType ?? "").trim().toLowerCase();
     let type: RType = "consumer";
-    if (typeRaw) { const w = TYPE_WORDS[typeRaw] ?? TYPE_WORDS[squash(typeRaw)]; if (w) type = w; else errors.recipientType = "bs.val_type"; }
+    if (typeRaw) { const w = TYPE_WORDS[typeRaw] ?? TYPE_WORDS[squash(typeRaw)]; if (w) type = w; else if (b2b) errors.recipientType = "bs.val_type"; }
+    if (!b2b && type === "business") { type = "consumer"; coerced++; }
     // Cash on delivery: a valid amount is stored in its plain form ("١٢٠٫٥" → "120.5"); an invalid one stays as typed so the preview can flag it.
     const codRaw = (v.cod ?? "").trim(); const codCheck = validateCod(codRaw);
     const row = emptyRow({ recipientType: type, recipientName: v.recipientName ?? "", recipientPhone: v.recipientPhone ?? "", address: v.address ?? "", externalRef: v.externalRef ?? "", contents: v.contents ?? "", notes: v.notes ?? "", cod: codRaw && !codCheck.error ? formatSarInput(codCheck.cents) : codRaw });
@@ -182,12 +188,17 @@ export function parseManifestCsv(text: string, existingRefs: Map<string, number>
   });
   const dup = duplicateRefs(parsed.map((p) => p.row), existingRefs);
   dup.forEach((_first, i) => { parsed[i].errors.externalRef = "bs.val_ref_dup"; });
-  return { rows: parsed, header, rowCount: body.length };
+  return { rows: parsed, header, rowCount: body.length, coerced };
 }
 
 const csvCell = (s: string) => (/[",;\n\r\t]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
 /** BOM so Excel opens Arabic correctly. */
-export const templateCsv = () => "﻿" + [TEMPLATE_HEADER, ["Mona Ali", "0555555555", "King Fahd Rd 120, Riyadh", "consumer", "ORD-1001", "Clothes", "Gate 2", "120.50"], ["Al Noor Pharmacy", "0501234567", "Olaya St, Building 8, Riyadh", "business", "ORD-1002", "", "", ""]].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+export const templateCsv = (b2b = true) => {
+  const cols = (r: string[]) => (b2b ? r : r.filter((_, i) => TEMPLATE_HEADER[i] !== "type")); // B2B off: no type column in the sheet
+  return "﻿" + [cols(TEMPLATE_HEADER), cols(["Mona Ali", "0555555555", "King Fahd Rd 120, Riyadh", "consumer", "ORD-1001", "Clothes", "Gate 2", "120.50"]),
+    cols(b2b ? ["Al Noor Pharmacy", "0501234567", "Olaya St, Building 8, Riyadh", "business", "ORD-1002", "", "", ""] : ["Sara Alharbi", "0501234567", "Olaya St, Building 8, Riyadh", "consumer", "ORD-1002", "", "", ""])]
+    .map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+};
 
 /** Map the API's per-field validation details (`shipments.<i>.<field>`) to { rowIndex → { field → i18n key } }. */
 export const FIELD_ERR_KEY: Record<string, string> = { recipientType: "bs.val_type", recipientName: "bs.val_name", recipientPhone: "bs.val_phone", address: "bs.val_address", externalRef: "bs.val_ref_dup", contents: "bs.val_too_long", notes: "bs.val_too_long", city: "bs.val_city", lat: "bs.val_coords", lng: "bs.val_coords", codCents: "fob.val_cod" };
@@ -271,8 +282,8 @@ export interface DemoShipment {
 }
 export interface DemoShipmentPage { city: string; total: number; items: DemoShipment[] }
 /** A demo parcel as a manifest row: `ref` becomes the order reference (also how "already added" is detected). */
-export const demoToRow = (d: DemoShipment): ManifestRow => emptyRow({
-  recipientType: d.recipientType === "business" ? "business" : "consumer", recipientName: d.recipientName, recipientPhone: d.recipientPhone, address: d.address,
+export const demoToRow = (d: DemoShipment, b2b = true): ManifestRow => emptyRow({
+  recipientType: b2b && d.recipientType === "business" ? "business" : "consumer", recipientName: d.recipientName, recipientPhone: d.recipientPhone, address: d.address,
   externalRef: d.ref, contents: d.contents ?? "", notes: d.notes ?? "", cod: formatSarInput(typeof d.codCents === "number" ? d.codCents : 0), lat: typeof d.lat === "number" ? d.lat : null, lng: typeof d.lng === "number" ? d.lng : null,
 });
 

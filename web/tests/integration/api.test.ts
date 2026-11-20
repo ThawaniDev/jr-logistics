@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users, driverProfiles, offers, businessProfiles, documents } from "@/db/schema";
 import { resetDb, shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, mkOffice, tomorrow, mkShipments } from "../helpers/factories";
-import { call, loginWithOtp } from "../helpers/api";
+import { call, loginWithPhone, TEST_PASSWORD } from "../helpers/api";
 import { createSession } from "@/server/auth/session";
+import { setFieldModes } from "../helpers/field-modes";
 
 /** First bytes of a real PNG: uploads are checked against their declared type. */
 const PNG_HEADER = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -21,7 +22,8 @@ describe("demo accounts list", () => {
     await ensureSuperAdmin(email, pw);
     const r = await call("GET", "/auth/demo-accounts");
     const a = r.json.items.find((i: any) => i.email === email.toLowerCase());
-    expect(a?.password).toBe(pw);
+    expect(a?.password).toBe(pw); expect(a?.username).toBe(email.split("@")[0].toLowerCase());
+    expect((await call("POST", "/auth/login", { body: { username: a.username, password: a.password } })).status).toBe(200);
     expect(JSON.stringify(r.json)).not.toContain("passwordHash");
     expect((await call("POST", "/auth/staff/login", { body: { email, password: a.password } })).status).toBe(200);
     // password changed since seeding → never listed with a stale/wrong password
@@ -32,46 +34,35 @@ describe("demo accounts list", () => {
 });
 
 describe("auth", () => {
-  it("OTP → register → session; /me works; logout revokes", async () => {
-    const reg = await loginWithOtp("0500000099", { role: "business", name: "Test Biz", companyName: "Acme", city: "riyadh" });
-    expect(reg.user.role).toBe("business");
+  it("register → session; /me works; logout revokes; the second sign-in reaches the same account", async () => {
+    const reg = await loginWithPhone("0500000099", { role: "business", name: "Test Biz", companyName: "Acme", city: "riyadh" });
+    expect(reg.user.role).toBe("business"); expect(reg.user.username).toBe("u966500000099");
     const me = await call("GET", "/auth/me", { token: reg.token });
-    expect(me.status).toBe(200); expect(me.json.profile.companyName).toBe("Acme");
+    expect(me.status).toBe(200); expect(me.json.profile.companyName).toBe("Acme"); expect(me.json.user.username).toBe("u966500000099");
     await call("POST", "/auth/logout", { token: reg.token });
     expect((await call("GET", "/auth/me", { token: reg.token })).status).toBe(401);
-    // second login goes to the same account
-    const again = await loginWithOtp("0500000099");
+    const again = await loginWithPhone("0500000099");
     expect(again.user.id).toBe(reg.user.id);
   });
 
-  it("rejects wrong OTP, bad phone, missing terms and duplicate registration", async () => {
-    await call("POST", "/auth/otp/send", { body: { phone: "0500000098" } });
-    expect((await call("POST", "/auth/otp/verify", { body: { phone: "0500000098", code: "000000" } })).status).toBe(422);
-    expect((await call("POST", "/auth/otp/send", { body: { phone: "123" } })).status).toBe(422);
-    const sent = await call("POST", "/auth/otp/send", { body: { phone: "0500000097" } });
-    const v = await call("POST", "/auth/otp/verify", { body: { phone: "0500000097", code: sent.json.demoCode } });
-    const noTerms = await call("POST", "/auth/register", { body: { registrationToken: v.json.registrationToken, role: "business", name: "X Y", companyName: "Co", termsAccepted: false } });
+  it("registration rejects a bad phone, missing terms and a bad password; there is no one-time-code sign-in any more", async () => {
+    const base = { role: "business", username: "someone.new", password: TEST_PASSWORD, name: "X Y", companyName: "Co", phone: "0500000097", termsAccepted: true };
+    expect((await call("POST", "/auth/register", { body: { ...base, phone: "123" } })).status).toBe(422);
+    const noTerms = await call("POST", "/auth/register", { body: { ...base, termsAccepted: false } });
     expect(noTerms.status).toBe(422); expect(noTerms.json.error.code).toBe("TERMS_REQUIRED");
-    const bad = await call("POST", "/auth/register", { body: { registrationToken: "forged.token", role: "business", name: "X Y", companyName: "Co", termsAccepted: true } });
-    expect(bad.status).toBe(422);
+    expect((await call("POST", "/auth/register", { body: { ...base, password: "short1" } })).json.error.details.field).toBe("password");
+    expect((await call("POST", "/auth/register", { body: { ...base, registrationToken: "forged.token" } })).status).toBe(201); // an extra field is simply ignored
+    for (const path of ["/auth/otp/send", "/auth/otp/verify"]) expect((await call("POST", path, { body: { phone: "0500000097", code: "123456" } })).status).toBe(404);
   });
 
-  it("OTP is burned after use and verification attempts are limited", async () => {
-    const sent = await call("POST", "/auth/otp/send", { body: { phone: "0500000096" } });
-    expect((await call("POST", "/auth/otp/verify", { body: { phone: "0500000096", code: sent.json.demoCode } })).status).toBe(200);
-    expect((await call("POST", "/auth/otp/verify", { body: { phone: "0500000096", code: sent.json.demoCode } })).status).toBe(422);
-  });
-
-  it("staff cannot use OTP; staff password login works; wrong password locks out", async () => {
+  it("staff password login works; wrong password locks out", async () => {
     const s = await mkStaff(["requests.view"]);
-    expect((await call("POST", "/auth/otp/send", { body: { phone: s.phone ?? "0500000090" } })).status).toBe(200); // unknown phone is fine
     expect((await call("POST", "/auth/staff/login", { body: { email: s.email, password: "Password123" } })).status).toBe(200);
+    expect((await call("POST", "/auth/login", { body: { username: s.username, password: "Password123" } })).status).toBe(200);
     for (let i = 0; i < 5; i++) await call("POST", "/auth/staff/login", { body: { email: s.email, password: "wrong-password" } });
     const locked = await call("POST", "/auth/staff/login", { body: { email: s.email, password: "Password123" } });
     expect([401, 429]).toContain(locked.status);
-    const biz = await mkBusiness();
     expect((await call("POST", "/auth/staff/login", { body: { email: "nobody@x.com", password: "Password123" } })).status).toBe(401);
-    void biz;
   });
 
   it("cookie sessions require a same-origin header on writes (CSRF)", async () => {
@@ -113,6 +104,7 @@ describe("authorization", () => {
 
 describe("request flow over HTTP with privacy rules", () => {
   it("estimate hides provider cost; driver sees no recipient contact until accepted; business sees driver phone only after accept", async () => {
+    await setFieldModes({ routing: true }); // J2: with routing OFF (the default) the driver sees every own stop's recipient — the counterpart is asserted below
     const admin = await mkAdmin(); await mkRule(admin);
     const biz = await mkBusiness({ fundsCents: 1000_00 }), d = await mkDriver();
     const bt = await tok(biz), dt = await tok(d);
@@ -140,6 +132,11 @@ describe("request flow over HTTP with privacy rules", () => {
     expect(mine.json.manifest).toBe(true); expect(mine.json.recipient).toBeNull(); expect(mine.json.stops).toHaveLength(10);
     expect(mine.json.stops.every((s: any) => s.recipientPhone === null && s.recipientName === null && s.address)).toBe(true);
     expect(mine.json.delivery).toBeNull(); expect(mine.json.stops[0].address).toContain("Olaya St"); // each stop has its own address; there is no single delivery address any more
+    // routing OFF (the platform default): the driver works his own stops in any order, so he sees name and phone of every one of them — and still nothing before he accepted
+    await setFieldModes({ routing: false });
+    const free = await call("GET", `/driver/jobs/${job.offerId}`, { token: dt });
+    expect(free.json.stops.every((s: any) => !!s.recipientName && !!s.recipientPhone && s.address)).toBe(true);
+    await setFieldModes({ routing: true });
     const detail2 = await call("GET", `/requests/${pub.json.id}`, { token: bt });
     expect(detail2.json.offers[0].driver.phone).toBe(d.phone);
     expect(detail2.json.offers[0].actions).toContain("confirm_attendance");
@@ -332,9 +329,7 @@ describe("recipient phone & error shape (found by the Flutter live tests)", () =
   });
 
   it("domain validation errors are keyed by field, like schema errors", async () => {
-    const reg = await call("POST", "/auth/otp/send", { body: { phone: "0500000555" } });
-    const v = await call("POST", "/auth/otp/verify", { body: { phone: "0500000555", code: reg.json.demoCode } });
-    const r = await call("POST", "/auth/register", { body: { registrationToken: v.json.registrationToken, role: "driver", name: "Van Driver", vehicleType: "van", services: ["delivery_driver"], termsAccepted: true } });
+    const r = await call("POST", "/auth/register", { body: { role: "driver", username: "van.driver", password: TEST_PASSWORD, phone: "0500000555", name: "Van Driver", vehicleType: "van", services: ["delivery_driver"], termsAccepted: true } });
     expect(r.status).toBe(422);
     expect(r.json.error.details.vehicleTemperature).toBeTruthy();
     expect(r.json.error.details.field).toBe("vehicleTemperature");

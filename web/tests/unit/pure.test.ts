@@ -6,7 +6,7 @@ import { signPayload, assertSafeWebhookUrl } from "@/server/integrations";
 import { pct } from "@/lib/money";
 import { passwordProblem } from "@/server/auth/password";
 import { can } from "@/server/auth/permissions";
-import { signRegistrationToken, readRegistrationToken } from "@/server/auth/otp";
+import { signMfaToken, readMfaToken } from "@/server/auth/mfa";
 import { expectedUnitsFor, buildQuote } from "@/server/pricing";
 
 describe("phone", () => {
@@ -97,12 +97,12 @@ describe("misc", () => {
     expect(can({ role: "staff", permissions: [] }, "finance.view")).toBe(false);
     expect(can({ role: "business", permissions: ["finance.view"] }, "finance.view")).toBe(false);
   });
-  it("registration token round-trips and detects tampering", () => {
-    const t = signRegistrationToken("+966500000001");
-    expect(readRegistrationToken(t)).toBe("+966500000001");
+  it("sign-in proof (second step) round-trips and detects tampering", () => {
+    const t = signMfaToken("user-1");
+    expect(readMfaToken(t)).toBe("user-1");
     const [b, s] = t.split(".");
-    expect(() => readRegistrationToken(`${b}x.${s}`)).toThrow();
-    expect(() => readRegistrationToken("garbage")).toThrow();
+    expect(() => readMfaToken(`${b}x.${s}`)).toThrow();
+    expect(() => readMfaToken("garbage")).toThrow();
   });
 });
 
@@ -121,16 +121,16 @@ describe("pricing math", () => {
 });
 
 describe("production secrets", () => {
-  it("refuses to sign registration tokens in production without AUTH_SECRET", () => {
+  it("refuses to sign sign-in proofs in production without AUTH_SECRET", () => {
     const env = process.env as Record<string, string | undefined>;
     const prev = { n: env.NODE_ENV, s: env.AUTH_SECRET };
     try {
       env.NODE_ENV = "production"; delete env.AUTH_SECRET;
-      expect(() => signRegistrationToken("+966500000001")).toThrow(/AUTH_SECRET/);
+      expect(() => signMfaToken("user-1")).toThrow(/AUTH_SECRET/);
       env.AUTH_SECRET = "short";
-      expect(() => signRegistrationToken("+966500000001")).toThrow(/AUTH_SECRET/);
+      expect(() => signMfaToken("user-1")).toThrow(/AUTH_SECRET/);
       env.AUTH_SECRET = "a-long-enough-production-secret";
-      expect(readRegistrationToken(signRegistrationToken("+966500000001"))).toBe("+966500000001");
+      expect(readMfaToken(signMfaToken("user-1"))).toBe("user-1");
     } finally { env.NODE_ENV = prev.n; if (prev.s === undefined) delete env.AUTH_SECRET; else env.AUTH_SECRET = prev.s; }
   });
   it("demo mode cannot be enabled in production without the explicit acknowledgement", async () => {

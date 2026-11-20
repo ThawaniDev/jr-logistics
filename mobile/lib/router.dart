@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'features/auth/auth_session.dart';
+import 'features/auth/change_password_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/cash/cash_screen.dart';
@@ -33,17 +35,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: listenable,
     redirect: (context, state) {
       final auth = ref.read(authProvider);
-      if (auth.isLoading) return null;
-      final signedIn = auth.value?.signedIn == true;
-      final loc = state.matchedLocation;
-      final public = loc == '/login' || loc == '/register';
-      if (!signedIn && !public) return '/login';
-      if (signedIn && public) return '/';
-      return null;
+      return authRedirect(loading: auth.isLoading, auth: auth.value, location: state.matchedLocation);
     },
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
-      GoRoute(path: '/register', builder: (c, s) { final x = (s.extra as Map?) ?? const {}; return RegisterScreen(token: '${x['token'] ?? ''}', phone: '${x['phone'] ?? ''}'); }),
+      GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      GoRoute(path: '/change-password', builder: (_, _) => const ChangePasswordScreen()),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => HomeShell(shell: shell),
         branches: [

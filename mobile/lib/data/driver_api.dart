@@ -9,9 +9,15 @@ class DriverApi {
   final ApiClient c;
 
   // auth
-  Future<Json> sendOtp(String phone) => c.post('/auth/otp/send', {'phone': phone});
-  Future<Json> verifyOtp(String phone, String code) => c.post('/auth/otp/verify', {'phone': phone, 'code': code});
+  /// Username + password sign-in (every role; this app accepts drivers only). Answer `{token, user}`; `user.mustChangePassword` sends the driver to
+  /// "choose a new password". Errors: `401 UNAUTHENTICATED` (wrong credentials), `429 RATE_LIMITED` (too many attempts / locked), `403 FORBIDDEN` (suspended).
+  Future<Json> login(String username, String password) => c.post('/auth/login', {'username': username, 'password': password});
+  /// `{available, reason?: taken|invalid|reserved}` — public, rate limited.
+  Future<Json> usernameAvailable(String username) => c.get('/auth/username-available', query: {'username': username});
+  /// No OTP: `{role: 'driver', username, password, name, phone, …profile, termsAccepted}` -> `{token, user}`. `409 CONFLICT details.field` = username | phone | email.
   Future<Json> register(Json body) => c.post('/auth/register', body);
+  /// `401 UNAUTHENTICATED` = the current password is wrong; `422 VALIDATION field=newPassword` = rule not met. The server may revoke the sessions, so see `changePasswordAndContinue`.
+  Future<Json> changePassword(String currentPassword, String newPassword) => c.post('/auth/change-password', {'currentPassword': currentPassword, 'newPassword': newPassword});
   Future<Json> me() => c.get('/auth/me');
   Future<void> logout() async { try { await c.post('/auth/logout'); } catch (_) {} }
   Future<Json> catalog() => c.get('/catalog');

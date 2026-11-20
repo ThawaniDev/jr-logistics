@@ -16,6 +16,9 @@ import { storage } from "./storage";
 import { matchesMime } from "./accounts";
 import { lockOffer, expect, forDriver, authorizeBusinessSide, openTicket, autoConfirmDelivery } from "./jobs";
 import { effectiveOps } from "./warehouse";
+import { isRoutingOn, autoStartRoute } from "./routing-mode";
+import { batchOf, recordShipmentEvents, type ShipEvt } from "./shipment-events";
+import { liveParcel, orderByAwb } from "./partners/orders-core";
 import { backfillOffersForDriver } from "./matching";
 import { createDraft, assertOwner, lockRequest, releaseReserve, type RequestInput } from "./requests";
 import {
@@ -24,9 +27,11 @@ import {
 } from "./shipments";
 
 /**
- * The driver works ONE stop at a time, in the route order fixed in the manifest and approved by the driver:
+ * Routing ON: the driver works ONE stop at a time, in the route order fixed in the manifest and approved by the driver:
  *   approve route → (arrive → deliver | fail | defer once) → next stop … → finish.
  * Every stop action is refused unless that stop is the current one, so a driver can never bulk-confirm.
+ * Routing OFF (J2): there is no approval step and no lock — any `loaded` stop of the driver's own job may be worked in any order (the route "starts" by itself
+ * once loading is confirmed); every other rule (arrival, parcel code, OTP, COD, geofence, signature) is unchanged.
  */
 const actorOf = (u: User) => ({ id: u.id, name: u.name, role: u.role });
 
@@ -35,18 +40,25 @@ const actorOf = (u: User) => ({ id: u.id, name: u.name, role: u.role });
  * is answered with the stop as it now is instead of a 409 — the action itself is never applied twice.
  */
 async function stopGuard(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], driver: User, offerId: string, shipmentId: string, replayOf?: (s: typeof shipments.$inferSelect) => boolean) {
-  const o = await lockOffer(tx, offerId);
+  let o = await lockOffer(tx, offerId);
   forDriver(driver, o);
   expect(o, "attendance_confirmed");
-  if (!o.routeApprovedAt) throw err("INVALID_TRANSITION", "Approve the route first");
+  const routing = await isRoutingOn(tx);
+  if (!o.routeApprovedAt) {
+    if (routing) throw err("INVALID_TRANSITION", "Approve the route first");
+    if (o.loadedUnits == null || o.loadedAckByDriver !== true) throw err("INVALID_TRANSITION", "Finish loading first");
+    o = await autoStartRoute(tx, o, actorOf(driver)); // a job that was mid-flow when routing was switched off: the first stop action starts its route
+  }
   const [s] = await tx.select().from(shipments).where(and(eq(shipments.id, shipmentId), eq(shipments.offerId, offerId))).for("update");
   if (!s) throw err("NOT_FOUND", "Stop not found");
   if (s.status !== "loaded") {
     if (replayOf?.(s)) return { o, s, r: null as never, replayed: true as const };
     throw err("INVALID_TRANSITION", `This stop is already ${s.status}`, { status: s.status });
   }
-  const cur = await currentStopOf(tx, offerId);
-  if (cur && cur.id !== s.id) throw err("STOP_LOCKED", "Finish the current stop first", { currentId: cur.id, currentSeq: cur.seq });
+  if (routing) { // routing off: no one-stop-at-a-time lock
+    const cur = await currentStopOf(tx, offerId);
+    if (cur && cur.id !== s.id) throw err("STOP_LOCKED", "Finish the current stop first", { currentId: cur.id, currentSeq: cur.seq });
+  }
   const [r] = await tx.select().from(requests).where(eq(requests.id, o.requestId));
   return { o, s, r, replayed: false as const };
 }
@@ -54,7 +66,10 @@ async function stopGuard(tx: Parameters<Parameters<typeof db.transaction>[0]>[0]
 /** After a stop is resolved the next one becomes current and its recipient is texted their code. */
 const nextCurrentId = async (tx: Parameters<typeof currentStopOf>[0], offerId: string) => (await currentStopOf(tx, offerId))?.id ?? null;
 
-/** The driver reviews the fixed stop order and approves it. This unlocks the stops (decision C3: static route, driver approval, no auto-optimiser). */
+/**
+ * The driver reviews the fixed stop order and approves it. This unlocks the stops (decision C3/D5: driver approval).
+ * Routing OFF (J2): there is no approval step — the call is a harmless idempotent no-op that only makes sure the route is marked as started (old clients mid-flow keep working).
+ */
 export async function approveRoute(driver: User, offerId: string) {
   let next: string | null = null;
   const out = await db.transaction(async (tx) => {
@@ -62,6 +77,11 @@ export async function approveRoute(driver: User, offerId: string) {
     forDriver(driver, o);
     expect(o, "attendance_confirmed");
     if (o.loadedUnits == null || o.loadedAckByDriver !== true) throw err("INVALID_TRANSITION", "Confirm the loaded parcels first");
+    if (!(await isRoutingOn(tx))) {
+      const started = await autoStartRoute(tx, o, actorOf(driver));
+      if (!o.routeApprovedAt) next = await nextCurrentId(tx, offerId);
+      return started;
+    }
     if (o.routeApprovedAt) throw err("CONFLICT", "Route already approved");
     const [u] = await tx.update(offers).set({ routeApprovedAt: new Date(), updatedAt: new Date() }).where(eq(offers.id, offerId)).returning();
     await logEvent(tx, { requestId: o.requestId, offerId, actor: actorOf(driver), type: "route_approved", payload: { stops: o.loadedUnits } });
@@ -73,14 +93,18 @@ export async function approveRoute(driver: User, offerId: string) {
 }
 
 export async function arriveAtStop(driver: User, offerId: string, shipmentId: string, loc?: { lat?: number; lng?: number }) {
-  return db.transaction(async (tx) => {
+  let text: string | null = null;
+  const out = await db.transaction(async (tx) => {
     const { o, s } = await stopGuard(tx, driver, offerId, shipmentId);
     if (s.arrivedAt) return s; // idempotent: a second tap changes nothing, the wait clock keeps running
     const [u] = await tx.update(shipments).set({ arrivedAt: new Date(), updatedAt: new Date() }).where(eq(shipments.id, s.id)).returning();
     const dist = loc?.lat != null && loc?.lng != null && s.lat != null && s.lng != null ? distanceM({ lat: loc.lat, lng: loc.lng }, { lat: s.lat, lng: s.lng }) : null;
     await logEvent(tx, { requestId: o.requestId, offerId, actor: actorOf(driver), type: "stop_arrived", payload: { shipmentId: s.id, code: s.code, distanceM: dist, ...loc } });
+    if (!(await isRoutingOn(tx))) text = s.id; // routing off: stops are worked in any order, so the recipient may not have been texted yet — they get their code when the driver reaches them
     return u;
   });
+  if (text) await sendRecipientCodes([text]); // no-op when they were already texted
+  return out;
 }
 
 export interface DeliverInput { code: string; otp?: string | null; proof?: "receipt" | null; receiverName?: string | null; signatureMediaId?: string | null; cashCollectedCents?: number | null; lat?: number | null; lng?: number | null }
@@ -307,7 +331,7 @@ async function endRouteTx(actor: User, offerId: string, reason: string, note?: s
     const staff = can(actor, "replacements.manage");
     if (!staff) forDriver(actor, o);
     expect(o, "attendance_confirmed");
-    if (!o.routeApprovedAt) throw err("INVALID_TRANSITION", "The route has not started — cancel the job instead");
+    if (!o.routeApprovedAt && ((await isRoutingOn(tx)) || o.loadedAckByDriver !== true)) throw err("INVALID_TRANSITION", "The route has not started — cancel the job instead"); // routing off: loading confirmed = the route has started
     const [r] = await tx.select().from(requests).where(eq(requests.id, o.requestId));
     const moved = await releaseOfferShipments(tx, o, "driver_unavailable");
     const { delivered } = await markRouteFinished(tx, o, "route_ended_early", actorOf(actor), { reason, note: note ?? null, ...moved });
@@ -340,6 +364,7 @@ export async function confirmReturns(actor: User, offerId: string, sel: { codes?
     if (!chosen.length) throw err("NOTHING_TO_DO", "No parcels are awaiting return");
     const now = new Date();
     await tx.update(shipments).set({ status: "returned", returnedAt: now, updatedAt: now }).where(inArray(shipments.id, chosen.map((s) => s.id)));
+    await recordShipmentEvents(tx, chosen.map((s) => ({ shipmentId: s.id, requestId: r.id, offerId, type: "returned" as const, actor: actorOf(actor), payload: { code: s.code, failReason: s.failReason } })));
     if (actor.id !== r.businessId) await audit(actor, "offer.confirm_returns", "offer", offerId, { count: chosen.length }, tx);
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(actor), type: "shipments_returned", payload: { count: chosen.length, codes: chosen.map((s) => s.code) } });
     return { returned: chosen.length, stillOut: failed.length - chosen.length };
@@ -367,9 +392,11 @@ async function applyParcelPatch(tx: Tx, actor: User, r: typeof requests.$inferSe
   const merged: ShipmentInput = {
     recipientType: (patch.recipientType ?? s.recipientType) as "consumer" | "business", recipientName: patch.recipientName !== undefined ? patch.recipientName : s.recipientName, recipientPhone: patch.recipientPhone !== undefined ? patch.recipientPhone : s.recipientPhone,
     address: patch.address !== undefined ? patch.address : s.address, city: s.city, lat: patch.lat !== undefined ? patch.lat : s.lat, lng: patch.lng !== undefined ? patch.lng : s.lng,
-    contents: patch.contents !== undefined ? patch.contents : s.contents, notes: patch.notes !== undefined ? patch.notes : s.notes, externalRef: patch.externalRef !== undefined ? patch.externalRef : s.externalRef, codCents: patch.codCents !== undefined ? patch.codCents : s.codCents, partnerId: s.partnerId,
+    contents: patch.contents !== undefined ? patch.contents : s.contents, notes: patch.notes !== undefined ? patch.notes : s.notes, externalRef: patch.externalRef !== undefined ? patch.externalRef : s.externalRef, codCents: patch.codCents !== undefined ? patch.codCents : s.codCents, // A new order reference no longer names the partner order the parcel came from: the link goes with it.
+    partnerId: patch.externalRef !== undefined && (patch.externalRef ?? "").trim().toLowerCase() !== (s.externalRef ?? "").toLowerCase() ? null : s.partnerId,
   };
-  const [row] = await prepareManifest([merged], r.deliveryCity, tx, { allowIncomplete: !s.detailsComplete });
+  // J3: a parcel that already is a business parcel keeps working (it may be edited); anything else may not become one while B2B is off.
+  const [row] = await prepareManifest([merged], r.deliveryCity, tx, { allowIncomplete: !s.detailsComplete, b2b: s.recipientType === "business" ? "keep" : "reject" });
   const dup = row.externalRef ? await tx.select({ id: shipments.id }).from(shipments).where(and(eq(shipments.requestId, r.id), sql`lower(${shipments.externalRef}) = ${row.externalRef.toLowerCase()}`, sql`${shipments.id} <> ${s.id}`)) : [];
   if (dup.length) throw err("VALIDATION", `Order reference "${row.externalRef}" is already used in this request`, { field: "externalRef" });
   const phoneChanged = row.recipientPhone !== s.recipientPhone;
@@ -411,6 +438,7 @@ export async function completeShipments(actor: User, requestId: string, rows: Co
     const byId = new Map(all.map((s) => [s.id, s])), byCode = new Map(all.map((s) => [s.code.toUpperCase(), s])), bySeq = new Map(all.map((s) => [s.seq, s]));
     const seen = new Set<string>();
     let completed = 0, updated = 0;
+    const journey: ShipEvt[] = [];
     for (let i = 0; i < rows.length; i++) {
       const { id, code, seq, ...patch } = rows[i];
       const bad = (message: string, field = "id") => err("VALIDATION", `Row ${i + 1}: ${message}`, { field: `rows.${i}.${field}`, row: i + 1 });
@@ -421,10 +449,14 @@ export async function completeShipments(actor: User, requestId: string, rows: Co
       if (s.status !== "pending") throw err("INVALID_TRANSITION", `Row ${i + 1}: parcel ${s.code} is already ${s.status}`, { row: i + 1, status: s.status });
       let res;
       try { res = await applyParcelPatch(tx, actor, r, s, patch); }
-      catch (e) { if (e instanceof AppError && e.code === "VALIDATION") { const f = String(e.details?.field ?? "").replace(/^shipments\.\d+\./, ""); throw err("VALIDATION", `Row ${i + 1} (${s.code}): ${e.message.replace(/^Shipment \d+: /, "")}`, { field: f ? `rows.${i}.${f}` : `rows.${i}`, row: i + 1, code: s.code }); } throw e; }
+      catch (e) {
+        if (e instanceof AppError && e.code === "B2B_DISABLED") throw err("B2B_DISABLED", `Row ${i + 1} (${s.code}): business shipments are turned off — every parcel goes to a consumer`, { field: "recipientType", path: `rows.${i}.recipientType`, row: i + 1, code: s.code });
+        if (e instanceof AppError && e.code === "VALIDATION") { const f = String(e.details?.field ?? "").replace(/^shipments\.\d+\./, ""); throw err("VALIDATION", `Row ${i + 1} (${s.code}): ${e.message.replace(/^Shipment \d+: /, "")}`, { field: f ? `rows.${i}.${f}` : `rows.${i}`, row: i + 1, code: s.code }); } throw e; }
       updated++;
       if (res.wasIncomplete && res.u.detailsComplete) completed++;
+      journey.push({ shipmentId: s.id, requestId, offerId: s.offerId, type: res.wasIncomplete && res.u.detailsComplete ? "details_completed" : "edited", actor: actorOf(actor), payload: { code: s.code, fields: Object.keys(patch), bulk: true } });
     }
+    await recordShipmentEvents(tx, journey);
     if (actor.id !== r.businessId) await audit(actor, "shipment.bulk_update", "request", requestId, { rows: updated }, tx);
     await logEvent(tx, { requestId, actor: actorOf(actor), type: "shipment_details_completed", payload: { updated, completed } });
     return { updated, completed, stillIncomplete: await incompleteCount(tx, requestId) };
@@ -494,8 +526,21 @@ export async function trackShipment(codeRaw: string, last4: string, ip = "unknow
   const code = normalizeScan(codeRaw);
   // Per-parcel ceiling too: codes are guessable and there are only 10 000 possible "last 4 digits", so guesses spread over many addresses must still run dry.
   await hit(`track:code:${code.slice(0, 40)}`, 20, 600);
-  const [row] = await db.select({ s: shipments, r: requests, c: businessProfiles.companyName, n: users.name }).from(shipments).innerJoin(requests, eq(requests.id, shipments.requestId))
-    .innerJoin(users, eq(users.id, requests.businessId)).leftJoin(businessProfiles, eq(businessProfiles.userId, requests.businessId)).where(sql`upper(${shipments.code}) = ${code}`);
+  const q = db.select({ s: shipments, r: requests, c: businessProfiles.companyName, n: users.name }).from(shipments).innerJoin(requests, eq(requests.id, shipments.requestId))
+    .innerJoin(users, eq(users.id, requests.businessId)).leftJoin(businessProfiles, eq(businessProfiles.userId, requests.businessId));
+  let [row] = await q.where(sql`upper(${shipments.code}) = ${code}`);
+  if (!row) {
+    // A JR tracking number issued to a warehouse system (Omniful / Fastcoo AWB): its live parcel, or the order itself while JR prepares it.
+    const order = await orderByAwb(db, code);
+    if (order) {
+      const live = await liveParcel(db, order.id);
+      if (live) [row] = await q.where(eq(shipments.id, live.id));
+      else if (/^\d{4}$/.test(last4 ?? "") && (order.recipientPhone ?? "").slice(-4) === last4 && order.state !== "cancelled") {
+        const [b] = await db.select({ c: businessProfiles.companyName, n: users.name }).from(users).leftJoin(businessProfiles, eq(businessProfiles.userId, users.id)).where(eq(users.id, order.businessId));
+        return { code: order.awb!, sender: b?.c ?? b?.n ?? null, stage: "preparing", city: order.city ?? order.cityRaw ?? "", updatedAt: order.updatedAt, steps: { created: order.createdAt, handedToDriver: null, deliveredAt: null, attemptFailedAt: null } };
+      }
+    }
+  }
   if (!row || !/^\d{4}$/.test(last4 ?? "") || row.s.recipientPhone.slice(-4) !== last4) throw err("NOT_FOUND", "We could not find this parcel — check the code and the last 4 digits of your phone number");
   const s = row.s;
   const stage = s.status === "delivered" ? "delivered" : s.status === "failed" || s.status === "returned" || s.status === "missing" ? "attempt_failed" : s.status === "cancelled" ? "cancelled" : s.status === "loaded" ? (s.arrivedAt ? "arrived" : "on_the_way") : "preparing";
@@ -513,7 +558,9 @@ export async function reshipFromRequest(business: User, requestId: string, ids?:
   assertOwner(business, src);
   if (src.status === "draft") throw err("INVALID_TRANSITION", "A draft cannot be re-shipped");
   const rows = await db.select().from(shipments).where(and(eq(shipments.requestId, requestId),
-    inArray(shipments.status, ["failed", "returned", "missing", "cancelled"]), ids?.length ? inArray(shipments.id, ids) : undefined)).orderBy(asc(shipments.seq));
+    inArray(shipments.status, ["failed", "returned", "missing", "cancelled"]), ids?.length ? inArray(shipments.id, ids) : undefined,
+    // never re-ship a parcel whose order the warehouse system itself cancelled
+    sql`not exists (select 1 from partner_orders po where po.connection_id = ${shipments.partnerId} and po.cancelled_by = 'partner' and (lower(po.external_ref) = lower(${shipments.externalRef}) or po.awb = upper(${shipments.externalRef})))`)).orderBy(asc(shipments.seq));
   if (!rows.length) throw err("NOTHING_TO_DO", "There are no undelivered parcels to re-ship");
   const startsAt = new Date(Math.max(Date.now() + 3 * 3600_000, src.startsAt.getTime() + 864e5));
   const input: RequestInput = {
@@ -522,7 +569,8 @@ export async function reshipFromRequest(business: User, requestId: string, ids?:
     startsAt, durationDays: 1, notes: src.notes, allowPartial: src.allowPartial,
     shipments: rows.map((s) => ({ recipientType: s.recipientType as "consumer" | "business", recipientName: s.recipientName, recipientPhone: s.recipientPhone, address: s.address, city: s.city, lat: s.lat, lng: s.lng, contents: s.contents, notes: s.notes, externalRef: s.externalRef, codCents: s.codCents, partnerId: s.partnerId })),
   };
-  const draft = await createDraft(business, input, "web");
+  const draft = await createDraft(business, input, "web", { b2b: "coerce" }); // J3: with B2B off, an old business parcel is re-shipped as a consumer parcel (never refused)
+  await recordShipmentEvents(db, batchOf(rows.map((s) => s.id), src.id, "reshipped", { actor: actorOf(business), payload: { draftId: draft.id, draftRef: draft.ref } }));
   await logEvent(db, { requestId: src.id, actor: actorOf(business), type: "shipments_reshipped", payload: { count: rows.length, draftId: draft.id } });
   return draft;
 }

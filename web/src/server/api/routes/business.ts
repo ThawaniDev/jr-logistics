@@ -9,11 +9,13 @@ import { estimate, createDraft, updateDraft, publishRequest, cancelRequest, list
 import * as jobs from "@/server/jobs";
 import { businessRequestDetail, timeline } from "@/server/views";
 import { businessOverview } from "@/server/ops";
+import { businessInvoice } from "@/server/invoice-detail";
 import { createApiKey, listApiKeys, revokeApiKey, setWebhook, rotateWebhookSecret, listWebhookDeliveries, listApiLogs } from "@/server/integrations";
 import { handoverCustody, returnCustody, listCustody } from "@/server/support";
 import { setWarehouseLocation } from "@/server/warehouse";
 import { businessCod, receiveCash, listRemittances } from "@/server/cod";
 import * as stops from "@/server/stops";
+import { getSettings } from "@/server/settings";
 import { CUSTODY_ITEM_TYPES } from "@/server/catalog";
 
 const biz = ["business"] as const;
@@ -51,6 +53,8 @@ defineRoutes([
     return { page, pageSize, total: Number(tot.n), totals: { totalCents: Number(tot.total), vatCents: Number(tot.vat) },
       items: rows.map(({ i, ref }) => ({ id: i.id, number: i.number, requestId: i.requestId, requestRef: ref, subtotalCents: i.subtotalCents, vatCents: i.vatCents, totalCents: i.totalCents, vatPct: i.vatPct, createdAt: i.createdAt })) };
   } },
+  // One of the company's own invoices with its lines (never provider cost, margin or payee); another company's invoice is a 404.
+  { method: "GET", path: "/business/invoices/:id", auth: [...biz], handler: ({ user, params }) => businessInvoice(user, params.id) },
   { method: "GET", path: "/requests/:id", auth: ["business", "staff", "admin"], handler: async ({ user, params }) => {
     const [r] = await db.select().from(requests).where(eq(requests.id, params.id));
     if (!r) throw err("NOT_FOUND");
@@ -81,7 +85,7 @@ defineRoutes([
   { method: "GET", path: "/business/demo-shipments", auth: [...biz], query: z.object({ city: z.string().max(30).default("riyadh") }), handler: async ({ q }) => {
     const { env } = await import("@/lib/env");
     if (!env.demoMode) throw err("NOT_FOUND");
-    const items = (await import("@/server/demo-shipments")).demoShipments(q.city);
+    const items = (await import("@/server/demo-shipments")).demoShipments(q.city, { b2b: (await getSettings()).b2bShipmentsEnabled }); // J3: consumer-only while B2B is off
     if (!items) throw err("VALIDATION", "City is not supported", { field: "city" });
     return { city: q.city, total: items.length, items };
   } },

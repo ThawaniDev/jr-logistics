@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { otpLogin, staffLogin, gotoReady, DEMO, apiLogin } from "./helpers";
+import { setFieldModes, type FieldModes } from "./field-modes";
 
 /**
  * Field-operations overhaul, warehouse + superadmin screens (the driver screens are in driver-field-ops.spec.ts):
@@ -9,7 +10,11 @@ import { otpLogin, staffLogin, gotoReady, DEMO, apiLogin } from "./helpers";
  * The driver's side of each flow is driven through the API (the same endpoints the apps call).
  */
 test.describe.configure({ mode: "serial" });
-const BASE = "http://localhost:3100";
+
+let savedModes: FieldModes; // J2 / J3: routing and B2B shipments are OFF by default — this spec drives routes / "Approve route" / business parcels
+test.beforeAll(async ({ browser }) => { savedModes = await setFieldModes(browser, { routingEnabled: true, b2bShipmentsEnabled: true }); });
+test.afterAll(async ({ browser }) => { await setFieldModes(browser, savedModes); });
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 const WAREHOUSE = { lat: 24.7136, lng: 46.6753 };
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360f8cfc00000030101004d1b7ea60000000049454e44ae426082", "hex");
 
@@ -137,7 +142,7 @@ test("cash on delivery: the driver collects it, the warehouse records the first 
   await bp.getByTestId("cod-note").fill("first handover at the gate");
   await bp.getByTestId("cod-receive-submit").click();
   await expect(dlg).toHaveCount(0);
-  await expect(bp.getByTestId("cod-total-received")).toContainText(((bizCod.receivedCents + 12_000) / 100).toFixed(2));
+  await expect(bp.getByTestId("cod-total-received")).toContainText(((bizCod.receivedCents + 12_000) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })); // the page groups thousands (1,001.00)
   await expect(bp.getByTestId("cod-total-outstanding")).toContainText("80.50");
   await expect(bp.getByTestId("cod-history-row").first()).toContainText("first handover at the gate");
   expect((await api(drv.request, "GET", "/driver/cash")).json).toMatchObject({ receivedCents: base.receivedCents + 12_000, outstandingCents: 8_050 });
@@ -186,7 +191,7 @@ test("support: a driver opens a ticket with a photo, the console assigns and res
   await ap.getByTestId(`foa-case-row-${made.json.id}`).click(); // the row opens the ticket as its own view
   await expect(ap).toHaveURL(new RegExp(`/admin/cases/${made.json.id}$`));
   await expect(ap.getByTestId("foa-case-thread")).toContainText("Photo of the receipt attached");
-  await expect(ap.getByTestId(`foa-attach-${file.id}`)).toBeVisible();
+  await expect(ap.getByTestId(`foa-attach-${file.id}`).first()).toBeVisible(); // shown in the conversation and in the attachments gallery
   await ap.getByTestId("foa-case-assign-me").click();
   await ap.getByTestId("foa-case-reply").fill("We are checking with the warehouse.");
   await ap.getByTestId("foa-case-send").click();

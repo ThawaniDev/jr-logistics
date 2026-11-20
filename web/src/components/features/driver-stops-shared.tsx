@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Badge, errText } from "@/components/ui";
 import { ApiError, get } from "@/lib/api";
 import { useT } from "@/i18n/provider";
+import { useB2bEnabled } from "./business-shipments-policy";
 
 /** One stop of a per-parcel job, exactly as `GET /driver/jobs/:id` returns it (see memory/SHIPMENTS_API.md). */
 export interface Stop {
@@ -17,6 +18,8 @@ export interface Stop {
   otpAttemptsLeft: number; canResend: boolean; deliveredAt: string | null; failReason: string | null; failNote: string | null;
   /** Field operations (E9, E10, E17): delivery code required?, signature required?, cash to collect / already collected (halalas). */
   needsOtp?: boolean; needsSignature?: boolean; codCents?: number | null; codCollectedCents?: number | null;
+  /** Update J2: how the parcel is paid, when it was created and how many pieces it has (always 1 for now). Older servers omit them. */
+  paymentMode?: "cod" | "prepaid"; createdAt?: string | null; pieces?: number;
 }
 /** `route` of a per-parcel job (`GET /driver/jobs/:id`, `POST /offers/:id/route/optimize` → job.route). */
 export interface RouteInfo {
@@ -62,14 +65,16 @@ export function mapsUrl(s: { lat: number | null; lng: number | null; address: st
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}`;
 }
 
-/** Opens a WhatsApp chat with the CURRENT stop's recipient (the server refuses any other stop: STOP_LOCKED). */
+/** Opens a WhatsApp chat with a stop's recipient (routing on: the server refuses any stop but the current one — STOP_LOCKED; routing off: any own stop). */
 export async function openWhatsApp(offerId: string, stopId: string, kind: "contact" | "arriving" | "issue", locale: string, t: (k: string, v?: Record<string, string | number>) => string) {
   try { const r = await get(`/driver/jobs/${offerId}/whatsapp?shipmentId=${stopId}&kind=${kind}&lang=${locale}`); window.open(r.url, "_blank", "noopener"); }
   catch (e) { toast.error(e instanceof ApiError && e.code === "STOP_LOCKED" ? errText(e, t) : t("job.wa_unavailable")); }
 }
 
-export function RecipientBadge({ type }: { type: string }) {
-  const t = useT();
+/** Business recipients are always labelled; the plain "individual" label only while the platform has B2B shipments on (`show` overrides the catalog flag, e.g. the job's own policy). */
+export function RecipientBadge({ type, show }: { type: string; show?: boolean }) {
+  const t = useT(); const b2b = useB2bEnabled();
+  if (type !== "business" && !(show ?? b2b)) return null;
   return <Badge tone={type === "business" ? "info" : "success"}>{t(`rtype.${type}`)}</Badge>;
 }
 

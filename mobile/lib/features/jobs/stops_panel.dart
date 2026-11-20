@@ -11,9 +11,11 @@ import '../../services.dart';
 import '../../widgets/barcode_scanner.dart';
 import '../../widgets/common.dart';
 import 'deliver_form.dart';
+import 'end_route_sheet.dart';
 import 'loading_scan.dart';
 import 'route_order.dart';
 import 'route_widgets.dart';
+import 'shipments_screen.dart';
 import 'stop_actions.dart';
 import 'stop_order_editor.dart';
 
@@ -72,11 +74,7 @@ class _ManifestPanelState extends ConsumerState<ManifestPanel> {
     if (!ok && mounted) toast(context, context.tr('um.cant_maps'), error: true);
   }
 
-  Future<void> _endRoute() async {
-    final r = await showModalBottomSheet<({String reason, String? note})>(context: context, useRootNavigator: true, isScrollControlled: true, builder: (c) => const _EndRouteSheet());
-    if (r == null || !mounted) return;
-    await runStopAction(context, ref, j.offerId, () async { await ref.read(apiProvider).endRoute(j.offerId, r.reason, note: r.note); }, success: 'ms.end_route_ok', verify: (f) => !f.can('end_route'));
-  }
+  Future<void> _endRoute() => endRouteFlow(context, ref, j.offerId);
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +94,9 @@ class _ManifestPanelState extends ConsumerState<ManifestPanel> {
     } else if (j.can('work_stops')) {
       final cur = j.currentStop;
       children.add(_Progress(done: s.done, total: s.total));
-      children.add(const SizedBox(height: 12));
+      // The whole run sheet of the job (every shipment, with search and filters) — only an overview here: one stop at a time still applies.
+      children.add(Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(key: const Key('all-shipments'), onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ShipmentsScreen(offerId: j.offerId))), icon: const Icon(Icons.view_list_outlined, size: 20), label: Text(t('drs.all_shipments')))));
+      children.add(const SizedBox(height: 4));
       if (cur != null) {
         children.add(CurrentStopCard(key: ValueKey(cur.id), job: j, stop: cur, number: s.done + 1, total: s.total));
       } else {
@@ -121,6 +121,9 @@ class _ManifestPanelState extends ConsumerState<ManifestPanel> {
 String _cityName(BuildContext c, String? city) => cityLabel(c, city);
 
 Widget _typeBadge(BuildContext c, Stop s) => Pill(c.tr('rtype.${s.recipientType}'), tone: s.isBusiness ? Tone.info : Tone.neutral);
+
+/// With business shipments switched off by the platform every parcel is a consumer one: the "Consumer" tag says nothing then (an existing business parcel keeps its tag).
+bool _showType(Job j, Stop s) => j.b2bShipmentsEnabled || s.isBusiness;
 
 class _Progress extends StatelessWidget {
   const _Progress({required this.done, required this.total});
@@ -189,7 +192,7 @@ class _RouteReviewState extends State<_RouteReview> {
             if (s.contents != null) Text(s.contents!, style: const TextStyle(color: JR.muted, fontSize: 13)),
             if (s.notes != null) Text(s.notes!, style: const TextStyle(color: JR.gold, fontSize: 13)),
             if (s.hasCod) Padding(padding: const EdgeInsets.only(top: 4), child: Pill(t('fma.cod_pill', {'amount': fmtMoney(s.codCents, t.code)}), tone: Tone.warn)),
-            StopRouteMeta(stop: s, fromStart: i == 0, lead: [_typeBadge(context, s)]),
+            StopRouteMeta(stop: s, fromStart: i == 0, lead: [if (_showType(job, s)) _typeBadge(context, s)]),
           ])),
         ])),
       const SizedBox(height: 12),
@@ -347,7 +350,7 @@ class _CurrentStopCardState extends ConsumerState<CurrentStopCard> {
       Row(children: [
         Expanded(child: Text(t('ms.stop_n_of', {'n': widget.number, 'total': widget.total}), key: const Key('stop-title'), style: const TextStyle(color: JR.accent, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
         const SizedBox(width: 8),
-        Flexible(child: _typeBadge(context, s)),
+        if (_showType(job, s)) Flexible(child: _typeBadge(context, s)),
       ]),
       const SizedBox(height: 8),
       Text(s.recipientName ?? '—', key: const Key('stop-recipient'), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
@@ -433,37 +436,5 @@ class _WaitNotice extends StatelessWidget {
           ? Banner2(key: const Key('wait-notice'), tone: Tone.info, icon: Icons.timer_outlined, title: fmtCountdown(left), text: t('um.wait_notice'))
           : Banner2(key: const Key('wait-over'), tone: Tone.warn, icon: Icons.timer_off_outlined, text: t('um.wait_over')),
     ));
-  }
-}
-
-// ───────────────────────── sheets ─────────────────────────
-
-class _EndRouteSheet extends StatefulWidget {
-  const _EndRouteSheet();
-  @override
-  State<_EndRouteSheet> createState() => _EndRouteSheetState();
-}
-
-class _EndRouteSheetState extends State<_EndRouteSheet> {
-  final _reason = TextEditingController(), _note = TextEditingController();
-  @override
-  void dispose() { _reason.dispose(); _note.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tr;
-    return SafeArea(child: SingleChildScrollView(child: Padding(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, 16 + MediaQuery.of(context).viewInsets.bottom),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(t('ms.end_route_title'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 12),
-        Banner2(tone: Tone.warn, text: t('ms.end_route_warn')),
-        const SizedBox(height: 12),
-        TextField(key: const Key('end-reason'), controller: _reason, onChanged: (_) => setState(() {}), maxLines: 2, decoration: InputDecoration(labelText: t('ms.end_route_reason'))),
-        const SizedBox(height: 10),
-        TextField(key: const Key('end-note'), controller: _note, maxLines: 2, decoration: InputDecoration(labelText: t('ms.end_route_note'))),
-        const SizedBox(height: 16),
-        FilledButton(key: const Key('end-submit'), style: FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.bg), onPressed: _reason.text.trim().length >= 3 ? () => Navigator.pop(context, (reason: _reason.text.trim(), note: _note.text.trim().isEmpty ? null : _note.text.trim())) : null, child: Text(t('ms.end_route'))),
-      ]),
-    )));
   }
 }

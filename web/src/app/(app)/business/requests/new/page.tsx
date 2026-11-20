@@ -12,8 +12,10 @@ import { cn } from "@/lib/cn";
 import { useI18n } from "@/i18n/provider";
 import { ManifestEditor, type ServerRowErrors } from "@/components/features/business-shipments-manifest";
 import { DetailsModeSwitch } from "@/components/features/business-shipments-later";
+import { b2bEnabledOf } from "@/components/features/business-shipments-policy";
 import { WarehouseLocationNotice } from "@/components/features/business-warehouse";
 import { sumCod } from "@/components/features/business-fieldops-lib";
+import { OrdersPrefill, OrdersPrefillNotice, seedForm, type OrdersSeed } from "@/components/features/partner-orders-prefill";
 import { DEFAULT_PER_DRIVER, MAX_ROWS, countMissing, duplicateRefs, loadAllShipments, mapServerRowErrors, splitServerManifest, toWire, validateRow, type LoadedManifest, type ManifestRow } from "@/components/features/business-shipments-lib";
 
 const SVC_ICON = { delivery_driver: Bike, car_with_driver: CarFront, car_without_driver: Car } as const;
@@ -21,10 +23,11 @@ const todayLocal = () => { const d = new Date(Date.now() + 3 * 3600_000 + 3600_0
 
 export default function NewRequestPage() { return <Suspense fallback={<PageLoading />}><DraftLoader /></Suspense>; }
 
-/** `?draft=<id>` opens the wizard pre-filled from that draft; saving then PATCHes it instead of creating a new request. */
+/** `?draft=<id>` opens the wizard pre-filled from that draft; saving then PATCHes it instead of creating a new request. `?fromOrders=<ids>` starts it from Incoming orders. */
 function DraftLoader() {
-  const { t } = useI18n(); const id = useSearchParams().get("draft");
+  const { t } = useI18n(); const sp = useSearchParams(); const id = sp.get("draft"); const fromOrders = sp.get("fromOrders");
   const { data, error, mutate } = useApi(id ? `/requests/${id}` : null);
+  if (!id && fromOrders) return <OrdersPrefill key={fromOrders} raw={fromOrders}>{(seed) => <Wizard seed={seed} />}</OrdersPrefill>;
   if (!id) return <Wizard />;
   if (error) return <ErrorState error={error} retry={() => mutate()} />;
   if (!data) return <PageLoading />;
@@ -51,13 +54,13 @@ const fromDraft = (d: any): Record<string, any> => ({
   contents: d.contents ?? "", notes: d.notes ?? "", startsLocal: d.startsAt ? isoToRiyadhLocal(d.startsAt) : "",
 });
 
-function Wizard({ draft, initial }: { draft?: any; initial?: LoadedManifest }) {
+function Wizard({ draft, initial, seed }: { draft?: any; initial?: LoadedManifest; seed?: OrdersSeed }) {
   const { t, locale } = useI18n(); const router = useRouter(); const a = useAction();
-  const { data: cat } = useApi("/catalog"); const { data: ov } = useApi("/business/overview");
+  const { data: cat } = useApi("/catalog"); const b2b = b2bEnabledOf(cat); const { data: ov } = useApi("/business/overview"); // b2b (J3): off = no recipient-type choice, every parcel is an individual
   const [step, setStep] = useState(0);
   const [minLocal] = useState(todayLocal);
-  const [f, setF] = useState<Record<string, any>>(() => draft ? fromDraft(draft) : { service: "", quantity: 1, shipmentsPerDriver: DEFAULT_PER_DRIVER, allowPartial: true, durationDays: 1, pickupCity: "riyadh", deliveryCity: "riyadh", startsLocal: "" });
-  const [rows, setRows] = useState<ManifestRow[]>(initial?.rows ?? []);
+  const [f, setF] = useState<Record<string, any>>(() => draft ? fromDraft(draft) : { service: "", quantity: 1, shipmentsPerDriver: DEFAULT_PER_DRIVER, allowPartial: true, durationDays: 1, pickupCity: "riyadh", deliveryCity: "riyadh", startsLocal: "", ...seedForm(seed) });
+  const [rows, setRows] = useState<ManifestRow[]>(initial?.rows ?? seed?.rows ?? []);
   // "Details later": the order is booked by number — `blank` parcels have no recipient yet (no rows exist for them); the rows are the ones filled in.
   const [later, setLater] = useState(initial?.later ?? false); const [blank, setBlank] = useState(initial?.blank ?? 0); const [confirmStrict, setConfirmStrict] = useState(false);
   const [dirty, setDirty] = useState(!draft); // a saved manifest is only re-sent after an edit
@@ -141,7 +144,7 @@ function Wizard({ draft, initial }: { draft?: any; initial?: LoadedManifest }) {
   const next = () => validate(stepKey) && setStep(step + 1);
 
   // By count, the server pads `shipments` with blank placeholders up to `shipmentCount` (`shipments: []` + 40 books 40 blank parcels).
-  const payload = () => ({ ...body, ...(isDelivery && (!draftId || dirty) ? { shipments: rows.map(toWire), ...(later ? { detailsLater: true, shipmentCount: n } : {}) } : {}) });
+  const payload = () => ({ ...body, ...(isDelivery && (!draftId || dirty) ? { shipments: rows.map((r) => toWire(r, b2b)), ...(later ? { detailsLater: true, shipmentCount: n } : {}) } : {}) });
   const publish = () => a.run("pub", async () => {
     if (draftId) { await patch(`/requests/${draftId}`, payload()); setDirty(false); return post(`/requests/${draftId}/publish`, { termsAccepted: terms }); }
     return post("/requests", { ...payload(), publish: true, termsAccepted: terms });
@@ -181,6 +184,7 @@ function Wizard({ draft, initial }: { draft?: any; initial?: LoadedManifest }) {
     <>
       <PageHeader title={t("nav.new_request")} subtitle={isDelivery ? t("bs.wizard_sub") : t("wizard.sub")} breadcrumbs={[{ label: t("nav.requests"), href: "/business/requests" }, { label: draft ? t("rdz.wiz_edit_draft", { ref: draft.ref }) : t("nav.new_request") }]} />
       {draft && <div className="mb-5"><Notice tone="info">{t("bz.editing_draft", { ref: draft.ref })}</Notice></div>}
+      {seed && <div className="mb-5"><OrdersPrefillNotice seed={seed} /></div>}
       {blocked && <div className="mb-5"><Notice tone="warn" title={t("verify.pending_title")}>{t("verify.pending_body")} <Link href="/business/documents" className="font-semibold text-cyan underline">{t("verify.go_documents")}</Link></Notice></div>}
       <Stepper steps={steps} current={step} />
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -251,7 +255,7 @@ function Wizard({ draft, initial }: { draft?: any; initial?: LoadedManifest }) {
               {isDelivery && (
                 <Section title={t("bs.step_shipments")} actions={<button type="button" className="text-sm text-cyan hover:underline" onClick={() => setStep(shipStep)}>{t("common.edit")}</button>}><div className="space-y-2">
                   <ul className="divide-y divide-line text-sm">
-                    {rows.slice(0, 5).map((r, i) => <li key={r.uid} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className="min-w-0 truncate"><span className="me-2 tabular-nums text-muted">{fmtNum(i + 1, locale)}</span>{r.recipientName || <span className="text-gold">{t("pb.review_row_blank")}</span>} · <span className="text-muted">{r.address || "—"}</span></span><span className="flex items-center gap-2 text-xs text-muted">{sumCod([r]).totalCents > 0 && <span className="ltr-num font-medium text-gold">{fmtMoney(sumCod([r]).totalCents, locale)}</span>}{t(`rtype.${r.recipientType}`)}</span></li>)}
+                    {rows.slice(0, 5).map((r, i) => <li key={r.uid} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className="min-w-0 truncate"><span className="me-2 tabular-nums text-muted">{fmtNum(i + 1, locale)}</span>{r.recipientName || <span className="text-gold">{t("pb.review_row_blank")}</span>} · <span className="text-muted">{r.address || "—"}</span></span><span className="flex items-center gap-2 text-xs text-muted">{sumCod([r]).totalCents > 0 && <span className="ltr-num font-medium text-gold">{fmtMoney(sumCod([r]).totalCents, locale)}</span>}{b2b && t(`rtype.${r.recipientType}`)}</span></li>)}
                     {later && blank > 0 && <li className="py-2 text-gold" data-testid="review-blank-line">{t("pb.blank_summary", { n: fmtNum(blank, locale) })}</li>}
                   </ul>
                   {rows.length > 5 && <p className="text-xs text-muted">{t("bs.and_more", { n: fmtNum(rows.length - 5, locale) })}</p>}

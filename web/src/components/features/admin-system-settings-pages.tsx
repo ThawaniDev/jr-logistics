@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { Button, Checkbox, Input, Notice, Section, Select, Textarea, errText, useAction } from "@/components/ui";
 import { post } from "@/lib/api";
@@ -87,9 +86,9 @@ export function FinanceSettings() {
 
 /** Own password (works even without settings access) */
 function PasswordSection() {
-  const { t } = useI18n(); const a = useAction(); const router = useRouter();
+  const { t } = useI18n(); const a = useAction();
   const [pw, setPw] = useState({ currentPassword: "", newPassword: "" }); const [err, setErr] = useState<string | null>(null);
-  const change = () => a.run("pw", () => post("/auth/change-password", pw), { success: "settings.pw_changed", onDone: () => { router.replace("/staff/login"); router.refresh(); }, onError: (e) => setErr(errText(e, t)) });
+  const change = () => a.run("pw", () => post("/auth/change-password", pw), { success: "settings.pw_changed", onDone: () => { setPw({ currentPassword: "", newPassword: "" }); setErr(null); }, onError: (e) => setErr(errText(e, t)) }); // the other devices are signed out; this one stays
   return (
     <Section title={t("settings.change_password")} description={t("rdb.set_pw_hint")} className="max-w-xl">
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (pw.newPassword.length >= 10 && pw.currentPassword) change(); }}>

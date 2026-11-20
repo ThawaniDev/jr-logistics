@@ -139,11 +139,20 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
             SectionCard(border: JR.cyan, onTap: () => StatefulNavigationShell.of(context).goBranch(2), child: Row(children: [const Icon(Icons.work, color: JR.cyan), const SizedBox(width: 12), Expanded(child: Text('${t('driver.new_offers')}: ${offers.value!.length}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))), const Icon(Icons.chevron_right, color: JR.muted)])),
             const SizedBox(height: 12),
           ],
-          Row(children: [
-            Expanded(child: _Stat(label: t('fmb.wallet_on_hold'), value: fmtMoney(o.pendingCents, lang), color: JR.gold)),
-            const SizedBox(width: 12),
-            Expanded(child: _Stat(label: t('wallet.available'), value: fmtMoney(o.availableCents, lang), color: JR.accent)),
-          ]),
+          // A driver of an office has no wallet and sees no earnings: the two money tiles are replaced by one calm line (his cash stays in the card above).
+          if (o.walletManagedByOffice)
+            SectionCard(key: const Key('wallet-managed-tile'), onTap: () => StatefulNavigationShell.of(context).goBranch(3), child: Row(children: [
+              const Icon(Icons.apartment_outlined, color: JR.cyan),
+              const SizedBox(width: 12),
+              Expanded(child: Text(t('drs.managed_title'), style: const TextStyle(fontWeight: FontWeight.w600, height: 1.3))),
+              const Icon(Icons.chevron_right, color: JR.muted),
+            ]))
+          else
+            Row(children: [
+              Expanded(child: _Stat(label: t('fmb.wallet_on_hold'), value: fmtMoney(o.pendingCents, lang), color: JR.gold)),
+              const SizedBox(width: 12),
+              Expanded(child: _Stat(label: t('wallet.available'), value: fmtMoney(o.availableCents, lang), color: JR.accent)),
+            ]),
           const SizedBox(height: 20),
           Text(t('driver.active_jobs'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),

@@ -1,0 +1,2312 @@
+# Shipping Partner
+ Shipping Partner Integration API 
+ Introduction 
+ The Shipping Integration API is Omniful's standardized contract for connecting third-party shipping integrators to the Omniful platform. Instead of building a bespoke integration for every carrier, Omniful defines one consistent JSON contract — you implement it once on your own server (your base_url ), and Omniful handles the rest. 
+ At a high level: 
+ 
+ You (the integrator) expose a set of REST endpoints — create/cancel shipment, track, get AWB label, register webhook, etc. — that follow Omniful's request/response shapes. 
+ 
+ Omniful calls these endpoints whenever a merchant creates, cancels, or tracks a shipment through your carrier, and optionally receives status webhooks from you in return. 
+ 
+ Every response follows a single success/error envelope , so parsing logic stays uniform across all integrators. 
+ 
+ Authentication is pluggable — either a static API key or an OAuth-style access token with a refresh flow — configured once during onboarding. 
+ 
+ 
+ For common implementation questions, see the FAQs section below. 
+ 
+
+ 
+
+ 
+
+ Reference 
+ Request timeout 
+ Omniful applies a 10-second timeout to every request sent to your base_url . A response outside this window is treated as a failed request on Omniful's side. 
+ Ensure your integration responds well within this limit, especially for synchronous operations like Create Shipment . 
+ 
+ AWB label rules 
+ 
+ 
+ 
+ Rule 
+ Detail 
+ 
+ 
+ 
+ 
+ Format 
+ awb_label must be a publicly accessible, working URL ( http:// or https:// ) pointing directly to a PDF label file 
+ 
+ 
+ Content-Type 
+ The URL must return the file with Content-Type: application/pdf 
+ 
+ 
+ Recommendation 
+ It is recommended to send the label URL with a .pdf extension 
+ 
+ 
+ Not supported 
+ Base64-encoded data, raw binary, or any non-URL format 
+ 
+ 
+ Access 
+ The URL must resolve without authentication and remain valid 
+ 
+ 
+ Failure handling 
+ If Omniful cannot download the file from your URL, the shipment is still surfaced as created, but without a usable label . The merchant can retry via Get AWB Label (or Get Return AWB Label for returns) once the URL is reachable 
+ 
+ 
+ 
+ 
+ Custom fields ( meta.custom_fields ) 
+ Custom fields are configured by Omniful's internal team via the partner onboarding dashboard when your app is published — not set directly through the API. When submitting your integration, you provide your base_url , logo, supported endpoints, and the custom field definitions below. 
+ Field definition attributes 
+ 
+ 
+ 
+ Attribute 
+ Description 
+ 
+ 
+ 
+ 
+ Label 
+ Human-readable name shown to the merchant (e.g. "Service Type") 
+ 
+ 
+ Key 
+ Stable key sent in the custom_fields array's key attribute (e.g. service_type ) — this is what your integration matches against 
+ 
+ 
+ Description 
+ Optional help text shown to the merchant 
+ 
+ 
+ Type 
+ Text (free input) or Dropdown (fixed set of options) — these are the only two supported types 
+ 
+ 
+ 
+ For Dropdown type fields, each option has its own Label (shown to the merchant) and Key (the value actually sent to your API). 
+ Example 
+ A Dropdown field labeled "Service Type" (key service_type ) can have options like: 
+ 
+ Express Delivery -> express 
+ 
+ Next Day Delivery -> next_day 
+ 
+ 
+ If the merchant selects Express Delivery , your integration receives: 
+ { "key": "service_type", "value": "express" }
+
+ 
+ 
+ Note: you always receive the option's Key , never the display Label. 
+ 
+ Custom field definitions are configured once per partner account — they are fixed at onboarding/publishing time and do not vary per shipment. Every shipment for that partner sends the same set of custom_fields keys (values resolved per shipment, but the field definitions themselves are static). 
+ Per-shipment values : Custom field values can be resolved on a per-shipment basis using Omniful's automation rules. Omniful clients can configure shipping automation rules to automatically set the appropriate custom field values for each shipment based on their business requirements 
+ 
+ Base URL & path construction 
+ Omniful constructs the full request URL by concatenating your base_url with the fixed path suffix for each endpoint. You do not need to include endpoint-specific path segments in base_url — just the scheme + host (and a custom prefix, if you have one). 
+ full_url = base_url + endpoint_path
+
+ Examples 
+ 
+ 
+ 
+ Your base_url 
+ Endpoint path 
+ Full URL called 
+ 
+ 
+ 
+ 
+ https://partner.example.com 
+ /shipments 
+ https://partner.example.com/shipments 
+ 
+ 
+ https://partner.example.com/api 
+ /shipments 
+ https://partner.example.com/api/shipments 
+ 
+ 
+ 
+ Notes 
+ 
+ base_url may be provided with or without a trailing slash — Omniful normalizes the URL before concatenating the endpoint path, so https://partner.example.com/ and https://partner.example.com are treated identically. 
+ 
+ A custom prefix (e.g. /api , /shipping ) is fine — it becomes part of base_url itself, not something Omniful appends separately. 
+ 
+ There is no version prefix (e.g. no /v1 ) — paths are appended directly to your base_url . 
+ 
+ 
+ 
+ Response envelope 
+ Every endpoint returns the same wrapper shape. 
+ Success 
+ { "success": true, "data": { ... } }
+
+ 
+ 
+ HTTP status 2xx 
+ 
+ success must be true 
+ 
+ data is required and must not be null 
+ 
+ 
+ Error 
+ {
+ "success": false,
+ "error": {
+ "code": "VALIDATION_ERROR",
+ "message": "Human readable error message"
+ }
+}
+
+ 
+ 
+ HTTP status 4xx or 5xx 
+ 
+ success must be false 
+ 
+ error.code and error.message are required 
+ 
+ If success is false or data is missing on a "successful" HTTP status, Omniful treats it as a failure and surfaces error.message (falling back to the raw response body if none is provided) 
+ 
+ 
+ Suggested error.code values 
+ You can use generic error codes like these as needed: 
+ VALIDATION_ERROR , AUTHENTICATION_ERROR , NOT_FOUND , ALREADY_CANCELLED , INTERNAL_ERROR 
+ 
+ Tracking & webhook statuses 
+ Use these status values in track data.status and inbound webhook status : 
+ 
+ 
+ 
+ Value 
+ Meaning 
+ 
+ 
+ 
+ 
+ dispatched 
+ Dispatched 
+ 
+ 
+ in_transit 
+ In transit 
+ 
+ 
+ out_for_delivery 
+ Out for delivery 
+ 
+ 
+ delivered 
+ Delivered 
+ 
+ 
+ unable_to_deliver 
+ Unable to deliver 
+ 
+ 
+ lost 
+ Lost 
+ 
+ 
+ partially_delivered 
+ Partially delivered 
+ 
+ 
+ return_in_progress 
+ Return in progress 
+ 
+ 
+ return_to_origin 
+ Returned to origin 
+ 
+ 
+ 
+ Omniful maps these to order statuses. Other values may not update shipments. 
+ 
+ API capability flags 
+ Declare which capabilities you support during Omniful onboarding. Omniful only enables the endpoints you declare. 
+ 
+ 
+ 
+ Capability 
+ Description 
+ Endpoint 
+ 
+ 
+ 
+ 
+ Supports forward shipment creation API 
+ Indicates whether the shipping partner supports creating forward shipments 
+ POST /shipments 
+ 
+ 
+ Supports forward shipment cancellation API 
+ Indicates whether the shipping partner supports canceling forward shipments 
+ POST /shipments/cancel 
+ 
+ 
+ Supports shipment tracking API (polling) 
+ Indicates whether the shipping partner supports tracking shipments (polling) 
+ GET /shipments/{awb_number}/tracking 
+ 
+ 
+ Supports forward shipment label API 
+ Indicates whether the shipping partner supports labeling forward shipments 
+ GET /shipments/{awb_number}/label 
+ 
+ 
+ Supports return shipment creation API 
+ Indicates whether the shipping partner supports creating return shipments 
+ POST /shipments/returns 
+ 
+ 
+ Supports return shipment cancellation API 
+ Indicates whether the shipping partner supports canceling return shipments 
+ POST /shipments/returns/cancel 
+ 
+ 
+ Supports return shipment label API 
+ Indicates whether the shipping partner supports labeling return shipments 
+ GET /shipments/returns/{awb_number}/label 
+ 
+ 
+ Supports automatic webhook registration API 
+ Indicates whether the shipping partner supports registering webhooks 
+ POST /webhooks/register 
+ 
+ 
+ Sends shipment status updates via webhook 
+ Indicates whether the shipping partner supports sending shipment status updates via webhook (real time updates) 
+ You POST to Omniful webhook_url 
+ 
+ 
+ 
+ 
+ Frequently Asked Questions 
+ Can shipping automation rules be configured for this flow, so orders can be assigned automatically to Shipping Partner based on our business rules? 
+ Yes. Once this Custom App integration is configured and enabled in Omniful, it can participate in the same shipping allocation and automation flows used for other shipping partners, subject to your configured capabilities and business rules. 
+ 
+ Will Shipping Partner appear in Omniful as a selectable shipping partner/carrier, similar to other integrated carriers? 
+ Yes. After onboarding and configuration, the shipping partner appears in Omniful like other integrated carriers, and can be selected wherever that partner is enabled and applicable. 
+ 
+ Will the AWB, tracking number, and shipping status updates be reflected back in Omniful? 
+ Yes. Omniful stores the shipment AWB / tracking number returned by your create API, can fetch the AWB label from your label API, and updates shipment status from your tracking API and/or inbound webhooks. 
+ 
+ What are the two supported authentication types, and how do they differ? 
+ api_key is a static bearer token validated on every request — no refresh flow needed. 
+ access_token is dynamic: Omniful calls your POST /auth/token endpoint with client_id , client_secret , and grant_type to obtain an access token, then sends it as a Bearer token on subsequent calls. Omniful automatically re-fetches the token when a request comes back 401 Unauthorized , and retries the original request with the refreshed token. 
+ 
+ What happens on a 401 response? 
+ For access_token integrators, a 401 triggers Omniful's built-in refresh flow: it calls your token endpoint again, stores the new token, and retries the failed request once with the new credentials. 
+ For api_key integrators, there's no refresh — a 401 is treated as a genuine auth failure. 
+ 
+ What does the response envelope look like, and is it consistent across all endpoints? 
+ Yes — every endpoint returns the same wrapper shape: 
+ Success: { "success": true, "data": { ... } } with HTTP 2xx and a required, non-null data . 
+ Error: { "success": false, "error": { "code": "...", "message": "..." } } with HTTP 4xx/5xx. 
+ If success is false or data is missing on a "successful" HTTP status, Omniful treats it as a failure and surfaces your error.message (falling back to the raw response body if none is provided). 
+ 
+ What's the request timeout? 
+ Omniful applies a 10-second timeout per request to your base_url . If your server doesn't respond within this window, Omniful treats it as a failed request. Ensure your integration responds well within this limit, especially for synchronous operations like Create Shipment. 
+ 
+ How should I return AWB labels? 
+ awb_label must be a publicly accessible, working URL ( http:// or https:// ) pointing to a PDF label file, . Raw label data — base64, embedded PDF bytes, or any non-URL format — is not supported . 
+ See the AWB label rules section above. 
+ 
+ How do custom fields ( meta.custom_fields ) work? 
+ Custom fields are configured by Omniful's internal team when publishing your integration, not something you configure directly via API. When submitting your app for review, you provide your base_url , logo, supported endpoints, and the custom field definitions you need. 
+ See the Custom fields section above. 
+ 
+ How does Omniful validate my account/credential setup before activating an integration? 
+ Through a health check: 
+ 
+ For access_token integrators, this is the same token refresh flow ( POST /auth/token ). 
+ 
+ For api_key integrators, Omniful calls POST /auth/validate with the merchant's API key. 
+ 
+ 
+ Either way, Omniful confirms the credentials work before marking the account active. 
+ 
+ Do I need to implement webhooks? 
+ Webhooks are optional but recommended for real-time status updates. If supported, you register your webhook URL via Register Webhook , and Omniful expects you to POST shipment status changes to it as they happen, rather than relying solely on polling via the track endpoint. 
+ 
+ What's required vs. optional in request/response payloads? 
+ Fields are documented with explicit presence rules: 
+ 
+ 
+ 
+ Label 
+ Meaning 
+ 
+ 
+ 
+ 
+ Required 
+ Must be non-empty 
+ 
+ 
+ Optional 
+ May be omitted 
+ 
+ 
+ 
+ Always check the field table for each endpoint rather than assuming based on naming. 
+ 
+ Do I need to include a path in my base_url ? 
+ No — just the scheme and host (plus any custom prefix like /api , if you have one). Omniful appends the fixed endpoint path to whatever you provide. 
+ See the Base URL & path construction section above. 
+ How does Omniful onboard a new Shipping Partner, and what details are required? 
+ 
+ To onboard a new Shipping Partner, Omniful requires the following details: 
+ 
+ Shipping Partner Name — The name that will be displayed in Omniful. 
+ 
+ Logo — The Shipping Partner's logo to be displayed in the Omniful interface (10KB). 
+ 
+ Supported Endpoints — The APIs/endpoints supported by the integration, such as Create Shipment, Cancel Shipment, Label, Tracking, Returns, etc. 
+ 
+ Custom Fields — Any additional shipment-level fields required by the Shipping Partner. These are configured by Omniful's internal team as part of the integration setup. 
+ 
+ 
+ Once these details are provided and the integration is reviewed and configured, Omniful publishes and enables the Custom App so it can be used like other supported Shipping Partners. For the complete onboarding requirements and process, see the Shipping Apps Onboarding Documentation . 
+
+## Auth
+ Authentication endpoints. Implement only the endpoint matching your auth_type : 
+ 
+ access_token → Get Access Token ( POST /auth/token ) 
+ api_key → Validate API Key ( POST /auth/validate ) 
+ 
+
+
+======== POST {{base_url}}/auth/token [Get Access Token]
+DESC:  POST /auth/token — obtain access token. 
+ When Omniful calls this 
+ Only when auth_type is access_token : 
+ 
+ During merchant account credential validation (health check) 
+ When a previous API call returned 401 Unauthorized (token refresh; Omniful retries the failed request once) 
+ 
+ No Authorization header on this request. 
+ Request JSON 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ client_id 
+ string 
+ Required 
+ OAuth-style client ID from the merchant's account credentials 
+ 
+ 
+ client_secret 
+ string 
+ Required 
+ OAuth-style client secret from the merchant's account credentials 
+ 
+ 
+ grant_type 
+ string 
+ Optional 
+ client_credentials 
+ 
+ 
+ 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ access_token 
+ string 
+ Required 
+ Bearer token to use on all subsequent API calls 
+ 
+ 
+ 
+ Omniful currently reads and stores only data.access_token from this response. 
+ {
+ "success": true,
+ "data": {
+ "access_token": "{{supabase_service_role_api_key_12yl}}..."
+ }
+}
+ 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+BODY( raw ): {
+  "client_id": "{{client_id}}",
+  "client_secret": "{{client_secret}}",
+  "grant_type": "{{grant_type}}"
+}
+AUTH: {"type": "noauth", "isInherited": false}
+-- RESP Success 200 : {
+  "success": true,
+  "data": {
+    "access_token": "mock-access-token",
+    "expire_in": 3600
+  }
+}
+
+======== POST {{base_url}}/auth/validate [Validate API Key]
+DESC:  POST /auth/validate — validate API key credentials. 
+ When Omniful calls this 
+ Only when auth_type is api_key — during merchant account credential validation (health check) before the account is marked active. 
+ No Authorization header on this request. The API key is sent in the request body. 
+ Request JSON 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ api_key 
+ string 
+ Required 
+ The merchant's static API key to validate 
+ 
+ 
+ 
+ Success response — data object 
+ Return { "success": true, "data": { } } with HTTP 2xx when the API key is valid. The data object may be empty. 
+ {
+ "success": true,
+ "data": {}
+}
+ 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+BODY( raw ): {
+  "api_key": "{{api_key}}"
+}
+AUTH: {"type": "noauth", "isInherited": false}
+-- RESP Success 200 : {
+  "success": true,
+  "data": {}
+}
+## Forward Shipments
+
+
+======== POST {{base_url}}/shipments [Create Shipment]
+DESC:  POST /shipments — create forward shipment. 
+ When Omniful calls this 
+ When a merchant creates a forward shipment using your shipping partner. 
+ Partner responsibility 
+ Validate supportability and raise an error when something is not supported by your service. Common examples: 
+ 
+ city is not served by you 
+ currency is not supported by you 
+ any other partner-specific restriction that makes the shipment invalid 
+ 
+ Location fallback rule 
+ On drop_details , if system_city is empty then rely on external_city . external_city can be empty or whatever was received from the sales channel or entered by the user in Omniful. 
+ Request JSON — top level 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ order_id 
+ string 
+ Required 
+ Order display ID (merchant-facing identifier for the order) 
+ 
+ 
+ reference 
+ string 
+ Optional 
+ Order alias / secondary shipping reference used for tracking in external systems 
+ 
+ 
+ system_id 
+ string 
+ Required 
+ System-generated ID unique per shipment attempt; use as idempotency key 
+ 
+ 
+ pickup_details 
+ object 
+ Required 
+ Hub / warehouse pickup location 
+ 
+ 
+ drop_details 
+ object 
+ Required 
+ Customer delivery location 
+ 
+ 
+ payment_details 
+ object 
+ Required 
+ Payment and invoice summary for the shipment 
+ 
+ 
+ packages 
+ array<object> 
+ Required 
+ One object per physical box in the shipment 
+ 
+ 
+ weight 
+ object 
+ Required 
+ Total shipment weight; weight.uom is always kg 
+ 
+ 
+ number_of_boxes 
+ integer 
+ Required 
+ Total number of physical boxes in the shipment 
+ 
+ 
+ items 
+ array<object> 
+ Optional 
+ Line items at the top level 
+ 
+ 
+ meta 
+ object 
+ Optional 
+ Partner-specific fields; contains custom_fields array (may be empty [] ) 
+ 
+ 
+ remarks 
+ string 
+ Optional 
+ User-entered shipment remarks; may be omitted or an empty string 
+ 
+ 
+ delivery_slot 
+ object 
+ Optional 
+ Delivery window for the order; sent as {} when the order has no valid slot 
+ 
+ 
+ 
+ pickup_details / drop_details 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ name 
+ string 
+ Optional 
+ Contact or location name 
+ 
+ 
+ phone 
+ string 
+ Optional 
+ Phone number with country calling code (e.g. +966501234567 ) 
+ 
+ 
+ country_code 
+ string 
+ Required 
+ ISO-2 country code (e.g. SA , AE , IN ) 
+ 
+ 
+ email 
+ string 
+ Optional 
+ Contact email; may be omitted or empty 
+ 
+ 
+ location_code 
+ string 
+ Optional 
+ Location / hub code when available 
+ 
+ 
+ address_line_1 
+ string 
+ Optional 
+ First structured address line 
+ 
+ 
+ address_line_2 
+ string 
+ Optional 
+ Second structured address line 
+ 
+ 
+ building_number 
+ string 
+ Optional 
+ Building number 
+ 
+ 
+ additional_number 
+ string 
+ Optional 
+ Additional number 
+ 
+ 
+ street 
+ string 
+ Optional 
+ Street 
+ 
+ 
+ area 
+ string 
+ Optional 
+ Area 
+ 
+ 
+ system_city 
+ string 
+ Optional 
+ City name from the Omniful city database 
+ 
+ 
+ system_city_id 
+ string 
+ Optional 
+ City ID from the Omniful city database 
+ 
+ 
+ system_state 
+ string 
+ Optional 
+ State or province name from the Omniful state database 
+ 
+ 
+ system_state_id 
+ string 
+ Optional 
+ State ID from the Omniful state database 
+ 
+ 
+ system_country 
+ string 
+ Optional 
+ Country name from the Omniful country database 
+ 
+ 
+ system_country_id 
+ string 
+ Optional 
+ Country ID from the Omniful country database 
+ 
+ 
+ external_city 
+ string 
+ Optional 
+ External city from sales channel or user input; on drop_details , rely on this when system_city is empty 
+ 
+ 
+ latitude 
+ number 
+ Optional 
+ Location latitude; omitted when not available 
+ 
+ 
+ longitude 
+ number 
+ Optional 
+ Location longitude; omitted when not available 
+ 
+ 
+ postal_code 
+ string 
+ Optional 
+ Postal / ZIP code; may be omitted or empty 
+ 
+ 
+ national_address_code 
+ string 
+ Optional 
+ Country national address short code 
+ 
+ 
+ 
+ Forward mapping: pickup_details = hub/warehouse, drop_details = customer. 
+ payment_details 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ is_cod 
+ boolean 
+ Required 
+ true when cash-on-delivery applies ( cod_amount > 0); false for prepaid 
+ 
+ 
+ currency 
+ string 
+ Required 
+ Three-letter currency code (e.g. SAR , AED , USD ); shipping partner must raise an error if unsupported 
+ 
+ 
+ cod_amount 
+ number 
+ Required 
+ COD amount to collect from the customer; 0 for prepaid orders 
+ 
+ 
+ total_paid 
+ number 
+ Required 
+ Amount already received from the customer; 0 when nothing collected yet 
+ 
+ 
+ total_order_value 
+ number 
+ Required 
+ Total grand value of the order 
+ 
+ 
+ 
+ packages[] 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ weight.value 
+ number 
+ Required 
+ Weight of this box 
+ 
+ 
+ weight.uom 
+ string 
+ Required 
+ Weight unit for this box (e.g. kg ) 
+ 
+ 
+ length 
+ number 
+ Optional 
+ Package length 
+ 
+ 
+ breadth 
+ number 
+ Optional 
+ Package breadth / width 
+ 
+ 
+ height 
+ number 
+ Optional 
+ Package height 
+ 
+ 
+ dimension_uom 
+ string 
+ Optional 
+ Unit for dimensions (e.g. cm ) 
+ 
+ 
+ 
+ items[] 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ sku_code 
+ string 
+ Required 
+ Product's unique SKU identifier; matches the Omniful product catalog 
+ 
+ 
+ sku_name 
+ string 
+ Required 
+ Product display name 
+ 
+ 
+ ordered_quantity 
+ integer 
+ Required 
+ Number of units ordered 
+ 
+ 
+ shipped_quantity 
+ integer 
+ Required 
+ Number of units shipped or packed for this shipment 
+ 
+ 
+ unit_price 
+ number 
+ Optional 
+ Price per unit, base price 
+ 
+ 
+ hs_code 
+ string 
+ Optional 
+ Harmonized System Code for customs classification 
+ 
+ 
+ country_of_origin.country_name 
+ string 
+ Optional 
+ Country of origin as country name (free text) 
+ 
+ 
+ tax_percent 
+ number 
+ Optional 
+ Tax rate for this item (e.g. 10 for 10%) 
+ 
+ 
+ tax 
+ number 
+ Optional 
+ Calculated tax for this line item 
+ 
+ 
+ tax_inclusive 
+ boolean 
+ Optional 
+ true when prices include tax 
+ 
+ 
+ sub_total 
+ number 
+ Optional 
+ Line total before tax and special discounts ( unit_price × quantity) 
+ 
+ 
+ total 
+ number 
+ Optional 
+ Final line amount including taxes and discounts 
+ 
+ 
+ discount 
+ number 
+ Optional 
+ Total discount applied to this item 
+ 
+ 
+ 
+ meta.custom_fields[] 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ key 
+ string 
+ Required 
+ Stable field key agreed during partner onboarding 
+ 
+ 
+ value 
+ string 
+ Optional 
+ Resolved value for this shipment; string, may be empty 
+ 
+ 
+ 
+ When custom fields are configured on the partner, one entry is sent per configured key. When none are configured, custom_fields is an empty array [] . 
+ delivery_slot 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ start_date 
+ string 
+ Optional 
+ Slot start date in DD-MM-YYYY ; present only when order has a valid slot 
+ 
+ 
+ end_date 
+ string 
+ Optional 
+ Slot end date in DD-MM-YYYY ; present only when order has a valid slot 
+ 
+ 
+ start_time 
+ string 
+ Optional 
+ Slot start time in HH:MM:SS ; present only when order has a valid slot 
+ 
+ 
+ end_time 
+ string 
+ Optional 
+ Slot end time in HH:MM:SS ; present only when order has a valid slot 
+ 
+ 
+ 
+ The request body contains a full commented sample for quick reference. 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ awb_number 
+ string 
+ Required 
+ Tracking / AWB number you assign to this shipment 
+ 
+ 
+ partner_system_id 
+ string 
+ Optional (recommended) 
+ Your internal shipment or order ID 
+ 
+ 
+ awb_label 
+ string 
+ Optional (recommended) 
+ Public HTTPS URL to the AWB label PDF file; URL must end with .pdf 
+ 
+ 
+ tracking_url 
+ string 
+ Optional (recommended) 
+ Public customer-facing tracking page URL 
+ 
+ 
+ packages 
+ array<object> 
+ Optional 
+ Per-box AWB numbers — return only when individual boxes have AWBs different from the main awb_number 
+ 
+ 
+ 
+ The example response below is fully annotated in the sample body itself. 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+BODY( raw ): {
+  "order_id": "B2C-4342026000421", // Order display ID
+  "reference": "SO-2026-000421", // Order alias / secondary shipping reference
+  "system_id": "6a477731c034d123fee4b20d", // System-generated unique shipment id (idempotency key)
+
+  "pickup_details": {
+    "name": "Riyadh Main Warehouse", // Hub / warehouse contact or location name
+    "email": "warehouse.ops@example.com", // Contact email
+    "phone": "+966501234567",
+    "location_code": "RUH-WH-01", // hub code
+
+    "address_line_1": "Building 12, Industrial Zone", // First address line
+    "address_line_2": "Gate 3, Dock 7", // Second address line
+    "building_number": "12",
+    "additional_number": "7001",
+    "street": "King Abdulaziz Road",
+    "area": "Industrial Area",
+
+    "system_city": "Riyadh", // City from Omniful city database
+    "system_city_id": "7570", // City id from Omniful city database
+    "system_state": "Riyadh Region", // State/province name from Omniful state database
+    "system_state_id": "34", // State id from Omniful state database
+    "system_country": "Saudi Arabia", // Country name from Omniful country database
+    "system_country_id": "56", // Country id from Omniful country database
+
+    "latitude": 24.7136, // Optional latitude
+    "longitude": 46.6753, // Optional longitude
+
+    "country_code": "SA", // ISO-2 country code
+    "postal_code": "14321",
+    "national_address_code": "REZA1234" // Country national address short code 
+  },
+
+  "drop_details": {
+    "name": "John Smith", // Customer contact or delivery location name
+    "email": "john.smith@example.com", // Contact email
+    "phone": "+14155552671",
+
+    "address_line_1": "350 Fifth Avenue", // First address line
+    "address_line_2": "Apt 1204", // Second address line
+    "building_number": "350", // Building number
+    "additional_number": "", // Additional number
+    "street": "Fifth Avenue", // Street
+    "area": "Midtown Manhattan", // Area
+
+    "system_city": "Staten Island", // City from Omniful city database (may be empty)
+    "system_city_id": "234", // Omniful city id (may be empty)
+    "system_state": "New York", // State/province (may be empty)
+    "system_state_id": "45", // State id (may be empty)
+    "system_country": "United States", // Country name
+    "system_country_id": "23", // Country id
+
+    "external_city": "New York", // Fallback: use external_city when system_city is empty; can be empty or sales-channel/user value
+    "latitude": 40.7484, // Optional latitude
+    "longitude": -73.9857, // Optional longitude
+
+    "country_code": "US", // ISO-2 country code
+    "postal_code": "10118", // Postal pincode
+    "national_address_code": "" // Country national address short code 
+  },
+
+  "payment_details": {
+    "is_cod": true, // True when COD applies (total_due > 0)
+    "currency": "USD", // Shipping partner must raise an error if currency is not supported
+    "cod_amount": 245.75, // COD amount to collect from customer
+    "total_paid": 0, // Amount already received from customer
+    "total_order_value": 245.75 // Total grand order value
+  },
+
+  "packages": [
+    {
+      "weight": { "value": 1.5, "uom": "kg" }, // Package weight (in kg)
+      "length": 30, // Optional length
+      "breadth": 20, // Optional breadth/width
+      "height": 10, // Optional height
+      "dimension_uom": "cm" // Optional dimension unit
+    }
+  ],
+
+  "weight": { "value": 1.5, "uom": "kg" }, // Total shipment weight (kg always)
+  "number_of_boxes": 1, // Number of physical boxes
+  "remarks": "Deliver during business hours if possible.", // Optional user remarks
+
+  "meta": {
+    "custom_fields": [
+      { "key": "service_type", "value": "same_day" }, // Partner configured service type (partner must error if unsupported)
+      { "key": "product_type", "value": "parcel" }, // Partner configured product type
+      { "key": "load_type", "value": "document" } // Partner configured load type
+    ]
+  },
+
+  "items": [
+    {
+      "sku_code": "TSHIRT-BLK-M", // Product SKU code
+      "sku_name": "Black T-Shirt - Medium", // Product display name
+      "ordered_quantity": 3, // Ordered quantity
+      "shipped_quantity": 1, // Shipped/packed quantity
+      "unit_price": 199.0, // Price per unit, base price
+      "hs_code": "61091000", // HS code for customs
+      "country_of_origin": { "country_name": "Saudi Arabia" }, // Country of origin
+
+      "tax_percent": 15, // Tax percent rate
+      "tax": 25.96, // Calculated tax
+      "tax_inclusive": true, // If true, prices include tax
+      "sub_total": 199.0, // Subtotal before tax/discount
+      "total": 245.75, // Final line total
+      "discount": 0 // Total discount
+    }
+  ],
+
+  "delivery_slot": {
+    "start_date": "15-07-2026", // DD-MM-YYYY
+    "end_date": "15-07-2026", // DD-MM-YYYY
+    "start_time": "09:00:00", // HH:MM:SS
+    "end_time": "18:00:00" // HH:MM:SS
+  }
+}
+AUTH: {"type": "bearer", "bearer": {"basicConfig": [{"key": "token", "value": "{{access_token}}"}]}, "isInherited": true, "source": {"_postman_id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "name": "Omniful Integration APIs", "type": "collection"}}
+-- RESP Success 200 : {
+  "success": true, // success wrapper
+  "data": {
+    "awb_number": "AWB123456", // Required AWB/tracking number
+    "partner_system_id": "INT-123456", // Optional partner-side shipment/order id
+    "awb_label": "https://labels.example.com/AWB123456.pdf", // Optional public PDF URL
+    "tracking_url": "https://track.example.com/AWB123456", // Required customer-facing tracking URL
+    "packages": [ { "awb_number": "AWB123456-BOX-1" } ] // Optional per-box AWB numbers
+  }
+}
+
+======== POST {{base_url}}/shipments/cancel [Cancel Shipment]
+DESC:  POST /shipments/cancel — cancel forward shipment. 
+ When Omniful calls this 
+ When a merchant cancels a forward shipment that was created through your shipping partner. 
+ Request JSON 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ awb_number 
+ string 
+ Required 
+ AWB / tracking number of the shipment to cancel 
+ 
+ 
+ reason 
+ string 
+ Required 
+ Cancellation reason entered by the user 
+ 
+ 
+ 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ message 
+ string 
+ Optional 
+ Confirmation or informational message about the cancellation 
+ 
+ 
+ 
+ {
+ "success": true,
+ "data": {
+ "message": "Shipment cancelled successfully"
+ }
+}
+
+ 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+BODY( raw ): {
+    "awb_number": "{{awb_number}}", // AWB to cancel
+    "reason": "Customer requested cancellation" // Cancellation reason
+}
+AUTH: {"type": "bearer", "bearer": {"basicConfig": [{"key": "token", "value": "{{access_token}}"}]}, "isInherited": true, "source": {"_postman_id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "name": "Omniful Integration APIs", "type": "collection"}}
+-- RESP Success 200 : {
+  "success": true, // cancellation success wrapper
+  "data": {
+    "message": "Shipment cancelled" // Optional message
+  }
+}
+
+======== GET {{base_url}}/shipments/{{awb_number}}/tracking [Track Shipment]
+DESC:  GET /shipments/{awb_number}/tracking — track forward shipment. 
+ When Omniful calls this 
+ When Omniful polls your API for the latest status of a forward shipment (alternative to inbound webhooks). 
+ Path parameter 
+ 
+ 
+ 
+ Parameter 
+ Type 
+ Description 
+ 
+ 
+ 
+ 
+ awb_number 
+ string 
+ AWB / tracking number to look up 
+ 
+ 
+ 
+ No request body. The AWB is passed in the URL path only. 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ status 
+ string 
+ Required 
+ Current shipment status. Allowed values: dispatched , in_transit , out_for_delivery , delivered , unable_to_deliver , lost , partially_delivered , return_in_progress , return_to_origin . 
+ 
+ 
+ status_updated_at 
+ string 
+ Optional 
+ UTC timestamp when the status changed ( yyyy-MM-dd'T'HH:mm:ss.SSSZ ) 
+ 
+ 
+ description 
+ string 
+ Optional 
+ Human-readable status description in English 
+ 
+ 
+ reason 
+ string 
+ Optional 
+ Reason for the current status (e.g. failed delivery reason) 
+ 
+ 
+ number_of_attempts 
+ integer 
+ Optional 
+ Number of delivery attempts so far; 0 when none 
+ 
+ 
+ first_delivery_attempt_at 
+ string 
+ Optional 
+ Timestamp of the first delivery attempt (UTC RFC3339: yyyy-MM-dd'T'HH:mm:ss.SSSZ ) 
+ 
+ 
+ estimated_delivery_date 
+ string 
+ Optional 
+ Estimated delivery date ( YYYY-MM-DD ). Use when only the date is known (no specific time). 
+ 
+ 
+ estimated_delivery_time 
+ string 
+ Optional 
+ Estimated delivery datetime as UTC RFC3339 ( yyyy-MM-dd'T'HH:mm:ss.SSSZ ). Use when the expected delivery time is known; omit estimated_delivery_date in that case. 
+ 
+ 
+ 
+ Estimated delivery 
+ Send estimated_delivery_time when the expected delivery time is also known; otherwise send estimated_delivery_date . 
+ {
+ "success": true, // status lookup success wrapper
+ "data": {
+ "status": "out_for_delivery", // One of the documented statuses
+ "status_updated_at": "2026-06-11T10:00:00.000Z", // Optional timestamp
+ "reason": "Customer rejected", // Optional reason
+ "description": "Riyadh Warehouse - Out for delivery", // Optional English description
+ "number_of_attempts": 1, // Number of delivery attempts so far
+ "first_delivery_attempt_at": "2026-06-11T10:00:00.000Z", // Optional timestamp
+ "estimated_delivery_time": "2026-06-11T17:00:00.000Z" // Use when expected delivery time is known (UTC RFC3339); otherwise send estimated_delivery_date only
+ }
+}
+ 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+AUTH: {"type": "bearer", "bearer": {"basicConfig": [{"key": "token", "value": "{{access_token}}"}]}, "isInherited": true, "source": {"_postman_id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "name": "Omniful Integration APIs", "type": "collection"}}
+-- RESP Success 200 : {
+  "success": true, // status lookup success wrapper
+  "data": {
+    "status": "out_for_delivery", // One of the documented statuses
+    "status_updated_at": "2026-06-11T10:00:00.000Z", // Optional timestamp
+    "reason": "Customer rejected", // Optional reason
+    "description": "Riyadh Warehouse - Out for delivery", // Optional English description
+    "number_of_attempts": 1, // Number of delivery attempts so far
+    "first_delivery_attempt_at": "2026-06-11T10:00:00.000Z", // Optional timestamp
+    "estimated_delivery_time": "2026-06-11T17:00:00.000Z" // Use when expected delivery time is known (UTC RFC3339); otherwise send estimated_delivery_date only
+  }
+}
+
+======== GET {{base_url}}/shipments/{{awb_number}}/label [Get AWB Label]
+DESC:  GET /shipments/{awb_number}/label — fetch forward AWB label. 
+ When Omniful calls this 
+ When Omniful needs to retrieve (or re-fetch) the AWB label for a forward shipment — for example when the label was not available at create time. 
+ Path parameter 
+ 
+ 
+ 
+ Parameter 
+ Type 
+ Description 
+ 
+ 
+ 
+ 
+ awb_number 
+ string 
+ AWB / tracking number of the shipment 
+ 
+ 
+ 
+ No request body. The AWB is passed in the URL path only. 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ awb_label 
+ string 
+ Required 
+ Public HTTPS URL pointing directly to the label PDF file; see collection docs for label rules 
+ 
+ 
+ 
+ {
+ "success": true,
+ "data": {
+ "awb_label": "https://partner.example.com/labels/AWB-123456.pdf"
+ }
+}
+ 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+AUTH: {"type": "bearer", "bearer": {"basicConfig": [{"key": "token", "value": "{{access_token}}"}]}, "isInherited": true, "source": {"_postman_id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "name": "Omniful Integration APIs", "type": "collection"}}
+-- RESP Success 200 : {
+  "success": true, // label success wrapper
+  "data": {
+    "awb_label": "https://labels.example.com/AWB123456.pdf" // Public PDF URL
+  }
+}
+## Return Shipments
+ Return shipment APIs. pickup_details = customer, drop_details = hub / warehouse / merchant return destination. 
+
+
+======== POST {{base_url}}/shipments/returns [Create Return Shipment]
+DESC:  POST /shipments/returns — create return shipment. 
+ When Omniful calls this 
+ When a merchant creates a return shipment using your shipping partner. 
+ Partner responsibility 
+ Validate supportability and raise an error when something is not supported by your service. Common examples: 
+ 
+ pickup / drop city is not served by you 
+ currency is not supported by you 
+ any other partner-specific restriction that makes the return invalid 
+ 
+ Location fallback rule 
+ On customer locations, if system_city is empty then rely on external_city . external_city can be empty or whatever was received from the sales channel or entered by the user in Omniful. 
+ Request JSON — top level 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ order_id 
+ string 
+ Required 
+ Return order display ID 
+ 
+ 
+ system_id 
+ string 
+ Required 
+ System-generated ID unique per shipment attempt; use as idempotency key 
+ 
+ 
+ pickup_details 
+ object 
+ Required 
+ Customer pickup location 
+ 
+ 
+ drop_details 
+ object 
+ Required 
+ Hub / warehouse / Merchant return destination 
+ 
+ 
+ payment_details 
+ object 
+ Required 
+ Payment and invoice summary for the return 
+ 
+ 
+ packages 
+ array<object> 
+ Required 
+ One object per physical box in the shipment 
+ 
+ 
+ weight 
+ object 
+ Required 
+ Total shipment weight; weight.uom is always kg 
+ 
+ 
+ number_of_boxes 
+ integer 
+ Required 
+ Total number of physical boxes in the shipment 
+ 
+ 
+ items 
+ array<object> 
+ Optional 
+ Line items at the top level 
+ 
+ 
+ meta 
+ object 
+ Optional 
+ Partner-specific fields; contains custom_fields array (may be empty [] ) 
+ 
+ 
+ remarks 
+ string 
+ Optional 
+ User-entered remarks; may be omitted or an empty string 
+ 
+ 
+ 
+ 
+ reference and delivery_slot are not sent on return shipments. 
+ 
+ pickup_details / drop_details 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ name 
+ string 
+ Optional 
+ Contact or location name 
+ 
+ 
+ phone 
+ string 
+ Optional 
+ Phone number with country calling code (e.g. +966501234567 ) 
+ 
+ 
+ country_code 
+ string 
+ Required 
+ ISO-2 country code (e.g. SA , AE , IN ) 
+ 
+ 
+ email 
+ string 
+ Optional 
+ Contact email; may be omitted or empty 
+ 
+ 
+ location_code 
+ string 
+ Optional 
+ Location / hub code when available 
+ 
+ 
+ address_line_1 
+ string 
+ Optional 
+ First structured address line 
+ 
+ 
+ address_line_2 
+ string 
+ Optional 
+ Second structured address line 
+ 
+ 
+ building_number 
+ string 
+ Optional 
+ Building number 
+ 
+ 
+ additional_number 
+ string 
+ Optional 
+ Additional number 
+ 
+ 
+ street 
+ string 
+ Optional 
+ Street 
+ 
+ 
+ area 
+ string 
+ Optional 
+ Area 
+ 
+ 
+ system_city 
+ string 
+ Optional 
+ City name from the Omniful city database 
+ 
+ 
+ system_city_id 
+ string 
+ Optional 
+ City ID from the Omniful city database 
+ 
+ 
+ system_state 
+ string 
+ Optional 
+ State or province name from the Omniful state database 
+ 
+ 
+ system_state_id 
+ string 
+ Optional 
+ State ID from the Omniful state database 
+ 
+ 
+ system_country 
+ string 
+ Optional 
+ Country name from the Omniful country database 
+ 
+ 
+ system_country_id 
+ string 
+ Optional 
+ Country ID from the Omniful country database 
+ 
+ 
+ external_city 
+ string 
+ Optional 
+ External city from sales channel or user input; on customer locations, rely on this when system_city is empty 
+ 
+ 
+ latitude 
+ number 
+ Optional 
+ Location latitude; omitted when not available 
+ 
+ 
+ longitude 
+ number 
+ Optional 
+ Location longitude; omitted when not available 
+ 
+ 
+ postal_code 
+ string 
+ Optional 
+ Postal / ZIP code; may be omitted or empty 
+ 
+ 
+ national_address_code 
+ string 
+ Optional 
+ Country national address short code 
+ 
+ 
+ 
+ Return mapping: pickup_details = customer, drop_details = hub / warehouse / merchant return destination. 
+ payment_details 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ is_cod 
+ boolean 
+ Required 
+ true when cash-on-delivery applies ( cod_amount > 0); false for prepaid 
+ 
+ 
+ currency 
+ string 
+ Required 
+ Three-letter currency code (e.g. SAR , AED , USD ); shipping partner must raise an error if unsupported 
+ 
+ 
+ cod_amount 
+ number 
+ Required 
+ COD amount to collect from the customer; 0 for prepaid orders 
+ 
+ 
+ total_paid 
+ number 
+ Required 
+ Amount already received from the customer; 0 when nothing collected yet 
+ 
+ 
+ total_order_value 
+ number 
+ Required 
+ Total grand value of the order 
+ 
+ 
+ 
+ packages[] 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ weight.value 
+ number 
+ Required 
+ Weight of this box 
+ 
+ 
+ weight.uom 
+ string 
+ Required 
+ Weight unit for this box (e.g. kg ) 
+ 
+ 
+ length 
+ number 
+ Optional 
+ Package length 
+ 
+ 
+ breadth 
+ number 
+ Optional 
+ Package breadth / width 
+ 
+ 
+ height 
+ number 
+ Optional 
+ Package height 
+ 
+ 
+ dimension_uom 
+ string 
+ Optional 
+ Unit for dimensions (e.g. cm ) 
+ 
+ 
+ 
+ items[] 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ sku_code 
+ string 
+ Required 
+ Product's unique SKU identifier; matches the Omniful product catalog 
+ 
+ 
+ sku_name 
+ string 
+ Required 
+ Product display name 
+ 
+ 
+ shipped_quantity 
+ integer 
+ Required 
+ Number of units being returned in this shipment 
+ 
+ 
+ unit_price 
+ number 
+ Optional 
+ Price per unit, base price 
+ 
+ 
+ hs_code 
+ string 
+ Optional 
+ Harmonized System Code for customs classification 
+ 
+ 
+ country_of_origin.country_name 
+ string 
+ Optional 
+ Country of origin as country name (free text) 
+ 
+ 
+ 
+ 
+ ordered_quantity is not sent on return shipments. 
+ 
+ meta.custom_fields[] 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ key 
+ string 
+ Required 
+ Stable field key agreed during partner onboarding 
+ 
+ 
+ value 
+ string 
+ Optional 
+ Resolved value for this shipment; string, may be empty 
+ 
+ 
+ 
+ When custom fields are configured on the partner, one entry is sent per configured key. When none are configured, custom_fields is an empty array [] . 
+ The request body contains a full commented sample for quick reference. 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ awb_number 
+ string 
+ Required 
+ Tracking / AWB number you assign to this shipment 
+ 
+ 
+ partner_system_id 
+ string 
+ Optional (recommended) 
+ Your internal shipment or order ID 
+ 
+ 
+ awb_label 
+ string 
+ Optional (recommended) 
+ Public HTTPS URL to the AWB label PDF file; URL must end with .pdf 
+ 
+ 
+ tracking_url 
+ string 
+ Optional (recommended) 
+ Public customer-facing tracking page URL 
+ 
+ 
+ packages 
+ array<object> 
+ Optional 
+ Per-box AWB numbers — return only when individual boxes have AWBs different from the main awb_number 
+ 
+ 
+ 
+ The example response below is fully annotated in the sample body itself. 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+BODY( raw ): {
+    "order_id": "RET-2026-000421", // Return order display ID
+    "system_id": "6a477731c034d123fee4b20d", // System-generated unique shipment id (idempotency key)
+    "pickup_details": {
+        "name": "Fahad Ali", // Customer pickup contact or location
+        "email": "fahad.ali@example.com", // Contact email
+        "phone": "+966509876543", // Phone with country calling code
+        "address_line_1": "Flat 21, Palm Residency", // First address line
+        "address_line_2": "Prince Sultan Street", // Second address line
+        "building_number": "21", // Building number
+        "additional_number": "5544", // Additional number
+        "street": "Prince Sultan Street", // Street
+        "area": "Al Olaya", // Area
+        "system_city": "Riyadh", // Omniful system city (may be empty)
+        "system_city_id": "7570", // Omniful system city id (may be empty)
+        "system_state": "Riyadh Region", //  Omniful system state (may be empty)
+        "system_state_id": "34", // Omniful state id (may be empty)
+        "system_country": "Saudi Arabia", // Country name
+        "system_country_id": "56", // Omniful Country id
+        "external_city": "Riyadh", // Fallback when system_city is empty
+        "latitude": 24.726, // Optional latitude
+        "longitude": 46.675, // Optional longitude
+        "country_code": "SA", // ISO-2 country code
+        "postal_code": "12211", // Postal pincode
+        "national_address_code": "RDAA7788" // Saudi national address short code
+    },
+    "drop_details": {
+        "name": "Riyadh Main Warehouse", // Hub / warehouse / Merchant return destination
+        "email": "merchantlocation.ops@example.com", // Contact email
+        "phone": "+966501234567", // Contact Number
+        "location_code": "RUH-WH-01", // Merchant Location code
+        "address_line_1": "Building 12, Industrial Zone", // First address line
+        "address_line_2": "Gate 3, Dock 7", // Second address line
+        "building_number": "12", // Building number
+        "additional_number": "7001", // Additional number
+        "street": "King Abdulaziz Road", // Street
+        "area": "Industrial Area", // Area
+        "system_city": "Riyadh", // Omniful system city
+        "system_city_id": "7570", // City id
+        "system_state": "Riyadh Region", // State name
+        "system_state_id": "34", // State id
+        "system_country": "Saudi Arabia", // Country name
+        "system_country_id": "56", // Country id
+        "latitude": 24.7136, // Optional latitude
+        "longitude": 46.6753, // Optional longitude
+        "country_code": "SA", // ISO-2 country code
+        "postal_code": "14321", // Postal pincode
+        "national_address_code": "REZA1234" // Saudi national address short code
+    },
+    "payment_details": {
+        "is_cod": false, // Return is usually prepaid; shipping partner must still validate
+        "currency": "SAR", // Shipping partner must raise an error if currency is not supported
+        "cod_amount": 0, // COD amount (0 when prepaid)
+        "total_paid": 245.75, // Amount already collected
+        "total_order_value": 245.75 // Total grand order value
+    },
+    "packages": [
+        {
+            "weight": {
+                "value": 1.5,
+                "uom": "kg"
+            }, // Package weight
+            "length": 30, // Optional length
+            "breadth": 20, // Optional breadth/width
+            "height": 10, // Optional height
+            "dimension_uom": "cm" // Optional dimension unit
+        }
+    ],
+    "weight": {
+        "value": 1.5,
+        "uom": "kg"
+    }, // Total shipment weight (kg always)
+    "number_of_boxes": 1, // Number of physical boxes
+    "remarks": "Customer requested return pickup.", // Optional user remarks
+    "meta": {
+        "custom_fields": [
+            {
+                "key": "service_type",
+                "value": "reverse_pickup"
+            }, // Partner configured service type
+            {
+                "key": "product_type",
+                "value": "parcel"
+            }, // Partner configured product type
+            {
+                "key": "load_type",
+                "value": "document"
+            } // Partner configured load type
+        ]
+    },
+    "items": [
+        {
+            "sku_code": "TSHIRT-BLK-M", // Product SKU code
+            "sku_name": "Black T-Shirt - Medium", // Product display name
+            "shipped_quantity": 1, // Shipped/returned quantity
+            "unit_price": 199.0, // Base Price per unit
+            "hs_code": "61091000", // HS code for customs
+            "country_of_origin": {
+                "country_name": "Saudi Arabia"
+            } // Country of origin
+        }
+    ]
+}
+AUTH: {"type": "bearer", "bearer": {"basicConfig": [{"key": "token", "value": "{{access_token}}"}]}, "isInherited": true, "source": {"_postman_id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "name": "Omniful Integration APIs", "type": "collection"}}
+-- RESP Success 200 : {
+  "success": true, // return create success wrapper
+  "data": {
+    "awb_number": "AWB123456", // Required AWB/tracking number
+    "partner_system_id": "INT-123456", // Optional partner-side shipment/order id
+    "awb_label": "https://labels.example.com/AWB123456.pdf", // Optional public PDF URL
+    "tracking_url": "https://track.example.com/AWB123456", // Required customer-facing tracking URL
+    "packages": [ { "awb_number": "AWB123456-BOX-1" } ] // Optional per-box AWB numbers
+  }
+}
+
+======== POST {{base_url}}/shipments/returns/cancel [Cancel Return Shipment]
+DESC:  POST /shipments/returns/cancel — cancel return shipment. 
+ When Omniful calls this 
+ When a merchant cancels a return shipment that was created through your shipping partner. 
+ Request JSON 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ awb_number 
+ string 
+ Required 
+ AWB / tracking number of the shipment to cancel 
+ 
+ 
+ reason 
+ string 
+ Required 
+ Cancellation reason entered by the user 
+ 
+ 
+ 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ message 
+ string 
+ Optional 
+ Confirmation or informational message about the cancellation 
+ 
+ 
+ 
+ {
+ "success": true,
+ "data": {
+ "message": "Shipment cancelled successfully"
+ }
+}
+
+ 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+BODY( raw ): {
+    "awb_number": "{{awb_number}}", // AWB to cancel
+    "reason": "Return cancelled" // Cancellation reason
+}
+AUTH: {"type": "bearer", "bearer": {"basicConfig": [{"key": "token", "value": "{{access_token}}"}]}, "isInherited": true, "source": {"_postman_id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "name": "Omniful Integration APIs", "type": "collection"}}
+-- RESP Success 200 : {
+  "success": true, // return cancellation success wrapper
+  "data": {
+    "message": "Return cancelled" // Optional message
+  }
+}
+
+======== GET {{base_url}}/shipments/returns/{{awb_number}}/label [Get Return AWB Label]
+DESC:  GET /shipments/returns/{awb_number}/label — fetch return AWB label. 
+ When Omniful calls this 
+ When Omniful needs to retrieve (or re-fetch) the AWB label for a return shipment — for example when the label was not available at create time. 
+ Path parameter 
+ 
+ 
+ 
+ Parameter 
+ Type 
+ Description 
+ 
+ 
+ 
+ 
+ awb_number 
+ string 
+ AWB / tracking number of the shipment 
+ 
+ 
+ 
+ No request body. The AWB is passed in the URL path only. 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ awb_label 
+ string 
+ Required 
+ Public HTTPS URL pointing directly to the label PDF file; see collection docs for label rules 
+ 
+ 
+ 
+ {
+ "success": true,
+ "data": {
+ "awb_label": "https://partner.example.com/labels/AWB-123456.pdf"
+ }
+}
+ 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+AUTH: {"type": "bearer", "bearer": {"basicConfig": [{"key": "token", "value": "{{access_token}}"}]}, "isInherited": true, "source": {"_postman_id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "name": "Omniful Integration APIs", "type": "collection"}}
+-- RESP Success 200 : {
+  "success": true, // return label success wrapper
+  "data": {
+    "awb_label": "https://labels.example.com/AWB123456.pdf" // Public PDF URL
+  }
+}
+## Webhooks
+ Webhook integration. Register Webhook is called by Omniful on your base_url . Inbound Webhook Payload is documentation for what you POST to Omniful. 
+
+
+======== POST {{base_url}}/webhooks/register [Register Webhook]
+DESC:  POST /webhooks/register — register Omniful webhook URL. 
+ When Omniful calls this 
+ When Omniful needs your integration to store the webhook URL for receiving shipment status updates. Typically called once per merchant account when webhooks are enabled. 
+ Note 
+ For a merchant, Omniful sends a separate webhook_url for each account integrated on Omniful. Store the URL per account and use the matching URL when posting status updates for that account. 
+ Request JSON 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ webhook_url 
+ string 
+ Required 
+ Omniful-hosted URL where you must POST inbound shipment status updates 
+ 
+ 
+ 
+ Success response — data object 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ is_success 
+ boolean 
+ Required 
+ true when your integration has accepted and stored the webhook URL 
+ 
+ 
+ 
+ {
+ "success": true,
+ "data": {
+ "is_success": true
+ }
+}
+ 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+BODY( raw ): {
+  "webhook_url": "{{webhook_url}}" // Omniful sends this URL; store it and POST inbound webhook events
+}
+AUTH: {"type": "bearer", "bearer": {"basicConfig": [{"key": "token", "value": "{{access_token}}"}]}, "isInherited": true, "source": {"_postman_id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "id": "2714ea86-d918-46ac-a643-1a78d2a3c059", "name": "Omniful Integration APIs", "type": "collection"}}
+-- RESP Success 200 : {
+  "success": true, // webhook registration success wrapper
+  "data": {
+    "is_success": true // true when your integration accepted/stored the webhook URL
+  }
+}
+
+======== POST {{webhook_url}} [Inbound Webhook Payload (reference)]
+DESC:  Inbound webhook — POST to Omniful (not your base_url ). 
+ When you call this 
+ When a shipment status changes and you support inbound webhooks. POST this JSON to the webhook_url received from Register Webhook . 
+ Direction: Integrator → Omniful 
+ Request JSON 
+ 
+ 
+ 
+ Field 
+ Type 
+ Presence 
+ Description 
+ 
+ 
+ 
+ 
+ awb_number 
+ string 
+ Required 
+ AWB / tracking number used to match the shipment in Omniful 
+ 
+ 
+ status 
+ string 
+ Required 
+ New shipment status. Allowed values: dispatched , in_transit , out_for_delivery , delivered , unable_to_deliver , lost , partially_delivered , return_in_progress , return_to_origin . 
+ 
+ 
+ status_updated_at 
+ string 
+ Optional 
+ UTC timestamp when the status changed ( yyyy-MM-dd'T'HH:mm:ss.SSSZ ) 
+ 
+ 
+ description 
+ string 
+ Optional 
+ Human-readable status description in English 
+ 
+ 
+ reason 
+ string 
+ Optional 
+ Reason for the current status (e.g. failed delivery reason) 
+ 
+ 
+ number_of_attempts 
+ integer 
+ Optional 
+ Number of delivery attempts so far; 0 when none 
+ 
+ 
+ first_delivery_attempt_at 
+ string 
+ Optional 
+ Timestamp of the first delivery attempt (UTC RFC3339: yyyy-MM-dd'T'HH:mm:ss.SSSZ ) 
+ 
+ 
+ estimated_delivery_date 
+ string 
+ Optional 
+ Estimated delivery date ( YYYY-MM-DD ). Use when only the date is known (no specific time). 
+ 
+ 
+ estimated_delivery_time 
+ string 
+ Optional 
+ Estimated delivery datetime as UTC RFC3339 ( yyyy-MM-dd'T'HH:mm:ss.SSSZ ). Use when the expected delivery time is known; omit estimated_delivery_date in that case. 
+ 
+ 
+ 
+ Estimated delivery 
+ Send estimated_delivery_time when the expected delivery time is also known; otherwise send estimated_delivery_date . 
+ {
+ "awb_number": "AWB-123456", // AWB / tracking number used to match the shipment in Omniful
+ "status": "delivered", // New shipment status
+ "status_updated_at": "2026-07-06T14:00:00.000Z", // Optional UTC timestamp
+ "description": "Delivered to customer", // Optional English description
+ "reason": "Delivered successfully", // Optional reason
+ "number_of_attempts": 1, // Number of delivery attempts so far
+ "first_delivery_attempt_at": "2026-07-06T14:00:00.000Z", // Optional UTC RFC3339 timestamp
+ "estimated_delivery_time": "2026-07-06T14:00:00.000Z" // Use when expected delivery time is known (UTC RFC3339); otherwise send estimated_delivery_date only
+}
+ 
+ Omniful responds with its own envelope. A 2xx response indicates the update was accepted. 
+
+H: Content-Type : application/json | 
+H: Accept : application/json | 
+BODY( raw ): {
+    "awb_number": "{{awb_number}}", // AWB/tracking number used to match shipment in Omniful
+    "status": "delivered", // New status (documented values)
+    "status_updated_at": "2026-07-06T14:00:00.000Z", // Optional UTC timestamp
+    "description": "Delivered to customer", // Optional English description
+    "reason": "Delivered successfully", // Optional reason
+    "number_of_attempts": 1, // Always included
+    "first_delivery_attempt_at": "2026-07-06T14:00:00.000Z", // Optional UTC RFC3339 timestamp
+    "estimated_delivery_time": "2026-07-06T14:00:00.000Z" // Use when expected delivery time is known (UTC RFC3339); otherwise send estimated_delivery_date only
+}
+AUTH: {"type": "noauth", "isInherited": false}

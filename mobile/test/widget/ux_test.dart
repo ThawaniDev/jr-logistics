@@ -307,16 +307,16 @@ void main() {
       await t.pumpWidget(ProviderScope(retry: (_, _) => null, overrides: [prefsProvider.overrideWithValue(prefs), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(MemoryTokenStore())], child: const JrApp()));
       await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300))); // dictionaries load from the asset bundle
       await settle(t);
-      await t.enterText(find.byKey(const Key('phone')), '0500000011');
+      await t.enterText(find.byKey(const Key('username')), 'demo.driver');
       final c = ProviderScope.containerOf(t.element(find.byType(LoginScreen)));
       c.read(onlineProvider.notifier).set(false);
       await t.pump();
       expect(find.byKey(const Key('offline-strip')), findsOneWidget);
-      expect(t.widget<TextField>(find.byKey(const Key('phone'))).controller!.text, '0500000011');
+      expect(t.widget<TextField>(find.byKey(const Key('username'))).controller!.text, 'demo.driver');
       c.read(onlineProvider.notifier).set(true);
       await t.pump();
       expect(find.byKey(const Key('offline-strip')), findsNothing);
-      expect(t.widget<TextField>(find.byKey(const Key('phone'))).controller!.text, '0500000011');
+      expect(t.widget<TextField>(find.byKey(const Key('username'))).controller!.text, 'demo.driver');
     });
   });
 
@@ -453,32 +453,34 @@ void main() {
   });
 
   group('login', () {
-    testWidgets('Arabic-Indic digits are normalised, Send is disabled until the number is plausible, resend waits 30 s', (t) async {
+    testWidgets('Arabic-Indic digits are normalised and Sign in stays disabled until both fields are filled', (t) async {
       final api = FakeApi();
       await pumpScreen(t, const LoginScreen(), api: api, lang: 'ar');
-      expect(t.widget<FilledButton>(find.byKey(const Key('submit'))).onPressed, isNull);
-      await t.enterText(find.byKey(const Key('phone')), '0500000011'.split('').map((d) => String.fromCharCode(0x0660 + int.parse(d))).join());
+      bool enabled() => t.widget<FilledButton>(find.byKey(const Key('submit'))).onPressed != null;
+      expect(enabled(), isFalse);
+      await t.enterText(find.byKey(const Key('username')), 'u٩٦٦٥٠٠٠٠٠٠١١');
       await t.pump();
+      expect(t.widget<TextField>(find.byKey(const Key('username'))).controller!.text, 'u966500000011');
+      expect(enabled(), isFalse, reason: 'no password yet');
+      await t.enterText(find.byKey(const Key('password')), 'Demo#Pass2026');
+      await t.pump();
+      expect(enabled(), isTrue);
       await t.tap(find.byKey(const Key('submit')));
       await settle(t);
-      expect(api.calls, contains('sendOtp:0500000011'));
-      expect(t.widget<TextButton>(find.byKey(const Key('resend-otp'))).onPressed, isNull);
-      await t.pump(const Duration(seconds: 31));
-      expect(t.widget<TextButton>(find.byKey(const Key('resend-otp'))).onPressed, isNotNull);
-      await t.tap(find.byKey(const Key('resend-otp')));
-      await settle(t);
-      expect(count(api, 'sendOtp:'), 2);
+      expect(api.calls, contains('login:u966500000011:Demo#Pass2026'));
     });
 
-    testWidgets('a network failure on Send shows the connectivity message and keeps the typed number', (t) async {
+    testWidgets('a network failure shows the connectivity message and keeps what was typed', (t) async {
       final api = FakeApi()..errorOnNext = ApiException('NETWORK', 'x');
       await pumpScreen(t, const LoginScreen(), api: api);
-      await t.enterText(find.byKey(const Key('phone')), '0500000011');
+      await t.enterText(find.byKey(const Key('username')), 'demo.driver');
+      await t.enterText(find.byKey(const Key('password')), 'Demo#Pass2026');
       await t.pump();
       await t.tap(find.byKey(const Key('submit')));
       await settle(t);
       expect(find.text('No internet connection. Check your signal and try again.'), findsOneWidget);
-      expect(t.widget<TextField>(find.byKey(const Key('phone'))).controller!.text, '0500000011');
+      expect(t.widget<TextField>(find.byKey(const Key('username'))).controller!.text, 'demo.driver');
+      expect(t.widget<TextField>(find.byKey(const Key('password'))).controller!.text, 'Demo#Pass2026');
       expect(t.widget<FilledButton>(find.byKey(const Key('submit'))).onPressed, isNotNull);
     });
   });

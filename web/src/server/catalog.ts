@@ -61,7 +61,7 @@ export const OFFER_DEAD: OfferStatus[] = ["rejected", "expired", "cancelled", "n
 
 // ── Permissions ──
 export const ALL_PERMISSIONS = [
-  "users.view", "users.edit", "drivers.view", "drivers.sensitive",
+  "users.view", "users.edit", "drivers.view", "drivers.sensitive", "accounts.create", "accounts.edit",
   "requests.view", "requests.edit", "requests.assign",
   "attendance.edit", "replacements.manage", "live_location.view",
   "tickets.view", "tickets.manage", "complaints.manage", "custody.view",
@@ -71,16 +71,18 @@ export const ALL_PERMISSIONS = [
   "reports.view", "reports.export",
   "staff.view", "staff.manage",
   "offices.view", "offices.manage", "verification.manage", "documents.review",
-  "settings.view", "settings.edit", "audit.view", "broadcast.send",
+  "settings.view", "settings.edit", "audit.view", "broadcast.send", "notes.manage",
+  "integrations.view", "integrations.manage",
 ] as const;
 export type Permission = (typeof ALL_PERMISSIONS)[number];
 
 export const STAFF_PRESETS: Record<string, Permission[]> = {
-  support: ["users.view", "requests.view", "tickets.view", "tickets.manage", "complaints.manage"],
+  support: ["users.view", "requests.view", "tickets.view", "tickets.manage", "complaints.manage", "notes.manage", "integrations.view"],
   operations: [
     "users.view", "drivers.view", "requests.view", "requests.edit", "requests.assign", "attendance.edit",
     "replacements.manage", "live_location.view", "tickets.view", "tickets.manage", "complaints.manage",
-    "custody.view", "documents.review", "cod.manage",
+    "custody.view", "documents.review", "cod.manage", "accounts.create", "accounts.edit", "notes.manage",
+    "integrations.view", "integrations.manage",
   ],
   finance: [
     "finance.view", "wallets.view", "settlements.review", "settlements.approve", "payouts.execute",
@@ -88,7 +90,7 @@ export const STAFF_PRESETS: Record<string, Permission[]> = {
   ],
   hr_verification: [
     "users.view", "users.edit", "drivers.view", "drivers.sensitive", "verification.manage", "documents.review",
-    "offices.view", "offices.manage",
+    "offices.view", "offices.manage", "accounts.create", "accounts.edit", "notes.manage",
   ],
   account_manager: ["users.view", "requests.view", "pricing.view", "reports.view", "tickets.view", "offices.view"],
   reports: ["reports.view", "reports.export", "audit.view", "requests.view"],

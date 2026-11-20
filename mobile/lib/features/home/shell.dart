@@ -12,6 +12,8 @@ class HomeShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tr;
     final offers = ref.watch(offersProvider).value?.length ?? 0;
+    // A driver of an office has no earnings or wallet to look at (J4): the tab is "Wallet & cash" for him.
+    final officeDriver = ref.watch(overviewProvider.select((o) => o.value?.walletManagedByOffice == true));
     // A new-offer alert that arrived since the driver last looked: a dot on the tab (the count follows once the list has refreshed).
     final fresh = ref.watch(offerAlertsProvider.select((s) => s.unseen));
     if (shell.currentIndex == 2 && fresh > 0) WidgetsBinding.instance.addPostFrameCallback((_) => ref.read(offerAlertsProvider.notifier).clear());
@@ -24,7 +26,7 @@ class HomeShell extends ConsumerWidget {
           NavigationDestination(icon: const Icon(Icons.today_outlined), selectedIcon: const Icon(Icons.today), label: t('m.tab_today')),
           NavigationDestination(icon: const Icon(Icons.local_shipping_outlined), selectedIcon: const Icon(Icons.local_shipping), label: t('m.tab_jobs')),
           NavigationDestination(icon: Badge(key: const Key('offers-badge'), isLabelVisible: offers > 0 || fresh > 0, label: offers > 0 ? Text('$offers') : null, child: const Icon(Icons.work_outline)), selectedIcon: const Icon(Icons.work), label: t('m.tab_offers')),
-          NavigationDestination(icon: const Icon(Icons.account_balance_wallet_outlined), selectedIcon: const Icon(Icons.account_balance_wallet), label: t('m.tab_earnings')),
+          NavigationDestination(icon: const Icon(Icons.account_balance_wallet_outlined), selectedIcon: const Icon(Icons.account_balance_wallet), label: officeDriver ? t('drs.wallet_cash_title') : t('m.tab_earnings')),
           NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: t('m.tab_profile')),
         ],
       ),

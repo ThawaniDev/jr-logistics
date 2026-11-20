@@ -9,8 +9,9 @@ import { useUser } from "@/components/layout/auth-context";
 import { hasAny, useTx } from "./admin-common";
 import { AgreementBadge, Money } from "./admin-offices-common";
 import { agreementView, issueKey } from "./admin-offices-lib";
+import { OfficePerformance } from "./admin-office-detail-insights";
 
-/** Overview tab: what needs attention (KPIs that open the matching tab), readiness to receive jobs, and the office's details. */
+/** Overview tab: what needs attention now (cards that open the matching tab), readiness to receive jobs, the period's performance (KPIs + charts) and the office's details. */
 export function OfficeOverview({ id }: { id: string }) {
   const { t, locale } = useI18n(); const me = useUser(); const tx = useTx();
   const { data: o, error, mutate } = useApi(`/admin/offices/${id}`);
@@ -43,6 +44,8 @@ export function OfficeOverview({ id }: { id: string }) {
         ? <Notice tone="success" title={t("rdq.ready_title")}>{t("rdq.ready_body")}</Notice>
         : <Notice tone="warn" title={t("rdq.not_ready_title")}><ul className="list-disc ps-5">{o.readiness.issues.map((i: string) => <li key={i}>{t(issueKey(i))}</li>)}</ul></Notice>}
       {o.verificationNote && <Notice tone="info" title={t("verify.note")}>{o.verificationNote}</Notice>}
+
+      <OfficePerformance id={id} />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <Section title={t("adm.details")} className="lg:col-span-2" id="rdq-office-details">

@@ -106,17 +106,19 @@ export const isEmptyPatch = (p: WarehousePatch) => Object.keys(p).length === 0;
 
 // ───────────────────────── Platform settings (E.0) ─────────────────────────
 
-export const FIELDOPS_BOOL_KEYS = ["arrivalGeofenceEnabled", "driverCanReorderRoute", "rescheduleEvidenceText", "rescheduleEvidencePhoto", "driverSingleActiveJob", "stopFailStrictRules"] as const;
+export const FIELDOPS_BOOL_KEYS = ["arrivalGeofenceEnabled", "driverCanReorderRoute", "rescheduleEvidenceText", "rescheduleEvidencePhoto", "driverSingleActiveJob", "stopFailStrictRules", "routingEnabled", "b2bShipmentsEnabled"] as const;
 export const FIELDOPS_NUM_KEYS = ["arrivalRadiusM", "stopWaitMin"] as const;
 export const FIELDOPS_RANGE: Record<(typeof FIELDOPS_NUM_KEYS)[number], [number, number]> = { arrivalRadiusM: [20, 5000], stopWaitMin: [0, 120] };
 /** Server defaults (E.0) — shown when the settings object has no value yet. */
 export interface FieldopsSettings {
   arrivalGeofenceEnabled: boolean; arrivalRadiusM: number; driverCanReorderRoute: boolean; rescheduleEvidenceText: boolean; rescheduleEvidencePhoto: boolean;
   stopWaitMin: number; driverSingleActiveJob: boolean; stopFailStrictRules: boolean; warehouseDefaults: Record<WarehouseSwitch, boolean>;
+  /** Update J: route planning + one-stop-at-a-time (J2) and business-type recipients (J3). Both are OFF until a super admin switches them on. */
+  routingEnabled: boolean; b2bShipmentsEnabled: boolean;
 }
 export const FIELDOPS_DEFAULTS: FieldopsSettings = {
   arrivalGeofenceEnabled: true, arrivalRadiusM: 200, driverCanReorderRoute: true, rescheduleEvidenceText: true, rescheduleEvidencePhoto: true,
-  stopWaitMin: 0, driverSingleActiveJob: true, stopFailStrictRules: false, warehouseDefaults: WAREHOUSE_DEFAULTS_FALLBACK,
+  stopWaitMin: 0, driverSingleActiveJob: true, stopFailStrictRules: false, warehouseDefaults: WAREHOUSE_DEFAULTS_FALLBACK, routingEnabled: false, b2bShipmentsEnabled: false,
 };
 export const FIELDOPS_KEYS = [...FIELDOPS_BOOL_KEYS, ...FIELDOPS_NUM_KEYS, "warehouseDefaults"] as const;
 /** Legacy keys the form always re-sends (the existing save pattern). `stopWaitMin`, `settlementPeriod` and `separationOfDuties` are intentionally absent. */

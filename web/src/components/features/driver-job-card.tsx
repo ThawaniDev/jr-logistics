@@ -12,14 +12,15 @@ export function JobCard({ job, children, href, history }: { job: any; children?:
   // Per-parcel jobs: no single delivery address or recipient (they are per stop). Before accepting, the count is a ceiling — the exact share is set on accept.
   const manifest = job.manifest === true; const offered = job.status === "offered";
   const units = manifest
-    ? (offered ? t("dstop.up_to_parcels", { n: fmtNum(job.expectedUnits, locale) }) : t("dstop.n_stops_in", { n: fmtNum(job.stopsSummary?.total ?? job.expectedUnits, locale), city: t(`city.${job.deliveryCity}`) }))
+    ? (offered ? t("dstop.up_to_parcels", { n: fmtNum(job.expectedUnits, locale) }) : t("dstop.n_stops_in", { n: fmtNum(job.stopsSummary?.total || job.expectedUnits, locale), city: t(`city.${job.deliveryCity}`) }))
     : `${fmtNum(job.expectedUnits, locale)} ${t(job.service === "delivery_driver" ? "unit.shipment" : "unit.vehicle_day")}`;
   // Active jobs: show where the route stands and what the driver should do now, so the dashboard answers "what next?" without opening the job.
   const sum = manifest && job.status === "attendance_confirmed" ? (job.stopsSummary as StopsSummary | null) : null;
   const prog = sum && sum.total > 0 ? progressOf(sum) : null;
   const showHint = !history && !!href && !offered && !prog;
-  const hintKey = job.status === "completed" ? "fod.hint_completed" : `job.hint_${job.status}`; // paid automatically when the job ends — no confirmation wait
-  const counters = manifest && !offered && (job.stopsSummary?.total ?? 0) > 0;
+  // paid automatically when the job ends — no confirmation wait; a driver of an office is not told about earnings (J4): his office handles the payment
+  const officeHint = job.earningHidden && ["completed", "pending_settlement"].includes(job.status); // the hint already says "your office handles the payment"
+  const hintKey = officeHint ? "jd.hint_completed_office" : job.status === "completed" ? "fod.hint_completed" : `job.hint_${job.status}`;
   const body = (
     <Card className="space-y-3 p-4 transition hover:border-accent/50">
       <div className="flex items-start justify-between gap-2">
@@ -37,11 +38,11 @@ export function JobCard({ job, children, href, history }: { job: any; children?:
       {job.finalUnits != null && <p className="text-xs text-muted">{t("units.final")}: <span className="ltr-num font-medium text-ink">{fmtNum(job.finalUnits, locale)}</span></p>}
       {job.cancelReason && <p className="text-xs text-muted">{t("job.cancel_reason", { reason: job.cancelReason })}</p>}
       {history && <p className="text-xs text-muted">{t(hintKey)}</p>}
-      {job.earningHidden ? <p className="text-xs text-muted">{t("job.paid_by_office")}</p> : job.expectedEarningCents != null && !(history && !["completed", "pending_settlement"].includes(job.status)) && (
+      {job.earningHidden ? !officeHint && <p className="text-xs text-muted">{t("job.paid_by_office")}</p> : job.expectedEarningCents != null && !(history && !["completed", "pending_settlement"].includes(job.status)) && (
         <div className="flex items-center justify-between rounded-xl bg-accent/10 px-3 py-2"><span className="text-xs text-muted">{t("job.expected_earning")}</span><span className="ltr-num font-bold text-accent">{fmtMoney(job.expectedEarningCents, locale)}</span></div>
       )}
       {prog && <div className="space-y-1"><div role="progressbar" aria-label={t("a11y.progress")} aria-valuemin={0} aria-valuemax={prog.total} aria-valuenow={prog.done} className="flex h-2 overflow-hidden rounded-full bg-line"><div className="bg-accent" style={{ width: `${(prog.delivered / prog.total) * 100}%` }} /><div className="bg-danger" style={{ width: `${(prog.failed / prog.total) * 100}%` }} /></div><p className="text-xs text-muted">{t("dstop.prog_delivered", { n: fmtNum(prog.delivered, locale) })} · {t("dstop.prog_remaining", { n: fmtNum(prog.remaining, locale) })}</p></div>}
-      {counters && <JobCounters job={job} />}
+      <JobCounters job={job} />
       {showHint && <p className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-medium">{t(hintKey)}</p>}
       {children}
     </Card>

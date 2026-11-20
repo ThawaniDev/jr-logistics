@@ -1,43 +1,42 @@
 "use client";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, FileCheck2, LifeBuoy, Lock, MapPin, Receipt, Truck, Wallet, Coins } from "lucide-react";
-import { Badge, EmptyState, ErrorState, InfoGrid, ProgressBar, Section, Stat, StatGrid, StatusBadge, Table, Td, CellPair } from "@/components/ui";
-import { useApi } from "@/components/ui/data";
-import { fmtDateTime, fmtMoney, fmtNum } from "@/lib/format";
+import { ArrowRight, MapPin } from "lucide-react";
+import { Badge, EmptyState, ErrorState, InfoGrid, ProgressBar, Section, StatusBadge, Table, Td, CellPair } from "@/components/ui";
+import { useApi, useUrlState } from "@/components/ui/data";
+import { fmtDateTime, fmtMoney } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
 import { useTx } from "./admin-common";
 import { companyTabs, companyTabHref } from "./admin-companies-lib";
 import { useCompany } from "./admin-companies-ctx";
+import { CompanyKpiStrip, type CompanyStats } from "./admin-company-detail-kpis";
+import { CompanyAlerts, CompanyCharts, CompanyHealth } from "./admin-company-detail-charts";
+import { CompanyProfileFacts } from "./admin-company-detail-profile";
+import { parsePeriod } from "./admin-company-detail-lib";
 
-/** Overview tab: what needs attention (KPIs that link to the tab that handles it), the recent orders, and the account / warehouse state. */
+/**
+ * Overview tab: what needs attention (alerts), the KPI strip with a period selector and the change against the period before, the charts, the health score with its formula,
+ * the recent orders, the profile facts (registration and VAT numbers, contact, source, verification history) and the account / warehouse state.
+ */
 export function CompanyOverview() {
   const { t, locale } = useI18n(); const me = useUser(); const c = useCompany(); const tx = useTx();
   const can = (p: string) => hasPerm(me, p);
   const tabs = companyTabs(can); const href = (k: Parameters<typeof companyTabHref>[1]) => (tabs.includes(k) ? companyTabHref(c.id, k) : undefined);
+  const [raw, setPeriod] = useUrlState("period", "30d"); const period = parsePeriod(raw);
+  const stats = useApi<CompanyStats>(`/admin/companies/${c.id}/stats?period=${period}`, { keepPreviousData: true, shouldRetryOnError: false });
   const { data: o, error, mutate } = useApi(`/admin/companies/${c.id}/overview`, { shouldRetryOnError: false });
   if (error) return <ErrorState error={error} retry={() => mutate()} />;
-  const load = !o; const money = (n?: number | null) => fmtMoney(n, locale);
-  const seeOrders = can("requests.view"), seeWallet = can("finance.view") || can("wallets.view"), seeSpend = can("finance.view"), seeCod = can("cod.manage") || can("finance.view");
-  const seeSupport = can("tickets.view") || can("complaints.manage"), seeDocs = can("documents.review") || can("verification.manage");
-  const cases = o?.support ? (o.support.openTickets ?? 0) + (o.support.openComplaints ?? 0) : 0;
-  const docs = o?.documents; const wallet = o?.wallet;
-  const wh = c.profile.warehouse;
+  const money = (n?: number | null) => fmtMoney(n, locale);
+  const seeOrders = can("requests.view"), docs = o?.documents, wh = c.profile.warehouse;
+  const st = stats.data, loading = !st && !stats.error;
   return (
     <div className="space-y-5">
-      <StatGrid cols={4}>
-        {seeOrders && <Stat label={t("rdp.ov_active")} value={fmtNum(o?.orders.open, locale)} hint={o ? t("rdp.ov_active_hint", { n: fmtNum(o.orders.total, locale) }) : undefined} tone="cyan" icon={<Truck className="size-5" />} href={href("orders")} loading={load} />}
-        {seeOrders && <Stat label={t("biz.completed")} value={fmtNum(o?.orders.completed, locale)} hint={o ? t("rdp.ov_lost_hint", { n: fmtNum(o.orders.lost, locale) }) : undefined} icon={<CheckCircle2 className="size-5" />} href={href("orders") && `${companyTabHref(c.id, "orders")}?status=completed`} loading={load} />}
-        {seeSpend && <Stat label={t("rdp.ov_billed")} value={money(o?.spend?.billedCents)} hint={o?.spend ? t("rdp.ov_billed_hint", { n: fmtNum(o.spend.settlements, locale) }) : undefined} tone="gold" icon={<Receipt className="size-5" />} href={href("finance")} loading={load} />}
-        {seeSupport && <Stat label={t("rdp.ov_cases")} value={fmtNum(cases, locale)} hint={o?.support ? t("rdp.ov_cases_hint", { t: fmtNum(o.support.openTickets ?? 0, locale), c: fmtNum(o.support.openComplaints ?? 0, locale) }) : undefined} tone={cases > 0 ? "danger" : "muted"} icon={<LifeBuoy className="size-5" />} href={can("tickets.view") ? `/admin/cases?q=${encodeURIComponent(c.contactName)}` : undefined} loading={load} />}
-        {seeWallet && <Stat label={t("wallet.available")} value={money(wallet?.availableCents)} hint={wallet ? (wallet.creditLimitCents > 0 ? t("rdp.ov_credit_hint", { amount: money(wallet.creditLimitCents) }) : t("rdp.ov_wallet_hint")) : undefined} tone={(wallet?.availableCents ?? 0) < 0 ? "danger" : "accent"} icon={<Wallet className="size-5" />} href={href("finance")} loading={load} />}
-        {seeWallet && <Stat label={t("wallet.reserved")} value={money(wallet?.reservedCents)} hint={wallet ? t("rdp.ov_held_hint", { amount: money(wallet.heldCents) }) : undefined} tone="muted" icon={<Lock className="size-5" />} href={href("finance")} loading={load} />}
-        {seeCod && <Stat label={t("rdp.ov_cod")} value={money(o?.cod?.outstandingCents)} hint={o?.cod ? t("rdp.ov_cod_hint", { amount: money(o.cod.collectedCents) }) : undefined} tone={(o?.cod?.outstandingCents ?? 0) > 0 ? "gold" : "muted"} icon={<Coins className="size-5" />} href={href("finance")} loading={load} />}
-        {seeDocs && <Stat label={t("verify.documents")} value={docs ? `${docs.requiredApproved}/${docs.requiredTotal}` : "—"} hint={docs ? (docs.toReview > 0 ? t("rdp.ov_docs_review", { n: fmtNum(docs.toReview, locale) }) : t("rdp.ov_docs_hint")) : undefined} tone={docs && docs.requiredApproved < docs.requiredTotal ? "gold" : "accent"} icon={<FileCheck2 className="size-5" />} href={href("documents")} loading={load} />}
-      </StatGrid>
+      {st && <CompanyAlerts alerts={st.alerts} />}
+      {stats.error && !st ? <ErrorState error={stats.error} retry={() => stats.mutate()} /> : <CompanyKpiStrip id={c.id} data={st} loading={loading} period={period} onPeriod={(p) => setPeriod(p === "30d" ? "" : p)} />}
+      {(st?.charts || loading) && <CompanyCharts stats={st} loading={loading} />}
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="space-y-5 lg:col-span-2">
           {seeOrders && (
             <Section title={t("rdp.recent_orders")} flush actions={href("orders") && <Link href={companyTabHref(c.id, "orders")} className="inline-flex items-center gap-1 text-sm text-accent hover:underline">{t("common.view_all")}<ArrowRight className="size-4 rtl:rotate-180" aria-hidden /></Link>}>
               {!o ? <div className="p-5 text-sm text-muted">{t("uxa.loading")}</div> : !o.recent?.length ? <div className="p-5"><EmptyState title={t("biz.no_requests")} hint={t("rdp.no_orders_hint")} /></div> : (
@@ -52,8 +51,10 @@ export function CompanyOverview() {
                     </tr>))}
                 </Table>)}
             </Section>)}
+          <CompanyProfileFacts />
         </div>
         <div className="space-y-5">
+          <CompanyHealth stats={st} />
           <Section title={t("rdp.account_section")}>
             <InfoGrid cols={1} items={[
               { label: t("verify.title"), value: <StatusBadge status={c.profile.verificationStatus} /> },
@@ -61,7 +62,7 @@ export function CompanyOverview() {
               ...(c.profile.verificationNote ? [{ label: t("rdp.last_note"), value: c.profile.verificationNote }] : []),
               { label: t("rdp.api_webhook"), value: c.profile.hasWebhook ? <Badge tone="success">{t("rdp.webhook_on")}</Badge> : <Badge>{t("rdp.webhook_off")}</Badge> },
             ]} />
-            {docs && docs.requiredTotal > 0 && <div className="mt-4"><div className="mb-1.5 flex items-center justify-between text-xs text-muted"><span>{t("ubz.docs_progress", { done: docs.requiredApproved, total: docs.requiredTotal })}</span></div><ProgressBar value={docs.requiredApproved} max={docs.requiredTotal} tone={docs.requiredApproved < docs.requiredTotal ? "gold" : "accent"} label={t("verify.documents")} /></div>}
+            {docs && docs.requiredTotal > 0 && <div className="mt-4"><div className="mb-1.5 flex items-center justify-between text-xs text-muted"><span>{t("ubz.docs_progress", { done: docs.requiredApproved, total: docs.requiredTotal })}</span>{href("documents") && <Link href={companyTabHref(c.id, "documents")} className="text-accent hover:underline">{docs.toReview > 0 ? t("rdp.ov_docs_review", { n: docs.toReview }) : t("verify.documents")}</Link>}</div><ProgressBar value={docs.requiredApproved} max={docs.requiredTotal} tone={docs.requiredApproved < docs.requiredTotal ? "gold" : "accent"} label={t("verify.documents")} /></div>}
           </Section>
           <Section title={t("foa.wh_title")} actions={href("warehouse") && <Link href={companyTabHref(c.id, "warehouse")} className="text-sm text-accent hover:underline">{t("rdp.manage")}</Link>}>
             <div className="flex flex-wrap items-center gap-2"><Badge tone={wh ? "success" : "warn"}><MapPin className="size-3" aria-hidden />{wh ? t("foa.wh_loc_set") : t("foa.wh_loc_missing")}</Badge></div>

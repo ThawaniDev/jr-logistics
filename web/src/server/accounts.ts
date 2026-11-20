@@ -7,21 +7,25 @@ import {
 import { err } from "@/lib/errors";
 import { normalizePhone } from "@/lib/phone";
 import { randomToken } from "@/lib/ids";
-import { ALL_PERMISSIONS, BUSINESS_DOC_TYPES, DRIVER_DOC_TYPES, OFFICE_DOC_TYPES, STAFF_PRESETS, TEMPERATURE_VEHICLES, VEHICLE_TYPES, type Permission } from "./catalog";
+import { ALL_PERMISSIONS, BUSINESS_DOC_TYPES, DRIVER_DOC_TYPES, OFFICE_DOC_TYPES, TEMPERATURE_VEHICLES, VEHICLE_TYPES, type Permission } from "./catalog";
 import { getSettings } from "./settings";
 import { hashPassword, passwordProblem, verifyPassword } from "./auth/password";
+import { normalizeUsername, uniqueUsername, usernameFromEmail, usernameProblem } from "./auth/username";
+import { env } from "@/lib/env";
 import { hit } from "./auth/ratelimit";
 import { signMfaToken } from "./auth/mfa";
-import { createSession, revokeAllSessions } from "./auth/session";
+import { openSession, revokeAllSessions, revokeOtherSessions } from "./auth/session";
+import { recordLogin, loginFailureReason } from "./data-capture";
 import { ensureAccount } from "./wallet";
 import { audit } from "./audit";
+import { resolveStaffAccess } from "./roles-staff";
 import { notify, notifyMany, notifyOps } from "./notify";
 import { storage } from "./storage";
 import { requirePerm, can } from "./auth/permissions";
 import { contains } from "@/lib/sql";
 
 export interface RegisterInput {
-  role: "business" | "driver" | "office"; name: string; email?: string | null; city?: string | null; language?: string;
+  role: "business" | "driver" | "office"; username: string; password: string; phone: string; name: string; email?: string | null; city?: string | null; language?: string;
   companyName?: string; crNumber?: string; industry?: string; address?: string; taxNumber?: string; bankName?: string; iban?: string;
   nationalId?: string; vehicleType?: string; vehicleTemperature?: string; vehiclePlate?: string; services?: string[];
   termsAccepted: boolean;
@@ -33,9 +37,27 @@ export function normalizeIban(raw: string) {
   return /^SA\d{22}$/.test(v) ? v : null;
 }
 
-export async function registerUser(phoneRaw: string, i: RegisterInput, ip?: string) {
-  const phone = normalizePhone(phoneRaw);
+/** Which of the unique columns a 23505 error is about. */
+const UNIQUE_FIELD: Record<string, "username" | "phone" | "email"> = { users_username_unique: "username", users_phone_unique: "phone", users_email_unique: "email" };
+export const conflictField = (e: unknown): "username" | "phone" | "email" | null => {
+  const c = (e as { cause?: { code?: string; constraint?: string } }).cause;
+  return c?.code === "23505" ? UNIQUE_FIELD[c.constraint ?? ""] ?? null : null;
+};
+const CONFLICT_TEXT = { username: "This username is already taken", phone: "An account with this phone number already exists", email: "An account with this email already exists" };
+export const conflict = (field: "username" | "phone" | "email") => err("CONFLICT", CONFLICT_TEXT[field], { field });
+
+/**
+ * Self-registration (J1): username + password + the profile of the role. No code is sent: the phone is a contact number and the account is checked by staff
+ * through its documents. `409 CONFLICT` says in `details.field` which of username / phone / email is already taken.
+ */
+export async function registerUser(i: RegisterInput, ip?: string) {
+  const phone = normalizePhone(i.phone);
   if (!phone) throw err("VALIDATION", "Invalid phone", { field: "phone" });
+  const username = normalizeUsername(i.username);
+  const uBad = usernameProblem(username);
+  if (uBad) throw err("VALIDATION", "Invalid username", { field: "username", reason: uBad });
+  const pBad = passwordProblem(i.password);
+  if (pBad) throw err("VALIDATION", pBad, { field: "password" });
   if (!i.termsAccepted) throw err("TERMS_REQUIRED", "You must accept the terms");
   if (!i.name?.trim()) throw err("VALIDATION", "Name required", { field: "name" });
   const s = await getSettings();
@@ -47,10 +69,17 @@ export async function registerUser(phoneRaw: string, i: RegisterInput, ip?: stri
     if (TEMPERATURE_VEHICLES.includes(i.vehicleType) && !["dry", "cold"].includes(i.vehicleTemperature ?? "")) throw err("VALIDATION", "Temperature required", { field: "vehicleTemperature" });
     if (!i.services?.length || i.services.some((x) => !s.enabledServices.includes(x))) throw err("VALIDATION", "Choose at least one enabled service", { field: "services" });
   }
+  const email = i.email?.trim().toLowerCase() || null;
+  const clash = await db.select({ username: users.username, phone: users.phone, email: users.email }).from(users)
+    .where(or(eq(users.username, username), eq(users.phone, phone), email ? eq(users.email, email) : undefined));
+  if (clash.some((r) => r.username === username)) throw conflict("username");
+  if (clash.some((r) => r.phone === phone)) throw conflict("phone");
+  if (email && clash.some((r) => r.email === email)) throw conflict("email");
+  const passwordHash = await hashPassword(i.password);
   try {
     return await db.transaction(async (tx) => {
       const [u] = await tx.insert(users).values({
-        role: i.role, phone, email: i.email?.toLowerCase() || null, name: i.name.trim(), city: i.city ?? null, language: i.language ?? "ar",
+        role: i.role, phone, username, passwordHash, email, name: i.name.trim(), city: i.city ?? null, language: i.language ?? "ar",
       }).returning();
       if (i.role === "business") {
         await tx.insert(businessProfiles).values({ userId: u.id, companyName: i.companyName!, crNumber: i.crNumber, industry: i.industry, address: i.address, responsiblePerson: i.name });
@@ -71,7 +100,8 @@ export async function registerUser(phoneRaw: string, i: RegisterInput, ip?: stri
       return u;
     });
   } catch (e) {
-    if ((e as { cause?: { code?: string } }).cause?.code === "23505") throw err("CONFLICT", "An account with this phone or email already exists");
+    const f = conflictField(e);
+    if (f) throw conflict(f); // lost a race with another registration
     throw e;
   }
 }
@@ -81,59 +111,91 @@ export async function findByPhone(phone: string) {
   return u ?? null;
 }
 
-// ───────── Staff / admin ─────────
-export async function loginPassword(emailRaw: string, password: string, ip = "unknown", client: "web" | "mobile" = "web") {
-  const email = emailRaw.trim().toLowerCase();
-  await hit(`login:${ip}:${email}`, 10, 900);
-  const [u] = await db.select().from(users).where(eq(users.email, email));
+// ───────── Sign-in (every role) ─────────
+const DUMMY_HASH = "$2a$04$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinva"; // a compare against this takes as long as a real one
+/** Wrong passwords before the account is locked, and for how long. */
+export const MAX_FAILED_LOGINS = 5, LOCK_MINUTES = 15;
+
+/**
+ * Username (or, for staff, e-mail address) + password, for every role. Unknown name and wrong password look the same (401 "Invalid credentials", with a dummy
+ * compare so they also take the same time); 5 wrong passwords lock the account for 15 minutes; a suspended account is refused (403) once the password was right.
+ * Rate limit: 10 attempts / 15 min per ip + name (demo and test deployments are signed into repeatedly by testers and automated runs, so they get a roomy limit).
+ */
+export async function loginWithPassword(identifierRaw: string, password: string, ip = "unknown", client: "web" | "mobile" = "web", userAgent?: string) {
+  const identifier = normalizeUsername(identifierRaw);
+  const failed = (userId: string | null, failureReason: string) => recordLogin({ userId, identifier, method: "password", success: false, failureReason, ip, userAgent, client });
+  try { await hit(`login:${ip}:${identifier}`, env.demoMode ? 300 : 10, 900); } catch (e) { await failed(null, loginFailureReason(e, "rate_limited")); throw e; }
+  const [u] = await db.select().from(users).where(identifier.includes("@") ? eq(users.email, identifier) : eq(users.username, identifier));
   const generic = err("UNAUTHENTICATED", "Invalid credentials");
-  if (!u || !["admin", "staff"].includes(u.role) || u.status !== "active") { await verifyPassword(password, "$2a$04$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinva"); throw generic; }
-  if (u.lockedUntil && u.lockedUntil > new Date()) throw err("RATE_LIMITED", "Account temporarily locked");
-  if (!(await verifyPassword(password, u.passwordHash))) {
-    // One atomic statement: concurrent guesses each count (a read-modify-write here let parallel requests dodge the lockout).
+  if (!u) { await verifyPassword(password, DUMMY_HASH); await failed(null, "unknown_user"); throw generic; }
+  if (u.lockedUntil && u.lockedUntil > new Date()) { await failed(u.id, "locked"); throw err("RATE_LIMITED", "Account temporarily locked"); }
+  const ok = u.passwordHash ? await verifyPassword(password, u.passwordHash) : (await verifyPassword(password, DUMMY_HASH), false); // no password set yet: nobody can sign in until staff set one
+  if (!ok) {
+    await failed(u.id, "bad_password");
+    // One atomic statement: concurrent guesses each count (a read-modify-write here let parallel requests dodge the lockout). A lock that has run out starts a fresh count.
+    const fresh = sql`(${users.lockedUntil} is not null and ${users.lockedUntil} <= now())`;
     await db.update(users).set({
-      failedLogins: sql`${users.failedLogins} + 1`,
-      lockedUntil: sql`case when ${users.failedLogins} + 1 >= 5 then now() + interval '15 minutes' else ${users.lockedUntil} end`,
+      failedLogins: sql`case when ${fresh} then 1 else ${users.failedLogins} + 1 end`,
+      lockedUntil: sql`case when (case when ${fresh} then 1 else ${users.failedLogins} + 1 end) >= ${MAX_FAILED_LOGINS} then now() + make_interval(mins => ${LOCK_MINUTES}) when ${fresh} then null else ${users.lockedUntil} end`,
     }).where(eq(users.id, u.id));
     throw generic;
   }
+  if (u.status !== "active") { await failed(u.id, "suspended"); throw err("FORBIDDEN", "Account suspended"); } // only someone who knows the password learns this
   await db.update(users).set({ failedLogins: 0, lockedUntil: null }).where(eq(users.id, u.id));
-  // Password was right. With two-step verification on, no session exists yet: hand back a 5-minute proof for step two.
+  // Password was right. With two-step verification on (staff / admin), no session exists yet: hand back a 5-minute proof for step two.
   if (u.totpEnabledAt) return { mfaRequired: true as const, mfaToken: signMfaToken(u.id) };
-  return finishLogin(u, client);
+  return finishLogin(u, client, { ip, userAgent });
 }
 
-export async function finishLogin(u: User, client: "web" | "mobile" = "web") {
-  const sess = await createSession(u.id, client);
+export async function finishLogin(u: User, client: "web" | "mobile" = "web", meta: { ip?: string; userAgent?: string } = {}) {
+  const sess = await openSession(u, { client, method: "password", ip: meta.ip, userAgent: meta.userAgent });
   await audit(u, "auth.login", "user", u.id);
   return { mfaRequired: false as const, user: u, ...sess };
 }
 
-export async function changePassword(u: User, current: string, next: string) {
+/**
+ * Any signed-in user changes their own password. Needs the current one; every other session of the user ends (the one in use stays, so the user is not thrown out).
+ * Clears a "choose a new password" flag set by staff.
+ */
+export async function changePassword(u: User, current: string, next: string, keepToken?: string | null) {
+  await hit(`pwchange:${u.id}`, env.demoMode ? 300 : 10, 900); // a stolen session cannot be used to guess the current password
   const bad = passwordProblem(next);
   if (bad) throw err("VALIDATION", bad, { field: "newPassword" });
   if (!(await verifyPassword(current, u.passwordHash))) throw err("UNAUTHENTICATED", "Current password is incorrect");
-  await db.update(users).set({ passwordHash: await hashPassword(next), mustChangePassword: false }).where(eq(users.id, u.id));
-  await revokeAllSessions(u.id);
+  if (current === next) throw err("VALIDATION", "SAME_PASSWORD", { field: "newPassword" });
+  await db.update(users).set({ passwordHash: await hashPassword(next), mustChangePassword: false, failedLogins: 0, lockedUntil: null, updatedAt: new Date() }).where(eq(users.id, u.id));
+  await revokeOtherSessions(u.id, keepToken, "password_changed");
   await audit(u, "auth.change_password", "user", u.id);
 }
 
-export interface StaffInput { name: string; email: string; password: string; staffRole?: string; permissions?: Permission[]; phone?: string }
+export interface StaffInput { name: string; email: string; username?: string; password: string; staffRole?: string; permissions?: Permission[]; phone?: string }
 export async function createStaff(admin: User, i: StaffInput) {
   requirePerm(admin, "staff.manage");
   const bad = passwordProblem(i.password);
   if (bad) throw err("VALIDATION", bad, { field: "password" });
-  const perms = [...new Set([...(i.staffRole ? STAFF_PRESETS[i.staffRole] ?? [] : []), ...(i.permissions ?? [])])];
+  const access = (await resolveStaffAccess(admin, { staffRole: i.staffRole, permissions: i.permissions }))!; // a role's permissions, or the individual list (server/roles-staff.ts)
+  const perms = access.permissions;
   if (perms.some((p) => !(ALL_PERMISSIONS as readonly string[]).includes(p))) throw err("VALIDATION", "Unknown permission");
   assertGrantable(admin, perms);
+  // The username is the one the form sent, or — when it did not send one — the part of the e-mail before the @ (numbered when taken).
+  let username: string;
+  if (i.username?.trim()) {
+    username = normalizeUsername(i.username);
+    const uBad = usernameProblem(username);
+    if (uBad) throw err("VALIDATION", "Invalid username", { field: "username", reason: uBad });
+    if ((await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1)).length) throw conflict("username");
+  } else username = await uniqueUsername(usernameFromEmail(i.email));
   try {
     const [u] = await db.insert(users).values({
-      role: "staff", name: i.name, email: i.email.toLowerCase(), phone: i.phone ? normalizePhone(i.phone) : null, passwordHash: await hashPassword(i.password),
-      staffRole: i.staffRole ?? null, permissions: perms, mustChangePassword: true,
+      role: "staff", name: i.name, email: i.email.toLowerCase(), username, phone: i.phone ? normalizePhone(i.phone) : null, passwordHash: await hashPassword(i.password),
+      staffRole: access.staffRole, permissions: perms, mustChangePassword: true,
     }).returning();
-    await audit(admin, "staff.create", "user", u.id, { staffRole: i.staffRole, permissions: perms });
+    await audit(admin, "staff.create", "user", u.id, { staffRole: access.staffRole, permissions: perms, username });
     return u;
   } catch (e) {
+    const f = conflictField(e);
+    if (f === "username") throw conflict("username");
+    if (f) throw err("CONFLICT", "Email or phone already used", { field: f });
     if ((e as { cause?: { code?: string } }).cause?.code === "23505") throw err("CONFLICT", "Email or phone already used");
     throw e;
   }
@@ -164,16 +226,11 @@ export async function updateStaff(admin: User, id: string, patch: { name?: strin
   assertCanManage(admin, t);
   const set: Partial<typeof users.$inferInsert> = {};
   if (patch.name) set.name = patch.name;
-  if (patch.staffRole !== undefined) set.staffRole = patch.staffRole;
-  if (patch.permissions) {
-    if (patch.permissions.some((p) => !(ALL_PERMISSIONS as readonly string[]).includes(p))) throw err("VALIDATION", "Unknown permission");
-    // Only newly added permissions must be grantable; removing is always fine.
-    assertGrantable(admin, patch.permissions.filter((p) => !t.permissions.includes(p)));
-    set.permissions = patch.permissions;
-  }
+  const access = await resolveStaffAccess(admin, patch, t); // a role gives its permissions, `staffRole: null` individual ones; null = access unchanged (server/roles-staff.ts)
+  if (access) Object.assign(set, access);
   if (patch.status) set.status = patch.status;
   const [u] = await db.update(users).set({ ...set, updatedAt: new Date() }).where(eq(users.id, id)).returning();
-  if (patch.status === "suspended" || patch.permissions) await revokeAllSessions(id);
+  if (patch.status === "suspended" || access) await revokeAllSessions(id, patch.status === "suspended" ? "suspended" : "permissions_changed");
   await audit(admin, "staff.update", "user", id, patch);
   return u;
 }
@@ -188,7 +245,7 @@ export async function resetStaffPassword(admin: User, id: string, password: stri
   if (!t) throw err("NOT_FOUND");
   assertCanManage(admin, t);
   await db.update(users).set({ passwordHash: await hashPassword(password), mustChangePassword: true, failedLogins: 0, lockedUntil: null, updatedAt: new Date() }).where(eq(users.id, id));
-  await revokeAllSessions(id);
+  await revokeAllSessions(id, "password_reset");
   await audit(admin, "staff.reset_password", "user", id);
 }
 
@@ -205,8 +262,12 @@ export async function unlockStaff(admin: User, id: string) {
 /** Idempotent. Never overwrites an existing admin's password. */
 export async function ensureSuperAdmin(email: string, password: string) {
   const [ex] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
-  if (ex) return ex;
-  const [u] = await db.insert(users).values({ role: "admin", name: "Super Admin", email: email.toLowerCase(), passwordHash: await hashPassword(password), mustChangePassword: true, permissions: [] }).returning();
+  if (ex) {
+    if (ex.username) return ex;
+    const [u] = await db.update(users).set({ username: await uniqueUsername(usernameFromEmail(email)) }).where(eq(users.id, ex.id)).returning(); // an account from before usernames existed
+    return u;
+  }
+  const [u] = await db.insert(users).values({ role: "admin", name: "Super Admin", email: email.toLowerCase(), username: await uniqueUsername(usernameFromEmail(email)), passwordHash: await hashPassword(password), mustChangePassword: true, permissions: [] }).returning();
   return u;
 }
 
@@ -333,7 +394,7 @@ export async function setUserStatus(staff: User, userId: string, status: "active
   const [t] = await db.select().from(users).where(eq(users.id, userId));
   if (!t || ["admin", "staff"].includes(t.role)) throw err("NOT_FOUND");
   await db.update(users).set({ status, updatedAt: new Date() }).where(eq(users.id, userId));
-  if (status === "suspended") await revokeAllSessions(userId);
+  if (status === "suspended") await revokeAllSessions(userId, "suspended");
   await audit(staff, `user.${status}`, "user", userId, { reason });
   return { userId, status };
 }
@@ -342,10 +403,10 @@ export async function listUsers(f: { role?: string; q?: string; status?: string;
   const pageSize = Math.min(f.pageSize ?? 25, 100), page = Math.max(f.page ?? 1, 1);
   const where = and(f.role ? eq(users.role, f.role) : undefined, f.status ? eq(users.status, f.status) : undefined,
     f.verification ? sql`coalesce((select verification_status from business_profiles where user_id = ${users.id}), (select verification_status from office_profiles where user_id = ${users.id}), (select verification_status from driver_profiles where user_id = ${users.id})) = ${f.verification}` : undefined,
-    f.q ? or(ilike(users.name, contains(f.q)), ilike(users.phone, contains(f.q)), ilike(users.email, contains(f.q))) : undefined);
+    f.q ? or(ilike(users.name, contains(f.q)), ilike(users.phone, contains(f.q)), ilike(users.email, contains(f.q)), ilike(users.username, contains(f.q))) : undefined);
   const [items, [{ total }]] = await Promise.all([
     db.select({
-      id: users.id, role: users.role, name: users.name, phone: users.phone, email: users.email, status: users.status, city: users.city, createdAt: users.createdAt,
+      id: users.id, role: users.role, name: users.name, username: users.username, phone: users.phone, email: users.email, status: users.status, city: users.city, createdAt: users.createdAt,
       // One column for every role so lists can show/filter the verification state without per-row lookups.
       verificationStatus: sql<string | null>`coalesce((select verification_status from business_profiles where user_id = ${users.id}), (select verification_status from office_profiles where user_id = ${users.id}), (select verification_status from driver_profiles where user_id = ${users.id}))`,
       warehouseSet: sql<boolean | null>`(select (warehouse_lat is not null and warehouse_lng is not null) from business_profiles where user_id = ${users.id})`, // business rows: has the warehouse pin (drivers cannot check in without it)

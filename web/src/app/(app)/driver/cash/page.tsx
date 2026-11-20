@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
-import { Banknote, HandCoins, Wallet } from "lucide-react";
-import { Badge, EmptyState, ErrorState, Notice, PageHeader, PageLoading, Section, Stat, StatGrid } from "@/components/ui";
+import { HandCoins } from "lucide-react";
+import { Badge, EmptyState, ErrorState, Notice, PageHeader, PageLoading, Section } from "@/components/ui";
+import { CashTotals } from "@/components/features/driver-cash-totals";
 import { useApi } from "@/components/ui/data";
 import { fmtDateTime, fmtMoney, fmtNum } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
@@ -20,13 +21,7 @@ export default function CashWithMe() {
       <PageHeader title={t("nav.cash_with_me")} subtitle={t("fod.cash_sub")} />
       <div className="mb-5"><Notice tone="info" title={t("fod.cash_explain_title")}>{t("fod.cash_explain")}</Notice></div>
 
-      <div className="mb-8" data-testid="cash-totals">
-        <StatGrid cols={3}>
-          <div data-testid="cash-total-collected" data-value={data.collectedCents} className="[&>*]:h-full"><Stat label={t("fod.cash_collected")} value={money(data.collectedCents)} icon={<Banknote className="size-5" />} tone="cyan" hint={t("rdo.d_cash_collected_hint")} /></div>
-          <div data-testid="cash-total-received" data-value={data.receivedCents} className="[&>*]:h-full"><Stat label={t("fod.cash_received")} value={money(data.receivedCents)} icon={<Wallet className="size-5" />} tone="accent" hint={t("rdo.d_cash_received_hint")} /></div>
-          <div data-testid="cash-total-outstanding" data-value={data.outstandingCents} className="[&>*]:h-full"><Stat label={t("fod.cash_with_me")} value={money(data.outstandingCents)} hint={data.outstandingCents > 0 ? t("fod.cash_hand_over") : t("fod.cash_nothing")} icon={<HandCoins className="size-5" />} tone={data.outstandingCents > 0 ? "gold" : "muted"} /></div>
-        </StatGrid>
-      </div>
+      <div className="mb-8"><CashTotals data={data} /></div>
 
       <h2 className="mb-3 font-semibold">{t("fod.cash_orders")}</h2>
       {orders.length === 0 ? <div className="mb-8"><EmptyState icon={<HandCoins className="size-9" />} title={t("fod.cash_orders_empty")} hint={t("fod.cash_orders_empty_hint")} /></div> : (

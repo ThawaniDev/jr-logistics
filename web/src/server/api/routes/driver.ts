@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { defineRoutes } from "../router";
 import { uuid } from "../schemas";
 import { db } from "@/db";
-import { offers, requests, driverProfiles, jobEvents } from "@/db/schema";
+import { offers, requests, driverProfiles, jobEvents, shipments } from "@/db/schema";
 import { err } from "@/lib/errors";
 import { OFFER_BUSY } from "@/server/catalog";
 import * as jobs from "@/server/jobs";
@@ -15,6 +15,7 @@ import { getSettings } from "@/server/settings";
 import { driverCash, driverCashOutstanding } from "@/server/cod";
 import { scanLoad, unscanLoad, finishLoading } from "@/server/loading";
 import { reorderOfferRoute, routeGeometry } from "@/server/route-plan";
+import { isRoutingOn } from "@/server/routing-mode";
 import { clearDriverLocation, updateDriverLocation } from "@/server/ops";
 import { myInvites, respondInvite } from "@/server/office";
 import { whatsappLink, type WaKind } from "@/server/routing";
@@ -22,6 +23,9 @@ import { logEvent } from "@/server/events";
 import { normalizePhone } from "@/lib/phone";
 import { settlements } from "@/db/schema";
 import { ensureAccount } from "@/server/wallet";
+import { overviewWalletFields, walletPolicy } from "@/server/driver-wallet-policy";
+import { withStats } from "@/server/driver-job-stats";
+import { recordAvailability, recordLocation } from "@/server/data-capture";
 
 const drv = ["driver"] as const;
 const jobFor = async (driverId: string, offerId: string) => {
@@ -33,17 +37,18 @@ const jobFor = async (driverId: string, offerId: string) => {
 defineRoutes([
   { method: "GET", path: "/driver/overview", auth: [...drv], handler: async ({ user }) => {
     const [p] = await db.select().from(driverProfiles).where(eq(driverProfiles.userId, user.id));
-    const acct = await ensureAccount(user.id);
+    const pol = await walletPolicy(user.id); // J4: an office driver sees no wallet and no earnings, only his cash
+    const acct = pol.managedByOffice ? null : await ensureAccount(user.id);
     const active = await db.select({ n: sql<number>`count(*)::int` }).from(offers).where(and(eq(offers.driverId, user.id), inArray(offers.status, OFFER_BUSY)));
     const activeJob = (await activeJobs(db, [user.id])).get(user.id) ?? null;
     const act = (await getSettings()).driverSingleActiveJob ? activeJob : null; // E11: offers are hidden while a job is active
     const newOffers = await db.select({ n: sql<number>`count(*)::int` }).from(offers).where(and(eq(offers.driverId, user.id), eq(offers.status, "offered"), act ? sql`false` : undefined));
     const cash = await driverCashOutstanding(user.id);
-    const [pending] = await db.select({ s: sql<number>`coalesce(sum(${settlements.providerCents}),0)::int` }).from(settlements).where(and(eq(settlements.driverId, user.id), sql`${settlements.officeId} is null`, inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"])));
+    const [pending] = pol.managedByOffice ? [{ s: 0 }] : await db.select({ s: sql<number>`coalesce(sum(${settlements.providerCents}),0)::int` }).from(settlements).where(and(eq(settlements.driverId, user.id), sql`${settlements.officeId} is null`, inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"])));
     return {
       availability: p?.availability, verificationStatus: p?.verificationStatus, suspendedUntil: p?.suspendedUntil, officeLinked: p?.officeLinkStatus === "linked", jobsCompleted: p?.jobsCompleted ?? 0,
       rating: p?.ratingCount ? Math.round((p.ratingSum / p.ratingCount) * 10) / 10 : null, activeJobs: active[0].n, newOffers: newOffers[0].n, activeJob, cash,
-      wallet: { availableCents: acct.availableCents, heldCents: acct.heldCents, pendingCents: pending.s },
+      ...overviewWalletFields(pol, acct ? { availableCents: acct.availableCents, heldCents: acct.heldCents, pendingCents: pending.s } : null),
     };
   } },
   { method: "PUT", path: "/driver/availability", auth: [...drv], body: z.object({ available: z.boolean() }), handler: async ({ user, input }) => {
@@ -51,11 +56,22 @@ defineRoutes([
       const [p] = await db.select().from(driverProfiles).where(eq(driverProfiles.userId, user.id));
       if (p?.suspendedUntil && p.suspendedUntil > new Date()) throw err("NOT_ELIGIBLE", "Your account is temporarily suspended", { until: p.suspendedUntil });
     } else await clearDriverLocation(user);
+    const [was] = await db.select({ a: driverProfiles.availability }).from(driverProfiles).where(eq(driverProfiles.userId, user.id));
     await db.update(driverProfiles).set({ availability: input.available ? "available" : "unavailable" }).where(eq(driverProfiles.userId, user.id));
+    await recordAvailability(user.id, was?.a ?? null, input.available ? "available" : "unavailable", "driver", "manual");
     const newOffers = input.available ? await backfillOffersForDriver(user.id) : 0;
     return { availability: input.available ? "available" : "unavailable", newOffers };
   } },
-  { method: "POST", path: "/driver/location", auth: [...drv], body: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }), handler: async ({ user, input }) => { await updateDriverLocation(user, input.lat, input.lng); return { ok: true }; } },
+  { method: "POST", path: "/driver/location", auth: [...drv], body: z.object({
+    lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180),
+    accuracyM: z.number().min(0).max(100000).optional(), speedMps: z.number().min(0).max(200).optional(), heading: z.number().min(0).max(360).optional(),
+  }), handler: async ({ user, input }) => {
+    await updateDriverLocation(user, input.lat, input.lng);
+    // Sampled path for support / analytics (at most one point a minute); the job the driver is on is attached when there is one.
+    const [job] = await db.select({ id: offers.id }).from(offers).where(and(eq(offers.driverId, user.id), inArray(offers.status, ["accepted", "arrived", "attendance_confirmed"]))).orderBy(desc(offers.updatedAt)).limit(1);
+    await recordLocation(user.id, input, job?.id ?? null);
+    return { ok: true };
+  } },
   { method: "DELETE", path: "/driver/location", auth: [...drv], handler: async ({ user }) => { await clearDriverLocation(user); return { ok: true }; } },
 
   // Offers directed at me
@@ -65,7 +81,7 @@ defineRoutes([
     if (act) return { items: [], hidden: true, activeJob: act };
     const rows = await db.select({ o: offers, r: requests }).from(offers).innerJoin(requests, eq(requests.id, offers.requestId))
       .where(and(eq(offers.driverId, user.id), eq(offers.status, "offered"), inArray(requests.status, ["published", "filling"]))).orderBy(requests.startsAt);
-    return { items: await Promise.all(rows.map(({ o, r }) => driverJobView(o, r))), hidden: false, activeJob: null };
+    return { items: await withStats(await Promise.all(rows.map(({ o, r }) => driverJobView(o, r)))), hidden: false, activeJob: null };
   } },
   // Open requests I could apply to (no offer yet)
   { method: "GET", path: "/driver/opportunities", auth: [...drv], handler: async ({ user }) => {
@@ -103,9 +119,9 @@ defineRoutes([
         .orderBy(q.scope === "active" ? requests.startsAt : desc(offers.updatedAt)).limit(q.scope === "active" ? 200 : size).offset(q.scope === "active" ? 0 : (page - 1) * size),
       db.select({ n: sql<number>`count(*)::int` }).from(offers).where(where),
     ]);
-    return { items: await Promise.all(rows.map(({ o, r }) => driverJobView(o, r))), page, pageSize: size, total: Number(n) };
+    return { items: await withStats(await Promise.all(rows.map(({ o, r }) => driverJobView(o, r)))), page, pageSize: size, total: Number(n) }; // `stats` = the order card's numbers (J5)
   } },
-  { method: "GET", path: "/driver/jobs/:id", auth: [...drv], handler: async ({ user, params }) => { const { o, r } = await jobFor(user.id, params.id); return driverJobView(o, r); } },
+  { method: "GET", path: "/driver/jobs/:id", auth: [...drv], handler: async ({ user, params }) => { const { o, r } = await jobFor(user.id, params.id); return (await withStats([await driverJobView(o, r)]))[0]; } },
   { method: "POST", path: "/offers/:id/accept", auth: [...drv], body: z.object({ termsAccepted: z.boolean() }), handler: ({ user, params, input }) => jobs.acceptOffer(user, params.id, input.termsAccepted) },
   { method: "POST", path: "/offers/:id/reject", auth: [...drv], handler: ({ user, params }) => jobs.rejectOffer(user, params.id) },
   { method: "POST", path: "/offers/:id/checkin", auth: [...drv], body: z.object({ lat: z.number().min(-90).max(90).optional(), lng: z.number().min(-180).max(180).optional() }), handler: ({ user, params, input }) => jobs.checkIn(user, params.id, input) },
@@ -169,7 +185,12 @@ defineRoutes([
     if (!(OFFER_BUSY as string[]).includes(o.status)) throw err("FORBIDDEN", "Contact details are available while the job is active");
     // Per-parcel jobs: only the CURRENT stop's recipient can be contacted (privacy, and it keeps the driver on one stop at a time).
     let name = r.recipientName, phone = r.recipientPhone, code = r.ref;
-    if (q.shipmentId) {
+    if (q.shipmentId && !(await isRoutingOn())) {
+      // J2: routing is off — the driver works his stops in any order, so any stop of his OWN active job can be contacted (never another driver's parcel).
+      const [own] = await db.select().from(shipments).where(and(eq(shipments.id, q.shipmentId), eq(shipments.offerId, o.id)));
+      if (!own) throw err("NOT_FOUND", "Stop not found");
+      name = own.recipientName; phone = own.recipientPhone; code = own.code;
+    } else if (q.shipmentId) {
       const cur = await currentStopOf(db, o.id);
       if (!o.routeApprovedAt || !cur || cur.id !== q.shipmentId) throw err("STOP_LOCKED", "You can only contact the recipient of the current stop");
       name = cur.recipientName; phone = cur.recipientPhone; code = cur.code;

@@ -11,7 +11,8 @@ import { createSession } from "@/server/auth/session";
 beforeEach(resetDb);
 afterAll(shutdown);
 
-const login = (email: string, password = "Password123") => call("POST", "/auth/staff/login", { body: { email, password } });
+/** The sign-in every role uses; staff may type their e-mail address in place of the username. (`/auth/staff/login` is an alias — covered in auth-username.test.ts.) */
+const login = (email: string, password = "Password123") => call("POST", "/auth/login", { body: { username: email, password } });
 const code = (secretB32: string, offset = 0) => totpAt(base32Decode(secretB32), stepOf() + offset);
 /** Enrol a staff member through the API and return everything a test needs. */
 async function enrol(perms = ["requests.view"]) {

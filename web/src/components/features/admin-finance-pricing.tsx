@@ -1,27 +1,18 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
-import { AlarmClock, ArrowRight, Building2, Plus, Scale, Tag } from "lucide-react";
+import { AlarmClock, Archive, ArrowRight, Building2, Copy, History, Pencil, Plus, Scale, Tag } from "lucide-react";
 import { Badge, Button, CellPair, EmptyState, ErrorState, Input, Modal, Notice, PageHeader, Segmented, Select, Stat, StatGrid, Table, Td, Toolbar, useAction, errText } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
-import { post } from "@/lib/api";
+import { get, post } from "@/lib/api";
 import { fmtDate, riyadhLocalToIso, sarToCents } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
 import { BusinessPicker, ConfirmModal, hasAny } from "./admin-common";
-import { ListSkeleton, Money, NoAccess, partyHref, useUrlFilters } from "./admin-finance-parts";
+import { ListSkeleton, Money, NoAccess, useUrlFilters } from "./admin-finance-parts";
+import { RuleScope, centsToInput } from "./admin-finance-pricing-parts";
+import { EditRuleDialog, RuleHistoryDialog } from "./admin-finance-pricing-edit";
 
 const SOON_MS = 30 * 86_400_000;
-
-/** The company a rule is negotiated for, linked to its page (the name needs `users.view`; without it a plain "Business" badge). */
-function RuleScope({ id }: { id: string | null }) {
-  const { t } = useI18n(); const me = useUser();
-  const canName = hasPerm(me, "users.view");
-  const { data } = useApi(id && canName ? `/admin/users/${id}` : null, { shouldRetryOnError: false });
-  if (!id) return <Badge>{t("pricing.global")}</Badge>;
-  const name = data?.profile?.companyName ?? data?.user?.name;
-  return name ? <Link href={partyHref("business", id)!} className="inline-flex items-center gap-1 text-accent hover:underline"><Building2 className="size-3.5 shrink-0" aria-hidden />{name}</Link> : <Badge tone="info">{t("pricing.business")}</Badge>;
-}
 
 export function PricingView() {
   const { t, locale } = useI18n(); const a = useAction(); const me = useUser();
@@ -30,7 +21,7 @@ export function PricingView() {
   const cat = useApi("/catalog");
   const svc = cat.data?.services.some((s: any) => s.key === f.service) ? f.service : "delivery_driver"; const all = f.all === "1";
   const rules = useApi(ok ? `/admin/pricing?service=${svc}${all ? "&all=1" : ""}` : null, { keepPreviousData: true });
-  const [now] = useState(() => Date.now()); const [retire, setRetire] = useState<any>(null); const [open, setOpen] = useState(false); const [form, setForm] = useState<any>({}); const [err, setErr] = useState<string | null>(null);
+  const [now] = useState(() => Date.now()); const [retire, setRetire] = useState<any>(null); const [editing, setEditing] = useState<any>(null); const [hist, setHist] = useState<any>(null); const [open, setOpen] = useState(false); const [form, setForm] = useState<any>({}); const [err, setErr] = useState<string | null>(null);
   if (!ok) return <NoAccess title={t("nav.pricing")} />;
   if (cat.error || rules.error) return <><PageHeader title={t("nav.pricing")} subtitle={t("pricing.sub")} icon={<Tag className="size-5" />} /><ErrorState error={cat.error ?? rules.error} retry={() => { void cat.mutate(); void rules.mutate(); }} /></>;
   const items: any[] = rules.data?.items ?? []; const active = items.filter((r) => r.status === "approved");
@@ -42,7 +33,13 @@ export function PricingView() {
   const needTemp = ["van", "dyna"].includes(form.vehicleType);
   const formMargin = form.price && form.cost ? sarToCents(form.price) - sarToCents(form.cost) : null;
   const where = (r: any) => `${r.pickupCity ? t(`city.${r.pickupCity}`) : t("pricing.any")} → ${r.deliveryCity ? t(`city.${r.deliveryCity}`) : t("pricing.any")}`;
-  const save = () => a.run("sv", () => post("/admin/pricing", { service: svc, vehicleType: form.vehicleType || null, temperature: needTemp ? form.temperature || null : null, pickupCity: form.pickupCity || null, deliveryCity: form.deliveryCity || null, businessId: form.business?.id || null, priceCents: sarToCents(form.price), providerCostCents: sarToCents(form.cost), agreementRef: form.ref || null, expiresAt: form.expires ? riyadhLocalToIso(`${form.expires}T23:59`) : null }),
+  const duplicate = async (r: any) => {
+    let business: { id: string; name: string } | null = null;
+    if (r.businessId) { const u = hasPerm(me, "users.view") ? await get(`/admin/users/${r.businessId}`).catch(() => null) : null; business = { id: r.businessId, name: u?.profile?.companyName ?? u?.user?.name ?? t("pricing.business") }; }
+    setForm({ vehicleType: r.vehicleType ?? "", temperature: r.temperature ?? "", pickupCity: r.pickupCity ?? "", deliveryCity: r.deliveryCity ?? "", price: centsToInput(r.priceCents), cost: centsToInput(r.providerCostCents), business, ref: r.agreementRef ?? "", expires: "", notes: r.notes ?? "" });
+    setErr(null); setOpen(true);
+  };
+  const save = () => a.run("sv", () => post("/admin/pricing", { service: svc, vehicleType: form.vehicleType || null, temperature: needTemp ? form.temperature || null : null, pickupCity: form.pickupCity || null, deliveryCity: form.deliveryCity || null, businessId: form.business?.id || null, priceCents: sarToCents(form.price), providerCostCents: sarToCents(form.cost), agreementRef: form.ref || null, expiresAt: form.expires ? riyadhLocalToIso(`${form.expires}T23:59`) : null, notes: form.notes?.trim() || null }),
     { success: "common.saved", onDone: () => { setOpen(false); setForm({}); setErr(null); void rules.mutate(); }, onError: (e) => setErr(errText(e, t)) });
   return (
     <>
@@ -71,7 +68,12 @@ export function PricingView() {
               <Td label={t("admin.margin")} num className={r.priceCents < r.providerCostCents ? "font-semibold text-danger" : "text-gold"}><Money c={margin(r)} /></Td>
               <Td label={t("pricing.version")}><CellPair title={<span className="ltr-num">v{r.version}</span>} sub={<span className="whitespace-nowrap">{fmtDate(r.effectiveAt, locale)}{r.expiresAt ? ` → ${fmtDate(r.expiresAt, locale)}` : ""}</span>} /></Td>
               <Td label={t("common.status")}>{r.status === "approved" ? <Badge tone="success">{t("pricing.active")}</Badge> : <Badge>{t("pricing.retired")}</Badge>}</Td>
-              <Td>{r.status === "approved" && canEdit && <Button size="sm" variant="ghost" data-testid={`fin-pricing-retire-${r.id}`} onClick={() => setRetire(r)}>{t("pricing.retire")}</Button>}</Td>
+              <Td><div className="flex flex-nowrap items-center justify-end gap-1">
+                {r.status === "approved" && canEdit && <Button size="sm" variant="secondary" data-testid={`fin-pricing-edit-${r.id}`} onClick={() => setEditing(r)}><Pencil className="size-3.5" aria-hidden />{t("common.edit")}</Button>}
+                <Button size="sm" variant="ghost" aria-label={t("rdf.pr_history")} title={t("rdf.pr_history")} data-testid={`fin-pricing-history-${r.id}`} onClick={() => setHist(r)}><History className="size-4" aria-hidden /></Button>
+                {canEdit && <Button size="sm" variant="ghost" aria-label={t("rdf.pr_duplicate")} title={t("rdf.pr_duplicate")} data-testid={`fin-pricing-duplicate-${r.id}`} onClick={() => void duplicate(r)}><Copy className="size-4" aria-hidden /></Button>}
+                {r.status === "approved" && canEdit && <Button size="sm" variant="ghost" aria-label={t("pricing.retire")} title={t("pricing.retire")} data-testid={`fin-pricing-retire-${r.id}`} onClick={() => setRetire(r)}><Archive className="size-4" aria-hidden /></Button>}
+              </div></Td>
             </tr>))}
         </Table>)}
       <ConfirmModal open={!!retire} onClose={() => setRetire(null)} danger busy={a.is(retire?.id ?? "")} title={t("pricing.retire")} confirmLabel={t("pricing.retire")}
@@ -91,10 +93,13 @@ export function PricingView() {
           {hasPerm(me, "users.view") && <BusinessPicker label={t("pricing.business_override")} placeholder={t("pricing.global")} value={form.business ?? null} onChange={(b) => setForm({ ...form, business: b })} />}
           <Input label={t("pricing.agreement_ref")} value={form.ref ?? ""} onChange={(e) => setForm({ ...form, ref: e.target.value })} />
           <Input label={t("pricing.expires")} type="date" ltr value={form.expires ?? ""} onChange={(e) => setForm({ ...form, expires: e.target.value })} />
+          <div className="sm:col-span-2"><Input label={t("rdf.pr_notes")} value={form.notes ?? ""} maxLength={300} onChange={(e) => setForm({ ...form, notes: e.target.value })} data-testid="fin-pricing-notes" /></div>
         </div>
         {formMargin != null && <p className={`text-sm ${formMargin < 0 ? "text-danger" : "text-gold"}`}>{t("admin.margin")}: <Money c={formMargin} className="font-bold" /></p>}
         {err && <p role="alert" className="text-sm text-danger">{err}</p>}
       </Modal>
+      <EditRuleDialog rule={editing} onClose={() => setEditing(null)} onSaved={() => void rules.mutate()} />
+      <RuleHistoryDialog rule={hist} canEdit={canEdit} onClose={() => setHist(null)} onChanged={() => void rules.mutate()} />
     </>
   );
 }

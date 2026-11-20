@@ -68,10 +68,11 @@ export async function createExternalJob(business: User, input: RequestInput, ide
   }
   let draftId: string | null = null;
   try {
-    const draft = await createDraft(business, input, "api");
+    const report = { coerced: 0 };
+    const draft = await createDraft(business, input, "api", { b2b: "coerce", report }); // J3: with B2B off a business recipient is coerced to consumer (never fails the whole import)
     draftId = draft.id;
     const r = await publishRequest(business, draft.id, { termsAccepted: true, via: "api" });
-    const body = presentJob(r);
+    const body = { ...presentJob(r), ...(report.coerced ? { warnings: [{ code: "B2B_DISABLED", field: "shipments[].recipientType", count: report.coerced, message: `B2B shipments are turned off: ${report.coerced} business recipient(s) were created as consumer parcels` }] } : {}) };
     if (idemKey) await db.update(apiIdempotency).set({ response: body as never, status: 201 }).where(and(eq(apiIdempotency.businessId, business.id), eq(apiIdempotency.key, idemKey)));
     return { replay: false, status: 201, body };
   } catch (e) {
@@ -177,8 +178,10 @@ export async function assertSafeWebhookUrl(raw: string, resolve = true) {
  * TLS still verifies the certificate against the real hostname (SNI/Host are untouched); only the TCP address is pinned.
  * Redirects are never followed (a 3xx is returned as-is), and the response body is capped.
  */
-export async function pinnedFetch(raw: string, init: RequestInit = {}): Promise<Response> {
+export async function pinnedFetch(raw: string, init: RequestInit = {}, o: { maxBytes?: number } = {}): Promise<Response> {
   const { url, addrs } = await resolveWebhookTarget(raw, true);
+  // Without `maxBytes` the body is capped at 64 KB and truncated (webhook deliveries only look at the status). With it, a larger answer
+  // is an error — a silently cut JSON list would look like an empty one (warehouse-system order lists).
   const target = addrs[0];
   const lib = url.protocol === "https:" ? https : http;
   return new Promise<Response>((resolve, reject) => {
@@ -186,9 +189,19 @@ export async function pinnedFetch(raw: string, init: RequestInit = {}): Promise<
       method: init.method ?? "POST", headers: init.headers as Record<string, string> | undefined, signal: init.signal ?? undefined,
       lookup: ((_h: string, opts: { all?: boolean }, cb: (...a: unknown[]) => void) => (opts?.all ? cb(null, [{ address: target.address, family: target.family }]) : cb(null, target.address, target.family))) as never,
     }, (res) => {
-      const chunks: Buffer[] = []; let size = 0;
-      res.on("data", (c: Buffer) => { size += c.length; if (size <= 64 * 1024) chunks.push(c); });
-      res.on("end", () => { const st = res.statusCode ?? 502; resolve(new Response([204, 205, 304].includes(st) || st < 200 ? null : Buffer.concat(chunks), { status: st })); });
+      const chunks: Buffer[] = []; let size = 0; let tooLarge = false;
+      res.on("data", (c: Buffer) => {
+        size += c.length;
+        if (o.maxBytes && size > o.maxBytes) { if (!tooLarge) { tooLarge = true; res.destroy(); reject(new Error(`response larger than ${o.maxBytes} bytes`)); } return; }
+        if (o.maxBytes || size <= 64 * 1024) chunks.push(c);
+      });
+      res.on("end", () => {
+        if (tooLarge) return;
+        const st = res.statusCode ?? 502;
+        const headers = new Headers();
+        const ct = res.headers["content-type"]; if (typeof ct === "string") headers.set("content-type", ct);
+        resolve(new Response([204, 205, 304].includes(st) || st < 200 ? null : Buffer.concat(chunks), { status: st, headers }));
+      });
       res.on("error", reject);
     });
     req.on("error", reject);

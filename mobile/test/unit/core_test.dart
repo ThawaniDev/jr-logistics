@@ -277,7 +277,7 @@ void main() {
       final c = make((o) => _json(401, '{"error":{"code":"UNAUTHENTICATED","message":"no","details":{}}}'), onUnauth: () => n++);
       await expectLater(c.get('/driver/overview'), throwsA(isA<ApiException>()));
       expect(n, 1);
-      await expectLater(c.post('/auth/otp/verify', {}), throwsA(isA<ApiException>()));
+      await expectLater(c.post('/auth/login', {}), throwsA(isA<ApiException>()));
       expect(n, 1);
     });
     test('network failures become NETWORK, not crashes', () async {

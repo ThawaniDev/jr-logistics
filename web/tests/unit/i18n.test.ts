@@ -62,9 +62,11 @@ describe("i18n parity (ar / en / ur)", () => {
     for (const s of ["offered", "accepted", "arrived", "attendance_confirmed", "attendance_confirmed_ack", "delivered_reported", "qty_disputed", "pending_settlement", "completed", "cancelled", "rejected", "expired", "no_show", "replaced"]) need.push(`job.hint_${s}`);
     // every ledger kind, job-event type and notification type emitted by the server
     const server = walk("src/server").map((f) => readFileSync(f, "utf8")).join("\n");
-    for (const m of server.matchAll(/logEvent\([\s\S]*?type:\s*"([a-z_]+)"/g)) need.push(`event.${m[1]}`);
+    // calls only (not the `function logEvent(` definition) and the `type:` of the SAME call: an unbounded gap ran from the definition into unrelated files (`type: "text"` of a spreadsheet column)
+    for (const m of server.matchAll(/(?<!function )logEvent\((?:(?!\blogEvent\()[\s\S]){0,700}?type:\s*"([a-z_]+)"/g)) need.push(`event.${m[1]}`);
     for (const m of server.matchAll(/notify(?:Many)?\(\s*[^,]+,\s*"([a-z_]+)"/g)) need.push(`notif.${m[1]}`);
-    for (const m of server.matchAll(/\b(?:post\([\s\S]*?kind:)\s*"([a-z_]+)"/g)) need.push(`ledger.${m[1]}`);
+    // the `kind` of a wallet `post(tx, { …, kind: "…" })` call — within that one object literal, so a `kind:` elsewhere in the code is not mistaken for a ledger kind
+    for (const m of server.matchAll(/\bpost\(\s*[A-Za-z_.]+\s*,\s*\{(?:[^{}]|\$\{[^}]*\})*?\bkind:\s*"([a-z_]+)"/g)) need.push(`ledger.${m[1]}`);
     for (const d of ["approved", "rejected", "info_requested"]) need.push(`notif.document_${d}`);
     for (const d of ["verified", "rejected", "info_requested", "suspended"]) need.push(`notif.verification_${d}`);
     expect([...new Set(need)].filter((k) => !(k in en)).sort(), "missing translation keys").toEqual([]);

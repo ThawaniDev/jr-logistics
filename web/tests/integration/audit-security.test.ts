@@ -11,9 +11,8 @@ import { users, offers, businessProfiles, rateLimits, sessions, otpCodes, apiIde
 import { resetDb, shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, mkOffice, publishedRequest, mkShipments } from "../helpers/factories";
 import { call } from "../helpers/api";
 import { createSession } from "@/server/auth/session";
-import { resetStaffPassword, updateStaff, unlockStaff, loginPassword } from "@/server/accounts";
+import { resetStaffPassword, updateStaff, unlockStaff, loginWithPassword } from "@/server/accounts";
 import { resetStaffMfa } from "@/server/auth/mfa";
-import { setSmsProvider } from "@/server/auth/otp";
 import { setStorage, storage } from "@/server/storage";
 import { isPrivateIp, resolveWebhookTarget, setWebhook, createExternalJob } from "@/server/integrations";
 import { runMaintenance } from "@/server/maintenance";
@@ -122,22 +121,19 @@ describe("local storage cannot be escaped", () => {
 describe("authentication", () => {
   it("parallel wrong-password guesses cannot dodge the lockout counter", async () => {
     const s = await mkStaff(["requests.view"]);
-    await Promise.all(Array.from({ length: 5 }, () => loginPassword(s.email!, "wrong-password", "10.0.0.9").catch(() => null)));
+    await Promise.all(Array.from({ length: 5 }, () => loginWithPassword(s.email!, "wrong-password", "10.0.0.9").catch(() => null)));
     const [after] = await db.select().from(users).where(eq(users.id, s.id));
     expect(after.failedLogins).toBe(5);
     expect(after.lockedUntil).not.toBeNull();
   });
 
-  it("an SMS provider outage is a clear 503, not a 500, and no code is left usable", async () => {
-    setSmsProvider({ name: "down", async send() { throw new Error("connect ETIMEDOUT 10.1.2.3:443"); } });
-    const prev = env.DEMO_MODE; env.DEMO_MODE = "false";
-    try {
-      const r = await call("POST", "/auth/otp/send", { body: { phone: "0555550001" } });
-      expect(r.status).toBe(503);
-      expect(r.json.error.code).toBe("DEPENDENCY_UNAVAILABLE");
-      expect(JSON.stringify(r.json)).not.toContain("10.1.2.3");
-      expect((await db.select().from(otpCodes)).filter((o) => !o.consumedAt && o.expiresAt > new Date())).toHaveLength(0);
-    } finally { setSmsProvider(null); if (prev === undefined) delete env.DEMO_MODE; else env.DEMO_MODE = prev; }
+  it("a lock that has run out starts a fresh count (one more typo does not lock the account again)", async () => {
+    const s = await mkStaff(["requests.view"]);
+    await db.update(users).set({ failedLogins: 5, lockedUntil: new Date(Date.now() - 60_000) }).where(eq(users.id, s.id));
+    await expect(loginWithPassword(s.email!, "wrong-password", "10.0.0.10")).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    const [after] = await db.select().from(users).where(eq(users.id, s.id));
+    expect(after.failedLogins).toBe(1); expect(after.lockedUntil).toBeNull();
+    expect((await loginWithPassword(s.email!, "Password123", "10.0.0.10")).mfaRequired).toBe(false);
   });
 
   it("public tracking cannot be brute-forced by spreading guesses over many addresses", async () => {

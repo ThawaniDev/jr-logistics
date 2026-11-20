@@ -395,7 +395,7 @@ class DeliverSheet extends ConsumerWidget {
         Text('${s.address}${s.city != null ? ' · ${cityLabel(context, s.city)}' : ''}', style: const TextStyle(color: JR.muted, fontSize: 15, height: 1.3)),
         const SizedBox(height: 14),
         if (s.resolved) const SizedBox.shrink()
-        else if (!s.current) Banner2(key: const Key('deliver-locked'), tone: Tone.warn, text: t('err.STOP_LOCKED'))
+        else if (fresh.routingEnabled && !s.current) Banner2(key: const Key('deliver-locked'), tone: Tone.warn, text: t('err.STOP_LOCKED'))
         else if (!s.arrived) ...[
           Text(t('ms.arrive_first'), style: const TextStyle(color: JR.muted, height: 1.4)),
           const SizedBox(height: 12),

@@ -9,7 +9,7 @@ import { staffLogin, gotoReady, DEMO, apiLogin } from "./helpers";
  * Customers' sides are driven through the API; assertions are relative to what each test creates (the specs share one database).
  */
 test.describe.configure({ mode: "serial" });
-const BASE = "http://localhost:3100";
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 const ADMIN = { email: "admin@jrlogistics.test", password: "E2e!Password2026" };
 
 async function api(ctx: APIRequestContext, method: "GET" | "POST" | "PATCH", path: string, data?: unknown) {
@@ -186,14 +186,16 @@ test("staff: KPI row, filters and the role / permission editor", async ({ browse
   await pill(ap, /^Suspended/).click();
   await expect(ap).toHaveURL(/filter=suspended/);
   await pill(ap, /^All/).click();
-  // the editor: account + role & permissions; a preset fills the permissions, editing one marks it customised
+  // the editor: account + role & permissions; a role gives its permissions (summary, no picker), "Custom" shows the picker pre-filled with them
   await ap.getByTestId("rdb-staff-add").click();
   await expect(ap.getByTestId("rdb-staff-perms")).toBeVisible();
   await ap.getByTestId("rdb-staff-preset").selectOption("support");
+  await expect(ap.getByTestId("rj-staff-role-summary")).toBeVisible();
+  await expect(ap.getByTestId("rdb-staff-perms")).toHaveCount(0);
+  await ap.getByTestId("rdb-staff-preset").selectOption("");
   await expect(ap.getByTestId("foa-perm-tickets.manage")).toBeChecked();
   await expect(ap.getByTestId("foa-perm-finance.view")).not.toBeChecked();
   await ap.getByTestId("foa-perm-tickets.manage").uncheck();
-  await expect(ap.getByText("Customised: the permissions differ from this preset.")).toBeVisible();
   await expect(ap.getByTestId("rdb-staff-save")).toBeDisabled(); // name, email and a temporary password are required
   await ap.getByRole("button", { name: "Cancel" }).click();
   await expect(ap.getByTestId("rdb-staff-perms")).toHaveCount(0);

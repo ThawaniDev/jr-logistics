@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineRoutes } from "../router";
 import { uuid } from "../schemas";
 import { codDrivers, financeOverview, invoiceTotals, ledgerTotals, settlementStats, withdrawalStats } from "@/server/finance-views";
+import { adminInvoice } from "@/server/invoice-detail";
 
 const bo = "backoffice" as const;
 const range = { from: z.coerce.date().optional(), to: z.coerce.date().optional() };
@@ -13,5 +14,7 @@ defineRoutes([
   { method: "GET", path: "/admin/finance/withdrawals/stats", auth: bo, handler: ({ user }) => withdrawalStats(user) },
   { method: "GET", path: "/admin/finance/ledger/totals", auth: bo, query: z.object({ kind: z.string().optional(), userId: uuid.optional(), requestId: uuid.optional(), ...range }), handler: ({ user, q }) => ledgerTotals(user, q) },
   { method: "GET", path: "/admin/finance/invoices/totals", auth: bo, query: z.object({ businessId: uuid.optional(), ...range }), handler: ({ user, q }) => invoiceTotals(user, q) },
+  // One invoice with the money behind it (placed after `/totals`, because routes match in order). Needs finance.view; an unknown or malformed id is a 404.
+  { method: "GET", path: "/admin/finance/invoices/:id", auth: bo, handler: ({ user, params }) => adminInvoice(user, params.id) },
   { method: "GET", path: "/admin/finance/cod/drivers", auth: bo, query: z.object({ businessId: uuid.optional(), q: z.string().max(80).optional(), onlyOutstanding: z.enum(["1", "0"]).optional() }), handler: ({ user, q }) => codDrivers(user, { ...q, onlyOutstanding: q.onlyOutstanding === "1" }) },
 ]);

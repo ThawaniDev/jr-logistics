@@ -1,0 +1,410 @@
+API
+API Documentation
+LASTMILE
+FULLFILLMENT
+WEBHOOK
+WEBHOOK&WOOCOMMERCE
+WOOCOMMERCE
+PRODUCT
+MANIFEST
+FASTCOO PARTNER
+OPENCART
+-->
+LASTMILE
+FULLFILLMENT
+WEBHOOK
+WEBHOOK & WOOCOMMERCE
+PRODUCT
+MANIFEST
+FASTCOO PARTNER
+OPENCART
+MAGENTO
+WORDPRESS
+SHOPIFY
+REVERSE
+LASTMILE
+-->
+Shipment
+Version:
+.0.055
+Last Updated:
+10th July, 2024
+Objective
+Status
+Add Webhook
+-->
+Update
+Done
+-->
+five-five
+-->
+Rate Calculator API
+Print Label API
+-->
+Status Update Webhook
+:-
+{
+"awb_no":"FSL541xxxxxx","reference_id":"21xxx","status":"Shelve",
+"code":"SH","updated_date":"2021
+-11-16 11:34:21","updated_time":"11:34:21","comment":
+"test","delivery_attempts":'0'
+}
+Objective: The purpose of this webhook is to keep updated our customer with the
+latest update
+happening with the shipment.
+Sample Result which you will receive in the webhook
+Parameters & their Descriptions
+-->
+Parameters & their Descriptions
+S.N
+Parameter
+Description
+1.
+awb_no
+Shipment Waybill Number
+2.
+reference_id
+Order Number from Customer
+3.
+status
+Shipment Status Name
+4.
+code
+Shipment Status Code
+5.
+updated_date
+Status Update Date
+6.
+updated_time
+Status Update Time
+7.
+comment
+Comment from user
+8.
+delivery_attempts
+Out For Delivery attempt for the shipment
+Please create your webhook URL for POST method and share with us to activate
+it
+❖Main Status Codes & their Descriptions
+S.N
+Status Name
+Status Code
+Description
+1.
+Not Delivered
+Shipment Not Delivered (Refer to Sub Statuses)
+2.
+On Process
+OP
+On Process for Pickup from Merchant
+3.
+Pick Up Collected
+PUC
+Shipment has been picked up from Merchant
+4.
+Out for delivery
+OD
+Shipment is Out For Delivery with driver for Delivery
+5.
+Return
+Shipment is Returned to the Merchant
+6.
+Shelve
+SH
+Shipment is Shelved in the Warehouse
+7.
+In Transit
+IT
+Shipment is in route from one hub to another hub
+8.
+Hold for pickup
+9.
+Delivered
+POD
+Shipment is Delivered to the Customer
+10.
+Received Inbound
+RI
+Shipment is received in the warehouse
+11.
+Ready For Delivery
+RFDE
+Shipment is being prepared for the delivery
+12.
+General Update
+GU
+General Update for any reason
+13.
+CS Update
+Customer Service Update for any reason
+14.
+Cancelled as per Client request
+CCR
+Shipment Cancelled
+15.
+Forward to Delivery Station
+FDD
+Forwarded to delivery department
+16.
+Missing Shipments
+MS
+Shipment is Missing
+17.
+Damage Shipments
+DS
+Shipment is Damaging
+18.
+Closed
+CLO
+Shipment is Closed
+19.
+3PL Updates
+20.
+Return From Delivery Station
+RFDS
+Return from delivery department
+21.
+Cancel
+C
+Shipment Cancelled
+22.
+Forward To HUB
+FTH
+Shipment in Transit
+23.
+Dispatch To HUB
+DTH
+Shipment in Transit
+24.
+Pending By CS
+PCS
+Customer Service team need to update further
+Sub Statuses & their Descriptions
+S.N
+Sub Status Name
+Status Code
+Description
+1.
+Customer Refused-
+RF
+Customer Refused to take the shipment
+2.
+Mobile Wrong
+MW
+Customer Mobile Number is wrong
+3.
+Mobile Close -
+MC
+Customer Mobile is Closed
+4.
+No Answer -
+NA
+Customer is not answering the call
+5.
+Customer Not in location -
+CNL
+Customer is not available in the location
+6.
+Customer Does Not Have Cash
+CNC
+Customer Does not have cash
+7.
+Driver Delayed-
+DD
+Shipment is delayed due to driver
+8.
+Price- Discrepancy
+PD
+Price is not as same as the store
+9.
+Duplicate Order -
+DO
+Shipment is Duplicate
+10.
+Wrong Area/CS Issue -
+WAR
+Address which is mentioned is incorrect.
+11.
+Out of Coverage Area -
+OCA
+Location is in non-coverage area
+12.
+Customer Does Not Have ID -
+CNI
+Customer ID is not available for verification
+13.
+Reschedule For Future Date
+RFD
+Shipment is rescheduled for future date
+14.
+Reschedule For Tomorrow -
+RSD
+Shipment is rescheduled for tomorrow
+15.
+Request for Self Pickup -
+RSP
+Customer Requested to pick up from Warehouse
+16.
+Shipment Not Delivered
+SND
+Shipment is not delivered
+17.
+Shipment Lost 3pl
+SL3PL
+Shipment is lost by 3rd party delivery company
+18.
+In Transit
+IT
+Shipment is in Transit
+19.
+Remove From DRS
+RDRS
+Shipment is removed from driver name
+20.
+Ready to return to Client
+RTR
+Shipment is being prepared to return to the store
+21.
+Return to Client
+RTC
+Shipment is returned to the Merchant
+22.
+Forward To HUB
+FTH
+Shipment in Transit
+23.
+Dispatch To HUB
+DTH
+Shipment in Transit
+24.
+Forward to HUB
+FTH
+Shipment is in Transit
+25.
+Arrival To Delivery Station
+ADS
+Shipment Arrived to the delivery station
+26.
+Not Received in final
+destination
+NRFD
+Not Received by line haul
+27.
+Miss to dispatch
+MSD
+Shipment missed to be dispatched
+28.
+Missing
+MS
+Shipment is Missing
+29.
+Miss Rout
+MST
+Shipment is in wrong station
+30.
+Received Without Menifest
+RWM
+Shipment Arrived without Manifest
+31.
+Customer Requested Branch
+CRB
+Customer wants to collect from Branch
+32.
+Pick Up order
+PUO
+Pickup Order
+33.
+On Hold
+OH
+Shipment is on Hold
+34.
+Not response
+NR
+Customer is Not Answering
+35.
+Mobile closed
+CMC
+Customer Mobile is Closed
+36.
+Mobile out of service
+MOS
+Customer Mobile out of Service
+37.
+Mobile busy Tone
+MBT
+Customer is making busy
+38.
+Customer want to call later
+CCL
+Customer wants to call later
+39.
+Mobile unreachable
+MU
+Customer Mobile is not reachable
+40.
+Customer travling
+CT
+Customer is Travelling
+41.
+Customer cancel the order
+CCO
+Customer Cancelled the order
+42.
+Wrong number
+WN
+Mobile number is wrong for the customer
+43.
+Customer will share the
+location via whatsup
+CSL
+Customer will share the location
+44.
+Out of Coverage Area
+OCA3PL
+Address is out of coverage area
+45.
+Cancelled as per Client
+request.
+CCR
+Cancelled as per client request
+46.
+Return On Process
+ROP
+Shipment is on Return Process by Delivery
+Department
+47.
+Failed Delivery
+FD
+Shipment is not delivered
+48.
+Dispatched to LM
+DLM
+Shipment is dispatched to delivery department
+49.
+Delivery On Process
+DOP
+Shipment is in process to be delivered
+50.
+Pickup Collected
+PC
+Shipment has been picked up
+51.
+Assign to Worker
+ATW
+Shipment is assigned to the worker
+52.
+Delay Order
+DELO
+Shipment is delayed
+53.
+forward to branch by 3PL
+FWB3PL
+Shipment is in Transit – 3pl
+54.
+Missing by 3PL
+MS3PL
+Shipment is missing – 3pl
+55.
+In Warehouse 3PL
+WH3PL
+In Warehouse – 3pl

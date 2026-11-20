@@ -9,6 +9,7 @@ import 'package:jr_driver/data/extra_api.dart';
 import 'package:jr_driver/data/models_extra.dart';
 import 'package:jr_driver/data/models.dart';
 import 'package:jr_driver/data/token_store.dart';
+import 'live_login.dart';
 
 /// Runs the real Dart client against a real Next.js server + Postgres (see tool/live_test.sh).
 /// Skipped unless JR_API is set, so `flutter test` stays hermetic by default.
@@ -21,14 +22,11 @@ class Session {
   final TokenStore tokens;
 }
 
+/// Signs in as the seeded demo account with this phone — username + password (see live_login.dart).
 Future<Session> login(String phone) async {
   final tokens = MemoryTokenStore();
-  final client = ApiClient(baseUrl: base!, tokens: tokens);
-  final api = DriverApi(client);
-  final sent = await api.sendOtp(phone);
-  final v = await api.verifyOtp(phone, sent['demoCode'] as String);
-  await tokens.write(v['token'] as String);
-  return Session(client, api, tokens);
+  final client = await signedInClient(base!, phone, tokens: tokens);
+  return Session(client, DriverApi(client), tokens);
 }
 
 /// A per-parcel (manifest) delivery request: one shipment per parcel — seq 1 consumer, seq 2 business, seq 3 consumer.
@@ -339,21 +337,41 @@ void main() {
     final job = (await office.api.offers()).firstWhere((j) => j.requestId == r['id']);
     expect(job.earningHidden, isTrue);
     expect(job.expectedEarningCents, isNull);
-    await expectLater(office.api.requestWithdrawal(20000), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'FORBIDDEN')));
+    await expectLater(office.api.requestWithdrawal(20000), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'WALLET_MANAGED_BY_OFFICE'))); // J4: the wallet is the office's
     await biz.client.post('/requests/${r['id']}/cancel', {'reason': 'cleanup'});
   });
 
-  test('registration validates vehicle/temperature and returns a working session; logout revokes it', skip: skip, () async {
-    final phone = '05${DateTime.now().millisecondsSinceEpoch.toString().substring(5, 13)}';
+  test('sign-in: wrong credentials, username availability, registration without OTP, change password, logout revokes the session', skip: skip, () async {
+    // wrong credentials are one generic 401; an unknown user looks the same as a wrong password
+    final anon = DriverApi(ApiClient(baseUrl: base!, tokens: MemoryTokenStore()));
+    final demo = await demoCredentials(drv.client, '0500000011');
+    await expectLater(anon.login(demo.username, 'definitely-wrong-1'), apiError('UNAUTHENTICATED'));
+    await expectLater(anon.login('no.such.user.${DateTime.now().millisecondsSinceEpoch}', 'Whatever#12345'), apiError('UNAUTHENTICATED'));
+    // the username is case-insensitive
+    expect((await anon.login(demo.username.toUpperCase(), demo.password))['token'], isA<String>());
+
+    final stamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final username = 'flutter.${stamp.substring(5)}', phone = '05${stamp.substring(5, 13)}', password = 'Flutter#Pass2026';
+    expect((await anon.usernameAvailable(username))['available'], isTrue);
+    expect((await anon.usernameAvailable(demo.username))['available'], isFalse, reason: 'a demo username is taken');
+    expect((await anon.usernameAvailable('a!'))['available'], isFalse, reason: 'invalid shape');
+
+    final body = {'role': 'driver', 'username': username, 'password': password, 'name': 'Flutter Test Driver', 'phone': phone, 'city': 'riyadh', 'vehicleType': 'van', 'services': ['delivery_driver'], 'termsAccepted': true};
+    await expectLater(anon.register(body), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'VALIDATION').having((e) => e.details.containsKey('vehicleTemperature'), 'field', true)));
+    await expectLater(anon.register({...body, 'vehicleTemperature': 'cold', 'termsAccepted': false}), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'TERMS_REQUIRED')));
+    await expectLater(anon.register({...body, 'vehicleTemperature': 'cold', 'password': 'short1'}), apiError('VALIDATION'), reason: 'the password rule (10+ characters, a letter and a digit) is enforced');
+    final ok = await anon.register({...body, 'vehicleTemperature': 'cold'});
+    expect((ok['user'] as Map)['username'], username);
+    expect((ok['user'] as Map)['role'], 'driver');
+
+    // the same username / phone again: 409 with the offending field
+    await expectLater(anon.register({...body, 'vehicleTemperature': 'cold', 'phone': '05${stamp.substring(4, 12)}'}), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'CONFLICT').having((e) => e.details['field'], 'field', 'username')));
+    await expectLater(anon.register({...body, 'vehicleTemperature': 'cold', 'username': 'other.$username'}), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'CONFLICT').having((e) => e.details['field'], 'field', 'phone')));
+    expect((await anon.usernameAvailable(username))['available'], isFalse);
+
+    // the session of the registration works, and so does a normal sign-in
     final tokens = MemoryTokenStore();
     final api = DriverApi(ApiClient(baseUrl: base!, tokens: tokens));
-    final sent = await api.sendOtp(phone);
-    final v = await api.verifyOtp(phone, sent['demoCode'] as String);
-    expect(v['isNew'], isTrue);
-    final body = {'registrationToken': v['registrationToken'], 'role': 'driver', 'name': 'Flutter Test Driver', 'city': 'riyadh', 'vehicleType': 'van', 'services': ['delivery_driver'], 'termsAccepted': true};
-    await expectLater(api.register(body), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'VALIDATION').having((e) => e.details.containsKey('vehicleTemperature'), 'field', true)));
-    await expectLater(api.register({...body, 'vehicleTemperature': 'cold', 'termsAccepted': false}), throwsA(isA<ApiException>().having((e) => e.code, 'code', 'TERMS_REQUIRED')));
-    final ok = await api.register({...body, 'vehicleTemperature': 'cold'});
     await tokens.write(ok['token'] as String);
     final ov = await api.overview();
     expect(ov.verified, isFalse);
@@ -361,6 +379,19 @@ void main() {
     final cat = await api.catalog();
     expect(cat['policy'], isA<Map>());
     expect(((cat['documents'] as Map)['driver'] as List).length, 4);
+    final fresh = await anon.login(username, password);
+    expect((fresh['user'] as Map)['mustChangePassword'], isNot(true), reason: 'a self-registered account keeps its own password');
+
+    // change password: wrong current -> 401, weak new -> 422, then it works and only the new password signs in
+    await expectLater(api.changePassword('not-my-password-1', 'Another#Pass2027'), apiError('UNAUTHENTICATED'));
+    await expectLater(api.changePassword(password, 'short1'), apiError('VALIDATION'));
+    final changed = await api.changePassword(password, 'Another#Pass2027');
+    expect(changed, isA<Map>());
+    await expectLater(anon.login(username, password), apiError('UNAUTHENTICATED'));
+    final again = await anon.login(username, 'Another#Pass2027');
+    await tokens.write(again['token'] as String);
+    expect((await api.me())['user'], isA<Map>());
+
     await api.logout();
     await expectLater(api.overview(), throwsA(isA<ApiException>().having((e) => e.isAuth, 'auth', true)));
   });

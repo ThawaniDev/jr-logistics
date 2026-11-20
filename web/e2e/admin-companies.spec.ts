@@ -7,7 +7,7 @@ import { staffLogin, gotoReady } from "./helpers";
  * warehouse location, is reviewed through every view, and ends verified. Counters are judged against a baseline taken first.
  */
 test.describe.configure({ mode: "serial" });
-const BASE = "http://localhost:3100";
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 const ADMIN = { email: "admin@jrlogistics.test", password: "E2e!Password2026" };
 const STAMP = Date.now().toString();
 const co = { id: "", name: `Views Co ${STAMP.slice(-6)}`, phone: `05${STAMP.slice(-8)}`, ctx: null as BrowserContext | null };
@@ -36,10 +36,7 @@ test("a new company registers: pending, no warehouse location, and the KPI count
   const s0 = (await api(page.request, "GET", "/admin/companies/summary")).json;
   before = { total: s0.total, pending: s0.pending, noWarehouse: s0.noWarehouse };
   co.ctx = await browser.newContext();
-  const sent = await api(co.ctx.request, "POST", "/auth/otp/send", { phone: co.phone });
-  const ver = await api(co.ctx.request, "POST", "/auth/otp/verify", { phone: co.phone, code: sent.json.demoCode });
-  expect(ver.json.isNew, JSON.stringify(ver.json)).toBe(true);
-  const reg = await api(co.ctx.request, "POST", "/auth/register", { registrationToken: ver.json.registrationToken, role: "business", name: "Views Owner", companyName: co.name, city: "riyadh", crNumber: "7001234567", termsAccepted: true });
+  const reg = await api(co.ctx.request, "POST", "/auth/register", { username: `u966${co.phone.slice(1)}`, password: "Test#Pass2026", phone: co.phone, role: "business", name: "Views Owner", companyName: co.name, city: "riyadh", crNumber: "7001234567", termsAccepted: true });
   expect(reg.status, JSON.stringify(reg.json)).toBe(201);
   co.id = reg.json.user.id;
   const s1 = (await api(page.request, "GET", "/admin/companies/summary")).json;

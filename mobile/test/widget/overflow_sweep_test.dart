@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jr_driver/data/api_client.dart';
 import 'package:jr_driver/data/models.dart';
+import 'package:jr_driver/features/auth/change_password_screen.dart';
 import 'package:jr_driver/features/auth/login_screen.dart';
 import 'package:jr_driver/features/auth/register_screen.dart';
 import 'package:jr_driver/features/home/today_screen.dart';
@@ -99,9 +100,9 @@ void main() {
         }
       });
 
-      testWidgets('wallet, profile, documents, notifications, chat, edit profile, login', (t) async {
+      testWidgets('wallet, profile, documents, notifications, chat, edit profile, login, register, change password', (t) async {
         final api = FakeApi();
-        for (final s in [const WalletScreen(), const ProfileScreen(), const DocumentsScreen(), const NotificationsScreen(), const ChatScreen(offerId: 'o1'), const EditProfileScreen(), const LoginScreen(), const RegisterScreen(token: 'tok', phone: '0500000099')]) {
+        for (final s in [const WalletScreen(), const ProfileScreen(), const DocumentsScreen(), const NotificationsScreen(), const ChatScreen(offerId: 'o1'), const EditProfileScreen(), const LoginScreen(), const RegisterScreen(), const ChangePasswordScreen()]) {
           await sweep(t, s, api: api, lang: lang);
           await t.pumpWidget(const SizedBox());
         }

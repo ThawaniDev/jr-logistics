@@ -9,6 +9,7 @@ import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
 import { useTx } from "./admin-common";
 import { useCompany } from "./admin-companies-ctx";
+import { CompanyMoney } from "./admin-company-detail-money";
 
 interface Q { data?: any; error?: unknown; mutate: () => unknown }
 /** Loading / error / empty frame for one list inside a section, so every block of the tab behaves the same. */
@@ -43,6 +44,8 @@ export function CompanyFinance() {
           <Stat label={t("rdp.credit_limit")} value={m(w?.creditLimitCents)} hint={t("rdp.credit_limit_hint")} tone="gold" icon={<HandCoins className="size-5" />} loading={!ov.data && !ov.error} />
         </StatGrid>)}
 
+      {(seeWallet || seeInvoices) && <CompanyMoney />}
+
       {seeWallet && (
         <Section title={t("rdp.recent_ledger")} flush actions={more(`/admin/finance/ledger?userId=${c.id}`, t("rdp.open_ledger"))}>
           <Feed q={ledger} empty="wallet.no_entries">{(items) => (
@@ -63,7 +66,7 @@ export function CompanyFinance() {
             <Table bare stack label={t("req.invoices")} head={[t("adm.invoice_no"), t("req.ref"), { label: t("adm.subtotal"), align: "end" }, { label: t("adm.vat"), align: "end" }, { label: t("req.total"), align: "end" }, t("common.date")]}>
               {items.map((i) => (
                 <tr key={i.id} data-testid="companies-invoice-row">
-                  <Td label={t("adm.invoice_no")} className="ltr-num font-medium">{i.number}</Td>
+                  <Td label={t("adm.invoice_no")} className="ltr-num font-medium"><Link href={`/admin/finance/invoices/${i.id}`} className="text-accent hover:underline" data-testid="companies-invoice-link">{i.number}</Link></Td>
                   <Td label={t("req.ref")}><Link href={`/admin/requests/${i.requestId}`} className="ltr-num text-accent hover:underline">{i.ref}</Link></Td>
                   <Td label={t("adm.subtotal")} num>{m(i.subtotalCents)}</Td>
                   <Td label={t("adm.vat")} num>{m(i.vatCents)}</Td>

@@ -26,7 +26,9 @@ export const DEFAULT_SETTINGS = {
   // ── field operations (decisions E1–E14) ──
   arrivalGeofenceEnabled: true, // E1: the driver must be near the warehouse to check in…
   arrivalRadiusM: 200, // …this many metres
-  driverCanReorderRoute: true, // E5: the driver may re-order the remaining stops by hand
+  routingEnabled: false, // J2: master switch of route planning (Google), the approve-route step, the one-stop-at-a-time lock, manual re-ordering and the map. Off = the driver works any stop of his job in any order (DRS style)
+  b2bShipmentsEnabled: false, // J3: off = every parcel is a consumer parcel (`recipientType: "business"` is refused with B2B_DISABLED, imports are coerced); existing business parcels keep working
+  driverCanReorderRoute: true, // E5: the driver may re-order the remaining stops by hand (only while `routingEnabled`)
   rescheduleEvidenceText: true, // E7: postponing a stop needs a written reason…
   rescheduleEvidencePhoto: true, // …and a photo
   driverSingleActiveJob: true, // E11: a driver with an accepted job sees / receives no other offers

@@ -16,6 +16,7 @@ async function main() {
   const { env } = await import("../src/lib/env");
   const { getSettings } = await import("../src/server/settings");
   const { STAFF_PRESETS } = await import("../src/server/catalog");
+  const { backfillAuth, demoUsernameFor, DEMO_PASSWORD } = await import("../src/server/demo-credentials");
 
   const email = process.env.SUPER_ADMIN_EMAIL, pw = process.env.SUPER_ADMIN_PASSWORD;
   if (!email || !pw) throw new Error("SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD are required");
@@ -28,14 +29,15 @@ async function main() {
   // Production never reaches this line — there the temporary password stays temporary.
   await db.update(users).set({ mustChangePassword: false }).where(eq(users.id, admin.id));
 
+  // Demo accounts sign in with a username (demo.business, demo.driver, …) and one published password (J1).
   const upsertUser = async (v: typeof users.$inferInsert) => {
     const [ex] = await db.select().from(users).where(v.email ? eq(users.email, v.email) : eq(users.phone, v.phone!));
     if (ex) return ex;
-    const [u] = await db.insert(users).values({ ...v, isDemo: true }).returning();
+    const [u] = await db.insert(users).values({ ...v, username: demoUsernameFor(v), passwordHash: demoPw, mustChangePassword: false, isDemo: true }).returning();
     await ensureAccount(u.id);
     return u;
   };
-  const demoPw = await hashPassword("Demo#Pass2026");
+  const demoPw = await hashPassword(DEMO_PASSWORD);
   const staff = [
     ["ops@jrlogistics.demo", "Operations Demo", "operations"], ["finance1@jrlogistics.demo", "Finance Reviewer", "finance"],
     ["finance2@jrlogistics.demo", "Finance Approver", "finance"], ["hr@jrlogistics.demo", "Verification Demo", "hr_verification"], ["support@jrlogistics.demo", "Support Demo", "support"],
@@ -81,7 +83,8 @@ async function main() {
       await R({ service: "car_without_driver", vehicleType: v, priceCents: Math.round(price * 0.6), providerCostCents: 0 });
     }
   }
-  console.log("✓ demo fixtures ready");
+  const filled = await backfillAuth(); // demo accounts that existed before usernames: readable username + the published password
+  console.log(`✓ demo fixtures ready (sign in with a username, e.g. demo.business / demo.driver / demo.office — password ${DEMO_PASSWORD}; ${filled.demoUpdated.length} demo accounts)`);
   await closeDb();
 }
 main().catch((e) => { console.error(e); process.exit(1); });

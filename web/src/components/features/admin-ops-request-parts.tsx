@@ -1,11 +1,9 @@
 "use client";
 import Link from "next/link";
-import { Badge, EmptyState, KV, Notice, Section, StatusBadge } from "@/components/ui";
-import { fmtDateTime, fmtMoney } from "@/lib/format";
+import { Badge, KV, Notice, Section } from "@/components/ui";
+import { fmtMoney } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { useUser, hasPerm } from "@/components/layout/auth-context";
-import { OfferFieldOpsInfo, OfferStaffActions } from "./admin-requests";
-import { ParcelStats } from "./admin-shipments";
 import { hasAny, qs } from "./admin-common";
 
 /** Where the work is and what is being carried: addresses, vehicle, parcel counts and notes. */
@@ -73,45 +71,6 @@ export function FinancialsSection({ r }: { r: any }) {
           <KV label={t("wallet.reserved")}>{money(r.reservedCents)}</KV>
         </dl>
       )}
-    </Section>
-  );
-}
-
-/** One driver on the request: who, status, units, parcel counters, loading / cash info and the staff actions that are possible for this status. */
-function OfferCard({ o, data, onDone }: { o: any; data: any; onDone: () => void }) {
-  const { t, locale } = useI18n(); const me = useUser(); const r = data.request;
-  return (
-    <li className="space-y-3 rounded-xl border border-line bg-bg2/40 p-4" data-testid={`admin-offer-${o.id}`}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-2 font-semibold">
-            {hasAny(me, "drivers.view") ? <Link href={`/admin/drivers/${o.driver.id}`} className="text-accent hover:underline">{o.driver.name}</Link> : o.driver.name}
-            {o.officeId && <Badge tone="info">{t("admin.office_driver")}</Badge>}
-          </p>
-          <p className="ltr-num text-xs text-muted">{o.driver.phone}</p>
-        </div>
-        <StatusBadge status={o.status} />
-      </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-        {([["units.exp", o.expectedUnits], ["units.loaded", o.loadedUnits], ["units.delivered", o.deliveredUnits], ["units.final", o.finalUnits]] as const).map(([k, v]) => (
-          <div key={k}><dt className="text-muted">{t(k)}</dt><dd className="ltr-num mt-0.5 text-sm font-medium tabular-nums">{v ?? "—"}</dd></div>
-        ))}
-      </dl>
-      {data.manifest && <><ParcelStats parcels={o.parcels} /><p className="text-xs text-muted">{o.routeApprovedAt ? t("shipadm.route_approved_at", { time: fmtDateTime(o.routeApprovedAt, locale) }) : t("shipadm.route_not_approved")}</p></>}
-      <OfferFieldOpsInfo offer={o} businessId={r.businessId} />
-      <OfferStaffActions offer={o} service={r.service} onDone={onDone} />
-    </li>
-  );
-}
-
-/** The driver cards; with none yet the empty state offers the next step (assign by hand) when the viewer may. */
-export function DriversSection({ data, onDone, onAssign }: { data: any; onDone: () => void; onAssign?: () => void }) {
-  const { t } = useI18n(); const r = data.request;
-  return (
-    <Section title={t("req.drivers")} description={t("rda.drivers_sub", { filled: r.slotsFilled, qty: r.quantity })} id="request-drivers" actions={<Badge tone={r.slotsFilled >= r.quantity ? "success" : "warn"}><span className="ltr-num tabular-nums">{r.slotsFilled}/{r.quantity}</span></Badge>}>
-      {data.offers.length === 0
-        ? <EmptyState title={t("req.no_drivers")} hint={t("req.no_drivers_hint")} action={onAssign ? <button type="button" onClick={onAssign} className="text-sm text-accent hover:underline">{t("admin.assign_driver")}</button> : undefined} />
-        : <ul className="space-y-3">{data.offers.map((o: any) => <OfferCard key={o.id} o={o} data={data} onDone={onDone} />)}</ul>}
     </Section>
   );
 }

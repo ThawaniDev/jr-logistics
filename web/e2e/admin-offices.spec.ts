@@ -8,7 +8,7 @@ import { staffLogin, gotoReady, DEMO } from "./helpers";
  * or agreement, is verified and given an agreement through the UI, and ends active. Counters are judged against a baseline taken first.
  */
 test.describe.configure({ mode: "serial" });
-const BASE = "http://localhost:3100";
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 const ADMIN = { email: "admin@jrlogistics.test", password: "E2e!Password2026" };
 const STAMP = Date.now().toString();
 const off = { id: "", name: `Views Office ${STAMP.slice(-6)}`, phone: `05${STAMP.slice(-8)}`, ctx: null as BrowserContext | null };
@@ -39,10 +39,7 @@ test("a new office registers: pending, and the KPI counters move by one", async 
   const s0 = (await api(page.request, "GET", "/admin/offices/summary")).json;
   before = { offices: s0.offices, review: s0.review, verified: s0.verified };
   off.ctx = await browser.newContext();
-  const sent = await api(off.ctx.request, "POST", "/auth/otp/send", { phone: off.phone });
-  const ver = await api(off.ctx.request, "POST", "/auth/otp/verify", { phone: off.phone, code: sent.json.demoCode });
-  expect(ver.json.isNew, JSON.stringify(ver.json)).toBe(true);
-  const reg = await api(off.ctx.request, "POST", "/auth/register", { registrationToken: ver.json.registrationToken, role: "office", name: "Views Contact", companyName: off.name, city: "riyadh", crNumber: "7007654321", termsAccepted: true });
+  const reg = await api(off.ctx.request, "POST", "/auth/register", { username: `u966${off.phone.slice(1)}`, password: "Test#Pass2026", phone: off.phone, role: "office", name: "Views Contact", companyName: off.name, city: "riyadh", crNumber: "7007654321", termsAccepted: true });
   expect(reg.status, JSON.stringify(reg.json)).toBe(201);
   off.id = reg.json.user.id;
   const s1 = (await api(page.request, "GET", "/admin/offices/summary")).json;
@@ -89,7 +86,7 @@ test("office view: header, tabs, readiness; verification needs approved document
   await expect(page.getByRole("heading", { level: 1, name: off.name })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Courier offices");
   await expect(header(page)).toContainText("Pending");
-  for (const name of ["Overview", "Drivers", "Jobs & payouts", "Agreement", "Documents"]) await expect(tabs(page).getByRole("link", { name })).toBeVisible();
+  for (const name of ["Overview", "Drivers", "Jobs", "Money", "Agreement", "Documents", "Security", "Activity", "Notes", "Raw data"]) await expect(tabs(page).getByRole("link", { name })).toBeVisible();
   await expect(tabs(page).getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("Not ready to receive jobs yet")).toBeVisible();
   await expect(page.getByText("The office is not verified yet.")).toBeVisible();
@@ -165,8 +162,9 @@ test("office view: suspending the account asks for a reason and can be undone; t
   await expect(header(page)).toContainText("Active");
   await tabs(page).getByRole("link", { name: "Drivers" }).click();
   await expect(page.getByText("No drivers yet")).toBeVisible();
-  await tabs(page).getByRole("link", { name: "Jobs & payouts" }).click();
+  await tabs(page).getByRole("link", { name: "Jobs" }).click();
   await expect(page.getByText("No jobs yet")).toBeVisible();
+  await tabs(page).getByRole("link", { name: "Money" }).click();
   await expect(page.getByText("No settlements yet")).toBeVisible();
   const log = (await api(page.request, "GET", `/admin/audit?entity=user&pageSize=20`)).json.items as Array<{ action: string; entityId: string }>;
   expect(log.filter((l) => l.entityId === off.id).map((l) => l.action)).toEqual(expect.arrayContaining(["user.suspended", "user.active", "account.verify"]));
@@ -179,7 +177,7 @@ test("the demo office lists its drivers with the unlink action behind a confirma
   await gotoReady(page, `/admin/offices/${demo.id}/drivers`);
   await expect(page.getByRole("heading", { level: 1, name: "Al Wajiha Courier Office" })).toBeVisible();
   await expect(tabs(page).getByRole("link", { name: /^Drivers/ })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("link", { name: "Tariq Mahmood" })).toHaveAttribute("href", /\/admin\/drivers\/.+/);
+  await expect(page.getByRole("link", { name: "Tariq Mahmood" }).first()).toHaveAttribute("href", /\/admin\/drivers\/.+/); // also named in the link history
   const unlink = page.getByRole("button", { name: "Unlink" }).first();
   await unlink.click();
   await expect(dialog(page)).toContainText("Their earnings will be paid directly to them.");

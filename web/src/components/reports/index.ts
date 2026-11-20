@@ -1,0 +1,21 @@
+/** The reports component kit (see memory/ANALYTICS.md for props and examples). */
+export { useReportFilters, type ReportFilterState } from "./useReportFilters";
+export { ReportFilters, ALL_FILTER_KEYS } from "./ReportFilters";
+export { ReportShell, NoData, type DefinitionItem } from "./ReportShell";
+export { KpiGrid, KpiCard, Sparkline } from "./KpiGrid";
+export { TrendChart, StackedBarChart, type TrendSeries, type TrendPoint } from "./TrendChart";
+export { DonutChart, type Slice } from "./DonutChart";
+export { FunnelChart, type FunnelStep } from "./FunnelChart";
+export { Heatmap } from "./Heatmap";
+export { HistogramChart, type HistogramBucket } from "./HistogramChart";
+export { BreakdownTable } from "./BreakdownTable";
+export { RankedList } from "./RankedList";
+export { type BarRow } from "./BarRows";
+export { InsightList } from "./InsightList";
+export { DrillTable } from "./DrillTable";
+export { ChartCard, ChartLegend, DataTable } from "./ChartCard";
+export { ChangePill, DeltaPill } from "./Delta";
+export { InfoTip } from "./InfoTip";
+export { MultiSelect } from "./MultiSelect";
+export { chartVars, seriesColor, STATUS_COLOR, formatValue, bucketLabel, fmtDur, fmtPercent, fmtCompact, fmtMoneyCompact, type ValueFormat } from "./chartTheme";
+export type { ReportMeta, OverviewData, DrillPage, Kpi } from "./types";

@@ -11,8 +11,11 @@ import { useI18n } from "@/i18n/provider";
 import { formatSarInput, receiveAmountCheck } from "./business-fieldops-lib";
 
 /** `GET /business/cod` (E.7): what drivers hold of the warehouse's cash, per driver and per order. */
-export interface CodOrder { offerId: string; requestId: string; ref: string; collectedCents: number; receivedCents: number; outstandingCents: number }
-export interface CodDriver { driverId: string; driverName: string; phoneMasked: string | null; outstandingCents: number; orders: CodOrder[] }
+/** The pickup warehouse of an order (first line of the pickup address, else the company name) and its city key — J6. */
+export interface CodWarehouse { label: string; city: string | null }
+/** `officeId` / `officeName`: the courier office the driver belonged to AT THE TIME OF THE JOB; both `null` = an independent driver (J6). */
+export interface CodOrder { offerId: string; requestId: string; ref: string; collectedCents: number; receivedCents: number; outstandingCents: number; parcels?: number; lastCollectedAt?: string | null; warehouse?: CodWarehouse; officeId?: string | null; officeName?: string | null }
+export interface CodDriver { driverId: string; driverName: string; phoneMasked: string | null; outstandingCents: number; officeId?: string | null; officeName?: string | null; orders: CodOrder[] }
 export interface CodOverview { totals: { collectedCents: number; receivedCents: number; outstandingCents: number }; drivers: CodDriver[] }
 export const COD_KEY = "/business/cod";
 export const REMITTANCES_KEY = "/business/cod/remittances";

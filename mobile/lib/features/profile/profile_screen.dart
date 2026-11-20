@@ -32,6 +32,7 @@ class ProfileScreen extends ConsumerWidget {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${user?['name'] ?? ''}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             Text('${user?['phone'] ?? ''}', textDirection: TextDirection.ltr, style: const TextStyle(color: JR.muted)),
+            if (user?['username'] is String) Text(t('m.au_username_is', {'name': user!['username']}), key: const Key('profile-username'), style: const TextStyle(color: JR.muted, fontSize: 13)),
             const SizedBox(height: 6),
             if (ov != null) Pill(ov.verified ? t('m.verified_ok') : t('m.not_verified'), tone: ov.verified ? Tone.success : Tone.warn),
           ])),
@@ -62,6 +63,7 @@ class ProfileScreen extends ConsumerWidget {
         _tile(Icons.support_agent, t('nav.support'), () => context.push('/support'), trailing: supportUnread
             ? Row(mainAxisSize: MainAxisSize.min, children: [Container(key: const Key('support-unread-dot'), width: 10, height: 10, decoration: const BoxDecoration(color: JR.accent, shape: BoxShape.circle)), const SizedBox(width: 6), const Icon(Icons.chevron_right, color: JR.muted)])
             : null),
+        _tile(Icons.lock_outline, t('m.au_cp_title'), () => context.push('/change-password')),
         _tile(Icons.language, t('m.language'), () => showLanguageSheet(context, ref), trailing: Text(langNames[ref.watch(localeProvider)]!, style: const TextStyle(color: JR.muted))),
         _tile(Icons.logout, t('auth.logout'), () async {
           final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(content: Text(d.tr('m.logout_confirm')), actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: Text(d.tr('common.cancel'))), FilledButton(style: FilledButton.styleFrom(minimumSize: const Size(100, 44)), onPressed: () => Navigator.pop(d, true), child: Text(d.tr('auth.logout')))]));

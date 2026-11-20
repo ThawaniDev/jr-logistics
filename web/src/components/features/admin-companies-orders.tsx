@@ -3,11 +3,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, ChevronRight, ListChecks } from "lucide-react";
 import Link from "next/link";
-import { CellPair, EmptyState, ErrorState, PageLoading, Pagination, SearchBox, Segmented, StatusBadge, Table, Td, Toolbar, Button } from "@/components/ui";
+import { CellPair, EmptyState, ErrorState, Input, PageLoading, Pagination, SearchBox, Segmented, Select, StatusBadge, Table, Td, Toolbar, Button } from "@/components/ui";
 import { useApi, useUrlState } from "@/components/ui/data";
 import { fmtDateTime, fmtMoney, fmtNum } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
-import { useDebounced, useTx, qs } from "./admin-common";
+import { dayEndIso, dayStartIso, useDebounced, useTx, qs } from "./admin-common";
 import { useCompany, usePageFor } from "./admin-companies-ctx";
 
 const PAGE = 20;
@@ -17,21 +17,30 @@ const ORDER = ["draft", "published", "filling", "assigned", "confirmed", "in_pro
 export function CompanyOrders() {
   const { t, locale } = useI18n(); const c = useCompany(); const tx = useTx(); const router = useRouter();
   const [status, setStatus] = useUrlState("status", "all");
-  const [q, setQ] = useState(""); const dq = useDebounced(q.trim()); const [page, setPage] = usePageFor(`${dq}|${status}`);
+  const [city, setCity] = useUrlState("city"); const [from, setFrom] = useUrlState("from"); const [to, setTo] = useUrlState("to");
+  const { data: cat } = useApi<{ cities: Array<{ key: string }> }>("/catalog");
+  const [q, setQ] = useState(""); const dq = useDebounced(q.trim()); const [page, setPage] = usePageFor(`${dq}|${status}|${city}|${from}|${to}`);
   const ov = useApi(`/admin/companies/${c.id}/overview`, { shouldRetryOnError: false });
   const by: Record<string, number> = ov.data?.orders?.byStatus ?? {};
-  const { data, error, mutate, isValidating } = useApi(`/admin/requests${qs({ businessId: c.id, status: status === "all" ? "" : status, q: dq, page, pageSize: PAGE })}`, { keepPreviousData: true });
+  const { data, error, mutate, isValidating } = useApi(`/admin/requests${qs({ businessId: c.id, status: status === "all" ? "" : status, q: dq, city, from: dayStartIso(from), to: dayEndIso(to), page, pageSize: PAGE })}`, { keepPreviousData: true });
   const total = ov.data?.orders?.total as number | undefined;
   const options = [{ key: "all", label: t("common.all"), count: total }, ...ORDER.filter((s) => (by[s] ?? 0) > 0 || s === status).map((s) => ({ key: s, label: t(`status.${s}`), count: by[s] ?? 0 }))];
-  const clear = () => { setQ(""); setStatus("all"); };
+  const clear = () => { setQ(""); setStatus("all"); setCity(""); setFrom(""); setTo(""); };
+  const filtered = status !== "all" || !!dq || !!city || !!from || !!to;
   return (
     <>
       <Toolbar end={total != null && <span className="text-sm text-muted">{t("rdp.n_orders", { n: fmtNum(total, locale) })}</span>}>
         <SearchBox value={q} onChange={setQ} placeholder={t("req.search_ref")} label={t("req.search_ref")} />
         <Segmented label={t("common.status")} options={options} value={status} onChange={setStatus} />
       </Toolbar>
+      <Toolbar>
+        <div className="w-44"><Select aria-label={t("dv3.f_pickup_city")} data-testid="dv3-orders-city" placeholder={t("dv3.f_any_city")} value={city} onChange={(e) => setCity(e.target.value)} options={(cat?.cities ?? []).map((x) => ({ value: x.key, label: tx(`city.${x.key}`, x.key) }))} /></div>
+        <div className="w-40"><Input aria-label={t("dv3.f_start_from")} data-testid="dv3-orders-from" type="date" ltr value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /></div>
+        <div className="w-40"><Input aria-label={t("dv3.f_start_to")} data-testid="dv3-orders-to" type="date" ltr value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></div>
+        {(city || from || to) && <Button variant="ghost" size="sm" onClick={() => { setCity(""); setFrom(""); setTo(""); }}>{t("uxa.clear_filters")}</Button>}
+      </Toolbar>
       {error ? <ErrorState error={error} retry={() => mutate()} /> : !data ? <PageLoading /> : data.items.length === 0 ? (
-        status !== "all" || dq
+        filtered
           ? <EmptyState title={t("common.no_results")} hint={t("ubz.no_results_hint")} action={<Button variant="secondary" onClick={clear}>{t("uxa.clear_filters")}</Button>} />
           : <EmptyState title={t("biz.no_requests")} hint={t("rdp.no_orders_hint")} icon={<ListChecks className="size-9" aria-hidden />} />
       ) : (

@@ -5,9 +5,11 @@ import { err } from "@/lib/errors";
 import { logEvent } from "./events";
 import { notify } from "./notify";
 import { lockOffer, forDriver, expect, setOffer } from "./jobs";
-import { isManifestJob, normalizeScan, scanMatches, syncOfferUnits } from "./shipments";
+import { currentStopOf, isManifestJob, normalizeScan, scanMatches, sendRecipientCodes, syncOfferUnits } from "./shipments";
+import { isRoutingOn, autoStartRoute } from "./routing-mode";
 import { effectiveOps } from "./warehouse";
 import { autoPlanRoute } from "./route-plan";
+import { batchOf, recordShipmentEvents } from "./shipment-events";
 
 /**
  * E3 — loading by the driver's own scans. After attendance the driver scans each parcel onto the vehicle; "finish loading" confirms the
@@ -72,22 +74,31 @@ export async function unscanLoad(driver: User, offerId: string, codeRaw: string)
 
 /** The driver is done scanning: confirm the count, release the rest to the pool, plan the best route. */
 export async function finishLoading(driver: User, offerId: string) {
+  let firstStop: string | null = null; // routing off: the route starts here and the first recipient is texted (after commit)
   const res = await db.transaction(async (tx) => {
     const { o, r } = await scanContext(tx, driver, offerId);
     const rows = await tx.select().from(shipments).where(and(eq(shipments.offerId, o.id), inArray(shipments.status, ["pending", "loaded"]))).orderBy(asc(shipments.stopOrder), asc(shipments.seq)).for("update");
     const loaded = rows.filter((s) => s.status === "loaded"), rest = rows.filter((s) => s.status === "pending");
     if (!loaded.length) throw err("VALIDATION", "Scan at least one parcel before finishing", { field: "codes" });
     // Unscanned parcels were never taken: back to the pool so a replacement or a later slot can carry them.
-    if (rest.length) await tx.update(shipments).set({ offerId: null, stopOrder: null, status: "pending", updatedAt: new Date() }).where(inArray(shipments.id, rest.map((s) => s.id)));
+    if (rest.length) {
+      await tx.update(shipments).set({ offerId: null, stopOrder: null, status: "pending", updatedAt: new Date() }).where(inArray(shipments.id, rest.map((s) => s.id)));
+      await recordShipmentEvents(tx, batchOf(rest.map((s) => s.id), r.id, "unassigned", { offerId: o.id, actor: actorOf(driver), payload: { why: "not_scanned" } }));
+    }
     await tx.execute(sql`update shipments s set stop_order = x.rn, updated_at = now()
       from (select id, row_number() over (order by stop_order, seq) rn from shipments where id in (${sql.join(loaded.map((l) => sql`${l.id}`), sql`, `)})) x where s.id = x.id`);
     const snap = r.pricingSnapshot as { providerCostCents: number } | null;
     await syncOfferUnits(tx, o.id, snap?.providerCostCents ?? 0);
-    await setOffer(tx, o.id, { loadedUnits: loaded.length, loadedAt: new Date(), loadedAckByDriver: true });
+    const upd = await setOffer(tx, o.id, { loadedUnits: loaded.length, loadedAt: new Date(), loadedAckByDriver: true });
     await logEvent(tx, { requestId: r.id, offerId: o.id, actor: actorOf(driver), type: "loading_finished", payload: { units: loaded.length, released: rest.length } });
     await notify(r.businessId, "loading_finished", { requestId: r.id, ref: r.ref, driver: driver.name, units: loaded.length }, tx);
+    if (!(await isRoutingOn(tx))) { // J2: no route planning and no approval step — finishing the load starts the route
+      await autoStartRoute(tx, upd, actorOf(driver));
+      firstStop = (await currentStopOf(tx, o.id))?.id ?? null;
+    }
     return { loaded: loaded.length, released: rest.length };
   });
-  await autoPlanRoute(offerId); // best effort, outside the transaction (network)
+  if (firstStop) await sendRecipientCodes([firstStop]);
+  else await autoPlanRoute(offerId); // best effort, outside the transaction (network); a no-op while routing is off
   return res;
 }

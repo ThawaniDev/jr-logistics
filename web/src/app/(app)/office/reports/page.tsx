@@ -1,3 +1,3 @@
-import { OfficeReports } from "@/components/features/office-reports";
+import { OfficeOverview } from "@/components/reports/portal/office/OfficeOverview";
 
-export default function Page() { return <OfficeReports />; }
+export default function Page() { return <OfficeOverview />; }

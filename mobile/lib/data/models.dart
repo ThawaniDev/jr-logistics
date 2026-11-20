@@ -60,6 +60,10 @@ class Job {
   JobPolicy? get policy { final m = _m(j['policy']); return m == null ? null : JobPolicy(m); }
   /// Cash on delivery summary for the stat cards (manifest jobs). Null when the server does not send it.
   JobCod? get cod { final m = _m(j['cod']); return m == null ? null : JobCod(m); }
+  /// The server's numbers for the stat cards of every order card (`stats`: total · toDeliver · delivered · notDelivered · failed · returned · estimated · cod).
+  /// Null when the server sends none: older servers (no `stats` key at all — see [sendsStats]) and jobs that have no parcels (vehicle days: `stats: null`).
+  Json? get serverStats => _m(j['stats']);
+  bool get sendsStats => j.containsKey('stats');
   /// Loading by scanning is open: attendance is confirmed, the route is not approved and the driver has not finished loading yet.
   bool get inScanLoading => status == 'attendance_confirmed' && !routeApproved && (can('scan_loading') || can('finish_loading') || (loading.isScan && !loading.finished && !can('approve_route')));
   /// Show the "wait at the door" timer? Only when the platform wants one (`stopWaitMin > 0`); an old server without `policy` always had it.
@@ -68,6 +72,11 @@ class Job {
   bool get failStrict => policy?.failStrict ?? true;
   /// A stop-order change is welcome in the UI (the route says so).
   bool get canReorder => route?.canReorder == true;
+  /// Platform switch (Settings › Field operations). OFF: no route approval, map, re-order or optimise, and no one-stop-at-a-time lock — the driver works the
+  /// shipments in any order. Older servers send nothing: routing existed, so it is ON.
+  bool get routingEnabled => policy?.routingEnabled ?? true;
+  /// Platform switch for business-to-business parcels. Older servers send nothing: ON.
+  bool get b2bShipmentsEnabled => policy?.b2bShipmentsEnabled ?? true;
   List<Stop> get stops {
     final raw = j['stops'];
     if (raw is! List) return const [];
@@ -129,6 +138,9 @@ class JobPolicy {
   /// Minutes to wait at the door; 0 = no timer.
   int? get stopWaitMin => _i(j['stopWaitMin']);
   bool get failStrict => j['failStrict'] == true;
+  /// `false` = routing is switched off by the platform (absent on older servers = on).
+  bool get routingEnabled => j['routingEnabled'] != false;
+  bool get b2bShipmentsEnabled => j['b2bShipmentsEnabled'] != false;
 }
 
 /// `cod` on the job view (halalas).
@@ -138,6 +150,8 @@ class JobCod {
   int get toCollectCents => _i(j['toCollectCents']) ?? 0;
   int get collectedCents => _i(j['collectedCents']) ?? 0;
   int get parcels => _i(j['parcels']) ?? 0;
+  /// Cash already handed over to the warehouse (history cards). Null when the server does not say.
+  int? get handedOverCents => _i(j['handedOverCents'] ?? j['receivedCents']);
   bool get any => parcels > 0 || toCollectCents > 0 || collectedCents > 0;
 }
 
@@ -179,6 +193,10 @@ class Overview {
   int get jobsCompleted => _i(j['jobsCompleted']) ?? 0;
   num? get rating => j['rating'] is num ? j['rating'] as num : null;
   bool get officeLinked => j['officeLinked'] == true;
+  /// The driver belongs to a courier office: no wallet figures, no earnings (the office is paid). Cash on delivery is shown as usual.
+  bool get walletManagedByOffice => j['walletManagedByOffice'] == true;
+  /// The office's name when the server sends it (`officeName` or `office.name`).
+  String? get officeName => _s(j['officeName']) ?? _s(_m(j['office'])?['name']);
   int get availableCents => _i(_m(j['wallet'])?['availableCents']) ?? 0;
   int get pendingCents => _i(_m(j['wallet'])?['pendingCents']) ?? 0;
   int get heldCents => _i(_m(j['wallet'])?['heldCents']) ?? 0;
@@ -255,6 +273,15 @@ class Stop {
   int get codCents => _i(j['codCents']) ?? 0;
   int get codCollectedCents => _i(j['codCollectedCents']) ?? 0;
   bool get hasCod => codCents > 0;
+  /// `cod` or `prepaid`. Older servers send nothing: cash due means COD.
+  String get paymentMode { final v = _s(j['paymentMode']); return v == 'cod' || v == 'prepaid' ? v! : (hasCod ? 'cod' : 'prepaid'); }
+  /// Parcels in the shipment (the platform has no pieces column yet: always 1).
+  int get pieces { final n = _i(j['pieces']); return n == null || n < 1 ? 1 : n; }
+  /// When the shipment was created (shown with a clock on the shipment card).
+  String? get createdAt => _s(j['createdAt']);
+  /// Warehouse order reference / manifest number, when the server sends them (also searchable).
+  String? get orderRef => _s(j['orderRef']) ?? _s(j['externalRef']);
+  String? get manifestNumber => _s(j['manifestNumber']);
   /// Scanned onto the vehicle (scan-mode checklist): `loaded`; `pending` = not scanned yet.
   bool get scanned => status == 'loaded';
   /// Parcel codes the driver may type for this stop: the parcel code, plus the order reference / manifest number when the server sends them.

@@ -1,6 +1,8 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { otpLogin, staffLogin, DEMO } from "./helpers";
 import { STUB_PORT, type StubCall } from "./google-stub";
+import { setFieldModes, type FieldModes } from "./field-modes";
+import { openNext } from "./driver-ui";
 
 /**
  * (1) An order booked by COUNT ("details later"), mixed with picked demo parcels: the wizard, the hand-over gate, completing the details.
@@ -11,6 +13,10 @@ const STUB = `http://127.0.0.1:${STUB_PORT}`;
 const DRIVER = { sedan: DEMO.driver /* Omar, sedan */, hiace: "0500000013" /* Yusuf, hiace */ };
 
 test.describe.configure({ mode: "serial" });
+
+let savedModes: FieldModes; // J2 / J3: routing and B2B shipments are OFF by default — this spec drives routes / "Approve route" / business parcels
+test.beforeAll(async ({ browser }) => { savedModes = await setFieldModes(browser, { routingEnabled: true, b2bShipmentsEnabled: true }); });
+test.afterAll(async ({ browser }) => { await setFieldModes(browser, savedModes); });
 
 const startIn = (days: number) => new Date(Date.now() + days * 864e5 + 3 * 3600e3).toISOString().slice(0, 11) + "09:00";
 
@@ -212,6 +218,7 @@ test("80 demo parcels for one driver: best route planned in chunks, re-optimised
   const otpOf = (id: string) => list.find((x) => x.id === id)!.demoOtp;
   for (const s of order.slice(0, 2)) {
     await drv.reload();
+    await openNext(drv); // a card list: the sticky bar opens the stop to work on
     await drv.getByRole("button", { name: "I've arrived" }).first().click();
     await drv.getByLabel("Parcel code").fill(s.code);
     await drv.getByLabel("Delivery code").fill(otpOf(s.id));

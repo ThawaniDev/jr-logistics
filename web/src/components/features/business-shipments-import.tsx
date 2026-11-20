@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { AlertCircle, Camera, CameraOff, CheckCircle2, Plug, ScanLine, Search } from "lucide-react";
+import { AlertCircle, Camera, CameraOff, CheckCircle2, Inbox, Plug, ScanLine, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, Button, Card, Input, Notice, Select, Textarea, errText } from "@/components/ui";
 import { post } from "@/lib/api";
@@ -10,6 +10,7 @@ import { useI18n } from "@/i18n/provider";
 import { cn } from "@/lib/cn";
 import { emptyRow, validateRow, type ManifestRow } from "./business-shipments-lib";
 import { providerName, type Connection } from "./business-shipments-partner";
+import { IncomingOrdersPicker } from "./partner-orders-picker";
 
 /** "Import from <warehouse system>": paste/scan barcodes → look them up at the partner → preview → append to the manifest. Nothing is guessed or dropped silently. */
 
@@ -79,9 +80,10 @@ function CameraScan({ onCode, onClose }: { onCode: (v: string) => void; onClose:
 
 const V_TONE = { ready: "success", missing: "danger", in_jr: "warn", in_manifest: "warn", dup: "neutral", error: "danger" } as const;
 
-export function ImportPanel({ connections, rows, room, onAdd }: { connections: Connection[]; rows: ManifestRow[]; room: number; onAdd: (rows: ManifestRow[]) => void }) {
+/** `connections` = the ones that can look orders up (may be empty). `ordersSource` adds "From incoming orders" (open orders, filtered to `deliveryCity`). */
+export function ImportPanel({ connections, rows, room, onAdd, ordersSource = false, deliveryCity }: { connections: Connection[]; rows: ManifestRow[]; room: number; onAdd: (rows: ManifestRow[]) => void; ordersSource?: boolean; deliveryCity?: string }) {
   const { t, locale } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false); const [source, setSource] = useState<"lookup" | "orders">("lookup");
   const [connId, setConnId] = useState(connections[0]?.id ?? "");
   const conn = connections.find((c) => c.id === connId) ?? connections[0];
   const [text, setText] = useState(""); const [scan, setScan] = useState(""); const [cam, setCam] = useState(false);
@@ -141,19 +143,21 @@ export function ImportPanel({ connections, rows, room, onAdd }: { connections: C
     toast.success(t("intg.import_added", { n: chosen.length }));
   };
 
-  if (!conn) return null;
+  if (!conn && !ordersSource) return null;
+  if (open && source === "orders") return <IncomingOrdersPicker deliveryCity={deliveryCity} rows={rows} room={room} onAdd={onAdd} onClose={() => setOpen(false)} />;
   const many = connections.length > 1;
-  const pname = providerName(t, conn.provider, conn.providerLabel);
-  if (!open) {
+  if (!open || !conn) {
     return (
       <Card className="flex flex-wrap items-center justify-between gap-3 border-cyan/30 bg-cyan/5" data-testid="import-panel-closed">
-        <div className="flex min-w-0 items-start gap-3"><Plug className="mt-0.5 size-5 shrink-0 text-cyan" aria-hidden /><div className="min-w-0"><p className="font-semibold">{t("intg.import_title")}</p><p className="text-xs text-muted">{t("intg.import_sub")}</p></div></div>
+        <div className="flex min-w-0 items-start gap-3"><Plug className="mt-0.5 size-5 shrink-0 text-cyan" aria-hidden /><div className="min-w-0"><p className="font-semibold">{t("intg.import_title")}</p><p className="text-xs text-muted">{conn ? t("intg.import_sub") : t("iord.src_orders_hint")}</p></div></div>
         <div className="flex flex-wrap gap-2">
-          {connections.map((c) => <Button key={c.id} type="button" size="sm" onClick={() => { setConnId(c.id); setOpen(true); }}><ScanLine className="size-4" />{t("intg.import_from", { name: c.name })}</Button>)}
+          {connections.map((c) => <Button key={c.id} type="button" size="sm" onClick={() => { setConnId(c.id); setSource("lookup"); setOpen(true); }}><ScanLine className="size-4" />{t("intg.import_from", { name: c.name })}</Button>)}
+          {ordersSource && <Button type="button" size="sm" variant={conn ? "secondary" : "primary"} onClick={() => { setSource("orders"); setOpen(true); }} data-testid="import-from-orders"><Inbox className="size-4" aria-hidden />{t("iord.src_orders")}</Button>}
         </div>
       </Card>
     );
   }
+  const pname = providerName(t, conn.provider, conn.providerLabel);
   return (
     <Card className="space-y-4 border-cyan/30" data-testid="import-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">

@@ -9,6 +9,7 @@ import { useUser } from "@/components/layout/auth-context";
 import { hasAny, qs, useDebounced, useTx } from "./admin-common";
 import { AgreementBadge, ListEmpty, LoadingRows, Money, RowLink, pagerFooter } from "./admin-offices-common";
 import { OFFICE_STATES, apiFilter, parseAgreementFilter, parseOfficeState } from "./admin-offices-lib";
+import { AddAccountButton } from "./admin-create-pages";
 
 const SIZE = 25;
 
@@ -33,7 +34,7 @@ export function OfficesList() {
 
   return (
     <>
-      <PageHeader title={t("nav.offices")} subtitle={t("rdq.offices_sub")} icon={<Building2 className="size-5" />} />
+      <PageHeader title={t("nav.offices")} subtitle={t("rdq.offices_sub")} icon={<Building2 className="size-5" />} actions={<AddAccountButton kind="office" />} />
       <section aria-label={t("rdq.kpis")} className="mb-5">
         <StatGrid cols={6}>
           <Stat label={t("rdq.kpi_offices")} value={n(s?.offices)} loading={!s && !sum.error} icon={<Building2 className="size-5" />} href="/admin/offices" hint={t("rdq.kpi_offices_hint")} tone="accent" />

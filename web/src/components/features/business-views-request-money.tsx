@@ -45,7 +45,7 @@ export function RequestMoney() {
             <Table bare stack label={t("req.invoices")} head={[t("rdz.inv_number"), t("common.date"), { label: t("rdz.inv_subtotal"), align: "end" }, { label: t("rdz.inv_vat"), align: "end" }, { label: t("req.total"), align: "end" }]}>
               {invoices.map((i) => (
                 <tr key={i.id} data-testid="order-invoice">
-                  <Td label={t("rdz.inv_number")}><span className="ltr-num font-semibold">{i.number}</span></Td>
+                  <Td label={t("rdz.inv_number")}><Link href={`/business/wallet/invoices/${i.id}`} className="ltr-num font-semibold text-accent hover:underline" data-testid="order-invoice-link">{i.number}</Link></Td>
                   <Td label={t("common.date")} className="whitespace-nowrap text-muted">{fmtDate(i.createdAt, locale)}</Td>
                   <Td label={t("rdz.inv_subtotal")} num>{fmtMoney(i.subtotalCents, locale)}</Td>
                   <Td label={t("rdz.inv_vat")} num className="text-muted">{fmtMoney(i.vatCents, locale)}{i.vatPct != null && <span className="block text-xs">{i.vatPct}%</span>}</Td>

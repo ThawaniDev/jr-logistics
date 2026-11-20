@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3100;
+const PORT = Number(process.env.E2E_PORT ?? 3101); // 3100 is often taken by another project
 const DB = "postgres://dogorshom@localhost:5432/jr_logistics_test";
 export default defineConfig({
   testDir: "./e2e",

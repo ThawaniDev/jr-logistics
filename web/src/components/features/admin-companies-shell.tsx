@@ -10,6 +10,7 @@ import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
 import { useTx } from "./admin-common";
 import { CompanyActions } from "./admin-companies-actions";
+import { EditAccountButton } from "./admin-create-pages";
 import { CompanyProvider, useCompany, type Company } from "./admin-companies-ctx";
 import { companyFlags, companyTabHref, companyTabs, type CompanyFlag, type CompanyTab } from "./admin-companies-lib";
 
@@ -37,11 +38,15 @@ export function NotACompany() {
 export function CompanyShell({ id, children }: { id: string; children: ReactNode }) {
   const { t, locale } = useI18n(); const me = useUser(); const tx = useTx();
   const { data: c, error, mutate } = useApi<Company>(`/admin/companies/${id}`, { shouldRetryOnError: false });
+  const { data: prof } = useApi<{ taxNumber: string | null }>(c ? `/admin/companies/${id}/profile` : null, { shouldRetryOnError: false });
   if (error) return error instanceof ApiError && error.code === "NOT_FOUND" ? <NotACompany /> : <><PageHeader title={t("nav.companies")} breadcrumbs={[{ label: t("nav.companies"), href: "/admin/companies" }]} /><ErrorState error={error} retry={() => mutate()} /></>;
   if (!c) return <PageLoading />;
   const p = c.profile; const can = (perm: string) => hasPerm(me, perm);
   const flags = companyFlags({ status: c.status, verificationStatus: p.verificationStatus });
-  const tabLabel = { overview: t("rdp.tab_overview"), orders: t("rdp.tab_orders"), warehouse: t("rdp.tab_warehouse"), finance: t("rdp.tab_finance"), documents: t("rdp.tab_documents") };
+  const tabLabel: Record<CompanyTab, string> = {
+    overview: t("rdp.tab_overview"), orders: t("rdp.tab_orders"), parcels: t("dv3.tab_parcels"), finance: t("rdp.tab_finance"), warehouse: t("rdp.tab_warehouse"), integrations: t("dv3.tab_integrations"), documents: t("rdp.tab_documents"),
+    support: t("dv3.tab_support"), security: t("dv3.tab_security"), activity: t("dv3.tab_activity"), notes: t("dv3.tab_notes"), raw: t("dv3.tab_raw"),
+  };
   const tabs = companyTabs(can).map((k) => ({
     href: companyTabHref(c.id, k), label: tabLabel[k],
     count: k === "orders" ? c.counts.orders ?? undefined : k === "documents" && c.counts.docsToReview ? c.counts.docsToReview : undefined,
@@ -52,12 +57,13 @@ export function CompanyShell({ id, children }: { id: string; children: ReactNode
       <DetailHeader name={c.name} avatar={<span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent"><Factory className="size-7" /></span>}
         subtitle={<span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">{c.contactName}{p.rating != null && <span className="inline-flex items-center gap-1 text-gold"><Star className="size-3.5 fill-current" aria-hidden /><span className="ltr-num">{p.rating}</span><span className="text-xs text-muted">({p.ratingCount})</span></span>}</span>}
         badges={<><StatusBadge status={p.verificationStatus} />{c.status === "suspended" ? <Badge tone="danger">{t("rdp.account_suspended")}</Badge> : <StatusBadge status={c.status} />}</>}
-        actions={<CompanyActions company={c} />}
+        actions={<><EditAccountButton kind="business" id={c.id} /><CompanyActions company={c} /></>}
         facts={[
           { label: t("auth.phone"), value: c.phone ? <span className="ltr-num">{c.phone}</span> : "—" },
           { label: t("auth.email"), value: c.email ?? "—" },
           { label: t("reg.city"), value: c.city ? tx(`city.${c.city}`, c.city) : "—" },
           { label: t("reg.cr"), value: p.crNumber ? <span className="ltr-num">{p.crNumber}</span> : "—" },
+          { label: t("reg.tax"), value: prof?.taxNumber ? <span className="ltr-num" data-testid="dv3-header-tax">{prof.taxNumber}</span> : "—" },
           { label: t("rdp.fact_contact"), value: p.responsiblePerson ?? c.contactName },
           { label: t("reg.industry"), value: p.industry ?? "—" },
           { label: t("rdp.fact_joined"), value: fmtDate(c.createdAt, locale) },

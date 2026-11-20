@@ -5,7 +5,8 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { offers, requests, settlements, shipments, jobEvents, invoices, walletAccounts, ledgerEntries, withdrawals, complaints } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, publishedRequest, mkShipments } from "../helpers/factories";
+import { shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, publishedRequest, mkShipments } from "../helpers/factories";
+import { resetDbWithFieldModes } from "../helpers/field-modes";
 import { work } from "../helpers/work";
 import { moneyViolations } from "../helpers/invariants";
 import * as jobs from "@/server/jobs";
@@ -16,7 +17,7 @@ import { ensureAccount, setPaymentProvider, topUp, type PaymentProvider } from "
 import { runMaintenance } from "@/server/maintenance";
 import { currentStopOf, otpFor } from "@/server/shipments";
 
-beforeEach(resetDb);
+beforeEach(resetDbWithFieldModes); // J2 / J3: routing and B2B shipments default to OFF — this suite exercises the route / approve-route / business-parcel behaviour
 afterAll(shutdown);
 
 const offerOf = async (requestId: string, driverId: string) => (await db.select().from(offers).where(and(eq(offers.requestId, requestId), eq(offers.driverId, driverId))))[0];
@@ -99,7 +100,7 @@ describe("races", () => {
 
   it("cancelling a request while a driver accepts it ends in one consistent state, with all escrow returned", async () => {
     for (let i = 0; i < 5; i++) {
-      await resetDb();
+      await resetDbWithFieldModes();
       const { biz } = await setup(); const d = await mkDriver();
       const r = await publishedRequest(biz, { shipments: mkShipments(4), shipmentsPerDriver: 4 });
       const o = await offerOf(r.id, d.id);

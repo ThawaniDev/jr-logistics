@@ -94,10 +94,11 @@ export function entityHref(role: string | null | undefined, id: string | null | 
   if (role === "business") return `/admin/companies/${id}`;
   if (role === "office") return `/admin/offices/${id}`;
   if (role === "driver") return `/admin/drivers/${id}`;
+  if (role === "staff" || role === "admin") return `/admin/users/${id}`; // the generic user page (identity, sign-ins, activity, notes)
   return null;
 }
 /** The permissions that let staff open that account page (same as the sidebar entries). */
-export const ENTITY_PERMS: Record<string, string[]> = { business: ["users.view", "verification.manage", "offices.view"], office: ["offices.view", "offices.manage"], driver: ["drivers.view"] };
+export const ENTITY_PERMS: Record<string, string[]> = { business: ["users.view", "verification.manage", "offices.view"], office: ["offices.view", "offices.manage"], driver: ["drivers.view"], staff: ["users.view"], admin: ["users.view"] };
 
 // ───────────────────────── Ratings ─────────────────────────
 
@@ -129,7 +130,7 @@ export function auditFrom(period: string, now = Date.now()): string | undefined 
   return undefined;
 }
 /** Entities the audit log knows (used for the entity filter); the API matches the value exactly. */
-export const AUDIT_ENTITIES = ["user", "settings", "ticket", "complaint", "request", "offer", "settlement", "pricing_rule", "shipment", "business", "document", "report", "users", "driver_location", "office_agreement"] as const;
+export const AUDIT_ENTITIES = ["user", "settings", "ticket", "complaint", "request", "offer", "settlement", "pricing_rule", "shipment", "business", "document", "report", "users", "driver_location", "office_agreement", "role"] as const;
 export const distinctActors = (items: Array<{ actorId?: string | null }>): number => new Set(items.map((i) => i.actorId).filter(Boolean)).size;
 const short = (v: unknown) => { const j = JSON.stringify(v); return j === undefined ? "—" : j.length > 80 ? `${j.slice(0, 77)}…` : j; };
 /**
@@ -158,9 +159,9 @@ export function staffStats(rows: StaffRow[], now = Date.now()): StaffStats {
 }
 /** Which area of the console a permission belongs to (the permission picker groups by it). Unknown permissions fall into `other`. */
 export const PERM_AREAS: Record<string, readonly string[]> = {
-  people: ["users.", "drivers.", "offices.", "verification.", "documents."],
+  people: ["users.", "accounts.", "drivers.", "offices.", "verification.", "documents."],
   orders: ["requests.", "attendance.", "replacements.", "live_location.", "custody."],
-  support: ["tickets.", "complaints."],
+  support: ["tickets.", "complaints.", "notes."],
   finance: ["finance.", "wallets.", "wallet.", "settlements.", "payouts.", "withdrawals.", "cod.", "pricing.", "refunds."],
   insights: ["reports."],
   admin: ["staff.", "settings.", "audit.", "broadcast."],

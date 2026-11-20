@@ -11,6 +11,7 @@ import { hasPerm, useUser } from "@/components/layout/auth-context";
 import { useDebounced, useTx } from "./admin-common";
 import { usePageFor } from "./admin-companies-ctx";
 import { COMPANY_STATES, companiesQuery, isCompanyState, pct } from "./admin-companies-lib";
+import { AddAccountButton } from "./admin-create-pages";
 
 const PAGE = 25;
 
@@ -32,7 +33,7 @@ export function CompaniesList() {
   const base = "/admin/companies";
   return (
     <>
-      <PageHeader title={t("nav.companies")} subtitle={t("rdp.companies_sub")} icon={<Factory className="size-5" />} />
+      <PageHeader title={t("nav.companies")} subtitle={t("rdp.companies_sub")} icon={<Factory className="size-5" />} actions={<AddAccountButton kind="business" />} />
       <StatGrid cols={5} className="mb-5">
         <Stat label={t("rdp.kpi_companies")} value={n(s?.total)} hint={seeOrders && s ? t("rdp.kpi_companies_hint", { n: n(s.companiesWithOpenOrders) }) : undefined} icon={<Factory className="size-5" />} href={base} loading={load} />
         <Stat label={t("status.verified")} value={n(s?.verified)} hint={s ? t("rdp.kpi_verified_hint", { pct: pct(s.verified, s.total) }) : undefined} icon={<CheckCircle2 className="size-5" />} href={`${base}?state=verified`} loading={load} />

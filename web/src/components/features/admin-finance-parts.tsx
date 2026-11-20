@@ -112,7 +112,7 @@ export function AccountFilter({ value, onChange, role, placeholder, clearLabel, 
   if (!canSearch) return null;
   const list = (found.data?.items ?? []).filter((u: any) => ACCOUNT_ROLES.includes(u.role));
   return (
-    <div ref={box} className="relative w-full sm:w-64" onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }}>
+    <div ref={box} data-testid={testid} className="relative w-full sm:w-64" onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }}>
       <SearchBox value={q} onChange={setQ} placeholder={placeholder} label={placeholder} className="sm:w-full" />
       {dq.length >= 2 && (
         <ul role="listbox" aria-label={placeholder} className="absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-xl border border-line bg-card p-1 shadow-xl">

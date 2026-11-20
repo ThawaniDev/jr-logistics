@@ -7,6 +7,7 @@ import { ApiError, patch } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/i18n/provider";
 import { useUser } from "@/components/layout/auth-context";
+import { PasswordCard } from "@/components/auth/password-forms";
 
 /** Optional: a page `title` / `subtitle`, KPIs or notices (`top`) above the form, and extra cards (`children`) beside it. */
 export interface ProfilePageProps { title?: string; subtitle?: string; top?: ReactNode; children?: ReactNode }
@@ -71,6 +72,7 @@ function ProfileForm({ data, reload, title, subtitle, top, children }: { data: a
   const sections: Array<{ key: string; title: string; hint?: string; body: React.ReactNode }> = [
     { key: "personal", title: t("rdz.pf_personal"), body: <>
       <Input label={t("reg.full_name")} value={f.name ?? ""} onChange={(e) => set("name", e.target.value)} error={errs.name} required />
+      <Input label={t("ja.username")} value={data.user.username ?? ""} ltr disabled hint={t("ja.profile_username_hint")} data-testid="profile-username" />
       <Input label={t("auth.phone")} value={data.user.phone ?? ""} ltr disabled hint={t("ubz.phone_locked")} />
       <Select label={t("reg.city")} options={(cat?.cities ?? []).map((c: any) => ({ value: c.key, label: c[locale] }))} placeholder={t("common.select")} value={f.city ?? ""} onChange={(e) => set("city", e.target.value)} />
       {isDriver && <Input label={t("profile.email")} type="email" ltr value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} error={errs.email} />}
@@ -122,6 +124,7 @@ function ProfileForm({ data, reload, title, subtitle, top, children }: { data: a
           </div>
         </form>
         {children && <div className="min-w-0 space-y-6">{children}</div>}
+        <PasswordCard />
       </div>
     </>
   );

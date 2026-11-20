@@ -8,7 +8,7 @@ import { staffLogin, gotoReady, DEMO, apiLogin } from "./helpers";
  */
 test.describe.configure({ mode: "serial" });
 
-const BASE = "http://localhost:3100";
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 const ADMIN = { email: "admin@jrlogistics.test", password: "E2e!Password2026" };
 const UUID0 = "11111111-1111-4111-8111-111111111111";
 const RULE_REF = "E2E-FIN-RULE";
@@ -211,12 +211,42 @@ test("pricing: the service filter is in the URL; a company price rule is created
   const row = page.locator("tr", { hasText: "77.77" });
   await expect(row).toBeVisible();
   await expect(row.locator('a[href^="/admin/companies/"]')).toBeVisible(); // the company the rule is for, linked to its page
+
+  // edit = the next version of the same rule: the scope is locked, the diff shows what changes, the old version stays in the history and can be restored
+  await row.getByRole("button", { name: "Edit" }).click();
+  const ed = page.getByRole("dialog", { name: "Edit price rule" });
+  await expect(ed.getByTestId("fin-pricing-scope")).toContainText("Car without driver");
+  await expect(ed.getByTestId("fin-pricing-edit-save")).toBeDisabled(); // nothing changed yet
+  await ed.getByTestId("fin-pricing-edit-cost").fill("90"); // above the price
+  await expect(ed.getByText("The provider cost cannot be higher than the customer price.")).toBeVisible();
+  await expect(ed.getByTestId("fin-pricing-edit-save")).toBeDisabled();
+  await ed.getByTestId("fin-pricing-edit-cost").fill("55.55");
+  await ed.getByTestId("fin-pricing-edit-price").fill("88.88");
+  await expect(ed.getByTestId("fin-pricing-diff")).toContainText("88.88");
+  await expect(ed.getByTestId("fin-pricing-big-change")).toHaveCount(0); // +14% is under the 25% warning limit
+  await ed.getByTestId("fin-pricing-edit-save").click();
+  const row2 = page.locator("tr", { hasText: "88.88" });
+  await expect(row2).toBeVisible(); await expect(row2).toContainText("v2");
+  await expect(page.locator("tr", { hasText: "77.77" })).toHaveCount(0); // the old version is retired, not shown under "Active only"
+  await row2.getByRole("button", { name: "Version history" }).click();
+  const hd = page.getByRole("dialog", { name: "Price history" });
+  await expect(hd.getByTestId("fin-pricing-version-2")).toContainText("88.88");
+  await expect(hd.getByTestId("fin-pricing-version-1")).toContainText("77.77");
+  await hd.getByTestId("fin-pricing-restore-1").click();
+  await page.getByRole("dialog", { name: "Restore" }).getByRole("button", { name: "Restore" }).click();
+  await expect(hd.getByTestId("fin-pricing-version-3")).toContainText("77.77");
+  await page.keyboard.press("Escape"); // close the history dialog
+  await expect(page.locator("tr", { hasText: "77.77" })).toBeVisible(); // version 3 is the active rule again
+  await page.locator("tr", { hasText: "77.77" }).getByRole("button", { name: "Duplicate as a new rule" }).click(); // the new-rule form opens prefilled
+  const dup = page.getByRole("dialog", { name: "New price rule" });
+  await expect(dup.getByTestId("fin-pricing-price")).toHaveValue("77.77");
+  await dup.getByRole("button", { name: "Cancel" }).click();
   await row.getByRole("button", { name: "Retire" }).click();
   await page.getByRole("dialog", { name: "Retire" }).getByRole("button", { name: "Retire" }).click();
   await expect(page.locator("tr", { hasText: "77.77" })).toHaveCount(0); // gone from "Active only"
   await page.getByRole("button", { name: "Including retired" }).click();
   await expect(page).toHaveURL(/all=1/);
-  await expect(page.locator("tr", { hasText: "77.77" }).getByText("Retired")).toBeVisible();
+  await expect(page.locator("tr", { hasText: "77.77" }).getByText("Retired").first()).toBeVisible(); // the versions kept from the edit/restore steps are retired too
 });
 
 test("a staff member with only the cash-on-delivery permission sees only that page and never triggers a 403", async ({ browser }) => {

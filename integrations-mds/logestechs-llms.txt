@@ -1,0 +1,101 @@
+# Logestechs API
+
+## Docs
+- [Overview](https://docs.logestechs.com/overview-2344856m0.md): 
+- Webhooks [Package Status Webhook](https://docs.logestechs.com/package-status-webhook-2344867m0.md): 
+
+## API Docs
+- Packages [Create a shipment](https://docs.logestechs.com/create-a-shipment-42089768e0.md): Creates a package for the customer that owns this API key. There is no email/password or company-id to send — both are resolved from the key. The shipment fields, `originAddress` and `destinationAddress` all go directly in the request body. If `originAddress` is omitted, the customer's own address is used. The service type is always STANDARD. The delivery cost is always calculated from the customer's shipping rates.
+- Packages [Generate an AWB PDF for one or more packages](https://docs.logestechs.com/generate-an-awb-pdf-for-one-or-more-packages-42089769e0.md): Accepts up to 100 identifiers total, mixed across `ids`, `barcodes`, and `invoicesNumbers`. Every matched package must belong to this key's customer.
+- Packages [Get a package's current status](https://docs.logestechs.com/get-a-packages-current-status-42089771e0.md): Provide exactly one of `id`, `barcode`, or `invoice`.
+- Packages [Get a package's full status history](https://docs.logestechs.com/get-a-packages-full-status-history-42089772e0.md): Provide exactly one of `id`, `barcode`, or `invoice`.
+- Packages [List the possible package statuses](https://docs.logestechs.com/list-the-possible-package-statuses-42089770e0.md): Static reference data — the full set of statuses a package can be in, with English and Arabic labels. Does not require a specific package.
+- Packages [Cancel a package](https://docs.logestechs.com/cancel-a-package-42089767e0.md): Cancels a package before it is picked up. Provide exactly one of `id`, `barcode`, or `invoice`. Only packages still pending customer-care approval or dispatcher assignment can be cancelled; anything further along must go through the help center.
+- Packages [Return a package to sender](https://docs.logestechs.com/return-a-package-to-sender-42089766e0.md): Requests a return for a package already out for delivery. Provide exactly one of `id`, `barcode`, or `invoice`.
+- Packages [List the company's service types](https://docs.logestechs.com/list-the-companys-service-types-42226516e0.md): The delivery service types this company offers — use `id` when filling in `pkg.serviceTypeId` on a shipment.
+- Packages [Calculate a shipment's delivery cost](https://docs.logestechs.com/calculate-a-shipments-delivery-cost-44175741e0.md): Returns the delivery cost the company charges this API key's customer for a shipment with the given origin/destination regions, service type and size. Uses the customer's own shipping rates; any `customerId` in the body is ignored.
+- Packages [List the company's vehicle types](https://docs.logestechs.com/list-the-companys-vehicle-types-44230940e0.md): The vehicle types this company offers — use `id` when filling in `pkg.vehicleTypeId` on a shipment.
+- Packages [List the company's parcel types](https://docs.logestechs.com/list-the-companys-parcel-types-44230941e0.md): The parcel types this company offers — use `id` when filling in `pkg.parcelTypeId` on a shipment. Names are returned in the language of the request's language header.
+- Webhooks [Update your webhook URL and token](https://docs.logestechs.com/update-your-webhook-url-and-token-46611088e0.md): Changes where shipment status updates are sent for the customer that owns this API key, and the token sent with them. Every webhook call after this one uses the new values. `webhookPassword` replaces the current token; leave it empty to stop sending a token.
+- Addresses [List the company's address book](https://docs.logestechs.com/list-the-companys-address-book-42089773e0.md): Regions, cities, and villages configured for this company — use these IDs when filling in `originAddress`/`destinationAddress` on a shipment.
+- Addresses [List regions](https://docs.logestechs.com/list-regions-42225832e0.md): Regions configured for this company — use `id` when filling in `originAddress`/`destinationAddress` on a shipment.
+- Addresses [List a region's cities](https://docs.logestechs.com/list-a-regions-cities-42225854e0.md): Cities configured for this company within the given region — use `id` when filling in `originAddress`/`destinationAddress` on a shipment.
+- Addresses [List a city's villages](https://docs.logestechs.com/list-a-citys-villages-42226478e0.md): Villages configured for this company within the given city — use `id` when filling in `originAddress`/`destinationAddress` on a shipment.
+- Addresses [List villages](https://docs.logestechs.com/list-villages-44175742e0.md): Villages configured for this company, paginated, optionally narrowed to a city, a region, a name search, or the destination city of one of your packages (`barcode`) — use `id` when filling in `originAddress`/`destinationAddress` on a shipment.
+- Fulfillment [Add a product](https://docs.logestechs.com/add-a-product-46650412e0.md): Adds a product (SKU) to the fulfillment catalog of the customer that owns this API key. Use the returned `id` as `productId` when you add an ASN or an order.
+- Fulfillment [Add an ASN](https://docs.logestechs.com/add-an-asn-46650413e0.md): Announces stock you are sending into a fulfillment warehouse (Advance Shipping Notice). Every product must be one of your own products. The ASN starts in status `AWAITING_PICKUP`.
+- Fulfillment [Add an order](https://docs.logestechs.com/add-an-order-46650414e0.md): Creates an outbound order that the warehouse picks from your stock and delivers to the receiver. Every item must be one of your own products. The sender address is the warehouse's address. If there is not enough stock for every item, the order is still created and stays `PENDING` until the stock arrives.
+
+## Schemas
+- [NoteMessage](https://docs.logestechs.com/notemessage-17159569d0.md): 
+- [IntegrationWebhookRequestDto](https://docs.logestechs.com/integrationwebhookrequestdto-18682292d0.md): 
+- [IntegrationFulfillmentProductRequestDto](https://docs.logestechs.com/integrationfulfillmentproductrequestdto-18696150d0.md): 
+- [AddressDto](https://docs.logestechs.com/addressdto-17159570d0.md): 
+- [IntegrationPackageRequestDto](https://docs.logestechs.com/integrationpackagerequestdto-17159573d0.md): 
+- [ParcelType](https://docs.logestechs.com/parceltype-17914992d0.md): 
+- [IntegrationAddressDto](https://docs.logestechs.com/integrationaddressdto-18071084d0.md): 
+- [IntegrationShippingPlanRequestDto](https://docs.logestechs.com/integrationshippingplanrequestdto-18696151d0.md): 
+- [CitiesTripsTimeSchedule](https://docs.logestechs.com/citiestripstimeschedule-17159571d0.md): 
+- [IntegrationShipmentDto](https://docs.logestechs.com/integrationshipmentdto-18071085d0.md): 
+- [IntegrationShippingPlanProductDto](https://docs.logestechs.com/integrationshippingplanproductdto-18696152d0.md): 
+- [CreatingPackageDto](https://docs.logestechs.com/creatingpackagedto-17159572d0.md): 
+- [IntegrationFulfillmentOrderRequestDto](https://docs.logestechs.com/integrationfulfillmentorderrequestdto-18696153d0.md): 
+- [IntegrationFulfillmentOrderItemDto](https://docs.logestechs.com/integrationfulfillmentorderitemdto-18696154d0.md): 
+- [MainCitiesTripsTimeSchedule](https://docs.logestechs.com/maincitiestripstimeschedule-17159574d0.md): 
+- [PackageItemsToDeliver](https://docs.logestechs.com/packageitemstodeliver-17159575d0.md): 
+- [PackageIdentifiersWrapper](https://docs.logestechs.com/packageidentifierswrapper-17159576d0.md): 
+- [Address](https://docs.logestechs.com/address-17865355d0.md): 
+- [LocalizedKeyData](https://docs.logestechs.com/localizedkeydata-17159577d0.md): 
+- [CodChangeRequest](https://docs.logestechs.com/codchangerequest-17865356d0.md): 
+- [PackageStatusResponse](https://docs.logestechs.com/packagestatusresponse-17159578d0.md): 
+- [Customer](https://docs.logestechs.com/customer-17865357d0.md): 
+- [CustomerPromo](https://docs.logestechs.com/customerpromo-17865358d0.md): 
+- [GeofenceData](https://docs.logestechs.com/geofencedata-17159580d0.md): 
+- [CustomersPaymentTypes](https://docs.logestechs.com/customerspaymenttypes-17865359d0.md): 
+- [DeliveryPaymentType](https://docs.logestechs.com/deliverypaymenttype-17865360d0.md): 
+- [Device](https://docs.logestechs.com/device-17865361d0.md): 
+- [DriverFailFollowUp](https://docs.logestechs.com/driverfailfollowup-17865362d0.md): 
+- [LabelConditionDto](https://docs.logestechs.com/labelconditiondto-17865363d0.md): 
+- [LabelDto](https://docs.logestechs.com/labeldto-17865364d0.md): 
+- [LclSupplier](https://docs.logestechs.com/lclsupplier-17865365d0.md): 
+- [LenDetails](https://docs.logestechs.com/lendetails-17865366d0.md): 
+- [Location](https://docs.logestechs.com/location-17865367d0.md): 
+- [MandatoryPackageFieldsConfig](https://docs.logestechs.com/mandatorypackagefieldsconfig-17865368d0.md): 
+- [NamedObject](https://docs.logestechs.com/namedobject-17865369d0.md): 
+- [NoteMessageInfo](https://docs.logestechs.com/notemessageinfo-17865370d0.md): 
+- [Package](https://docs.logestechs.com/package-17159581d0.md): 
+- [PackageApprovalFail](https://docs.logestechs.com/packageapprovalfail-17865371d0.md): 
+- [PackageApprovalPostpone](https://docs.logestechs.com/packageapprovalpostpone-17865372d0.md): 
+- [PackageApprovalReturn](https://docs.logestechs.com/packageapprovalreturn-17865373d0.md): 
+- [PackageContent](https://docs.logestechs.com/packagecontent-17865374d0.md): 
+- [PackageContentItem](https://docs.logestechs.com/packagecontentitem-17865375d0.md): 
+- [PackageDevice](https://docs.logestechs.com/packagedevice-17865376d0.md): 
+- [PackageFailure](https://docs.logestechs.com/packagefailure-17865377d0.md): 
+- [PackageItem](https://docs.logestechs.com/packageitem-17865378d0.md): 
+- [PackageLocationMessage](https://docs.logestechs.com/packagelocationmessage-17865379d0.md): 
+- [PackageTrackingNodeMessage](https://docs.logestechs.com/packagetrackingnodemessage-17865380d0.md): 
+- [PackageTrackingStatusCount](https://docs.logestechs.com/packagetrackingstatuscount-17865381d0.md): 
+- [PalShipRole](https://docs.logestechs.com/palshiprole-17865382d0.md): 
+- [PartnerConfigDto](https://docs.logestechs.com/partnerconfigdto-17865383d0.md): 
+- [PartnerDto](https://docs.logestechs.com/partnerdto-17865384d0.md): 
+- [PostponePackageMessageInfo](https://docs.logestechs.com/postponepackagemessageinfo-17865385d0.md): 
+- [Product](https://docs.logestechs.com/product-17865386d0.md): 
+- [ProductExpiryBatchLot](https://docs.logestechs.com/productexpirybatchlot-17865387d0.md): 
+- [ProductVariant](https://docs.logestechs.com/productvariant-17865388d0.md): 
+- [ProductVariantOption](https://docs.logestechs.com/productvariantoption-17865389d0.md): 
+- [ServiceType](https://docs.logestechs.com/servicetype-17865390d0.md): 
+- [SmsGateway](https://docs.logestechs.com/smsgateway-17865391d0.md): 
+- [SubPackage](https://docs.logestechs.com/subpackage-17865392d0.md): 
+- [User](https://docs.logestechs.com/user-17865393d0.md): 
+- [UserAttachmentsDto](https://docs.logestechs.com/userattachmentsdto-17865394d0.md): 
+- [Vehicle](https://docs.logestechs.com/vehicle-17865395d0.md): 
+- [VehicleType](https://docs.logestechs.com/vehicletype-17865396d0.md): 
+- [GetPackageCostMessage](https://docs.logestechs.com/getpackagecostmessage-17893872d0.md): 
+- [JettShippingRate](https://docs.logestechs.com/jettshippingrate-17893873d0.md): 
+- [JettShippingRateDetails](https://docs.logestechs.com/jettshippingratedetails-17893874d0.md): 
+- [NameAndIdDto](https://docs.logestechs.com/nameandiddto-17865397d0.md): 
+- [Region](https://docs.logestechs.com/region-17865398d0.md): 
+- [City](https://docs.logestechs.com/city-17159579d0.md): 
+- [Village](https://docs.logestechs.com/village-17865399d0.md): 
+- [ModelTableMessageVillage](https://docs.logestechs.com/modeltablemessagevillage-17893875d0.md): 
+- [MoneyInfoDto](https://docs.logestechs.com/moneyinfodto-17893876d0.md): 

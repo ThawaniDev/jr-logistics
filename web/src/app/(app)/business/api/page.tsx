@@ -4,6 +4,7 @@ import { Activity, Copy, KeyRound, Plus, RefreshCw, Send, Webhook } from "lucide
 import { toast } from "sonner";
 import { Badge, Button, EmptyState, ErrorState, Input, Modal, Notice, PageHeader, PageLoading, Section, Stat, StatGrid, StatusBadge, Table, Td, useAction } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
+import { useB2bEnabled } from "@/components/features/business-shipments-policy";
 import { post, put } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
@@ -11,7 +12,7 @@ import { useI18n } from "@/i18n/provider";
 const hostOf = (u: string) => { try { return new URL(u).host; } catch { return u; } };
 
 export default function ApiPage() {
-  const { t, locale } = useI18n(); const a = useAction();
+  const { t, locale } = useI18n(); const a = useAction(); const b2b = useB2bEnabled(); // J3: while B2B shipments are off the docs say so and the example has no business recipient
   const keys = useApi("/business/api-keys"); const hook = useApi("/business/webhook");
   const [name, setName] = useState(""); const [created, setCreated] = useState<any>(null); const [url, setUrl] = useState<string | null>(null); const [secret, setSecret] = useState<string | null>(null); const [rotate, setRotate] = useState(false); const [revoke, setRevoke] = useState<any>(null);
   if (keys.error || hook.error) return <ErrorState error={keys.error ?? hook.error} retry={() => { keys.mutate(); hook.mutate(); }} />;
@@ -84,7 +85,7 @@ export default function ApiPage() {
          {"recipientType":"consumer","recipientName":"Mona Ali","recipientPhone":"0555555555",
           "address":"King Fahd Rd 120, Riyadh","contents":"Clothes","externalRef":"ORD-1001",
           "codCents":12050},
-         {"recipientType":"business","recipientName":"Al Noor Pharmacy","recipientPhone":"0501234567",
+         ${b2b ? '{"recipientType":"business","recipientName":"Al Noor Pharmacy"' : '{"recipientName":"Sara Alharbi"'},"recipientPhone":"0501234567",
           "address":"Olaya St, Building 8, Riyadh","notes":"Gate 2","externalRef":"ORD-1002"}]}'
 # "quantity" is ignored when shipments[] is sent: drivers = ceil(shipments / shipmentsPerDriver); price = shipments x unit price
 # "codCents" (optional, integer halalas, 0-10000000) = cash the driver collects from the recipient on delivery: 12050 = SAR 120.50
@@ -100,6 +101,7 @@ curl $BASE/api/v1/jobs/{id}/shipments -H "X-API-Key: jrk_…"
 # shipment_failed    → {"event":"shipment_failed","shipment":{"id":"…","code":"JR-000012-002","externalRef":"ORD-1002","reason":"refused"}}`}</pre>
           <p><span className="font-medium">{t("bz.api_fields_label")}:</span> <code dir="ltr" className="text-xs text-cyan">service, quantity, pickupCity, deliveryCity, pickupAddress, startsAt, shipments[] (delivery) | deliveryAddress (cars)</code></p>
           <p className="text-muted">{t("bs.api_shipments_note")}</p>
+          {!b2b && <p data-testid="api-b2b-off-doc" className="rounded-xl border border-gold/40 bg-gold/10 p-3 text-gold"><span className="font-medium">{t("jf2.api_b2b_title")}:</span> {t("jf2.api_b2b_off")}</p>}
           <p data-testid="api-cod-doc"><span className="font-medium">{t("fob.api_cod_title")}:</span> <code dir="ltr" className="text-xs text-cyan">shipments[].codCents (integer halalas, 0 – 10000000)</code></p>
           <p className="text-muted">{t("fob.api_cod_note")}</p>
           <h4 className="pt-2 font-semibold" id="api-details-later">{t("pb.api_later_title")}</h4>

@@ -1,28 +1,53 @@
 import { createHmac } from "node:crypto";
-import { failFrom } from "./http";
-import { PartnerError, type Adapter, type PartnerEvent, type EventKind } from "./types";
+import { arr, date, failFrom, num, obj, str } from "./http";
+import { JR_EVENTS, PartnerError, type Adapter, type EventKind, type PartnerEvent, type PartnerOrderInput } from "./types";
 
 /**
- * "Custom system" — for any warehouse system that can send a small JSON webhook (and, optionally, receive one).
+ * "Custom system" — JR's own documented contract for any warehouse / order system without a ready-made adapter (decision I17).
  *
- * IN  (their system → JR):  POST <webhook URL>  with  Authorization: Bearer <token>
- *       { "reference": "ORD-1001", "status": "cancelled" | "ready" | "dispatched" | "<anything>", "note": "…", "at": "ISO date" }
- *       `reference` is the order number / barcode the warehouse put on the parcel (JR matches it to the parcel's order reference).
- * OUT (JR → their system): POST <callback URL>  signed like our other webhooks (x-jr-signature: t=<unix>,v1=<hmac-sha256(secret, "<t>.<body>")>)
- *       { "event": "parcel.delivered" | "parcel.failed" | "parcel.returned" | "parcel.cancelled", "reference", "code", "reason", "occurredAt" }
+ * IN  (their system → JR):  POST <webhook URL>  with  Authorization: Bearer <token>   (or the token in the URL path)
+ *   status change:  { "reference": "ORD-1001", "status": "cancelled" | "<anything>", "note": "…", "at": "ISO date" }
+ *   new order:      { "type": "order", "reference": "ORD-1001", "id": "<your id>", "recipient": { "name", "phone", "address", "city",
+ *                     "lat", "lng", "email" }, "cod": 120.5, "pieces": 2, "weightKg": 1.2, "contents": "…", "notes": "…",
+ *                     "items": [{ "sku", "name", "qty" }] }
+ *   several at once: { "items": [ …any of the above… ] }  (≤ 50)
+ * OUT (JR → their system):  POST <callback URL>, signed like JR's other webhooks:
+ *   x-jr-signature: t=<unix>,v1=<hex hmac-sha256(signing secret, "<t>.<body>")>,  x-jr-event: parcel.<event>
+ *   { "event": "parcel.picked_up" | "parcel.out_for_delivery" | "parcel.delivered" | …, "reference", "awb", "code", "status",
+ *     "reason", "note", "proof", "attempts", "receiverName", "codCollected", "driver", "occurredAt" }
  */
 const KINDS: Record<string, EventKind> = { cancelled: "cancelled", canceled: "cancelled", delivered: "delivered", returned: "returned", failed: "failed" };
+
+function one(b: Record<string, unknown>): { order?: PartnerOrderInput; event?: PartnerEvent } | null {
+  const ref = str(b.reference) ?? str(b.barcode) ?? str(b.externalRef) ?? str(b.orderId);
+  if (!ref) return null;
+  const type = str(b.type)?.toLowerCase() ?? (b.recipient ? "order" : null);
+  if (type === "order") {
+    const r = obj(b.recipient) ?? {};
+    return { order: {
+      externalId: str(b.id), externalRef: ref, invoice: str(b.invoice),
+      recipient: { name: str(r.name), phone: str(r.phone), email: str(r.email), address: str(r.address), city: str(r.city), lat: num(r.lat), lng: num(r.lng) },
+      codAmount: num(b.cod), currency: str(b.currency) ?? "SAR", pieces: num(b.pieces), weightKg: num(b.weightKg), contents: str(b.contents), notes: str(b.notes),
+      items: arr(b.items).map(obj).filter(Boolean).map((i) => ({ sku: str(i!.sku), name: str(i!.name), qty: num(i!.qty) })),
+    } };
+  }
+  const status = str(b.status);
+  if (!status) return null;
+  const at = date(b.at);
+  return { event: { externalId: str(b.id), barcode: ref, invoice: null, status, kind: KINDS[status.toLowerCase()] ?? "status", at: at ?? new Date(), timeKnown: !!at, note: b.note ? String(b.note).slice(0, 300) : null } };
+}
 
 export const generic: Adapter = {
   key: "webhook",
   label: "Custom system (webhook)",
-  description: "Any other warehouse or order system: it posts status changes to JR, and JR can post parcel outcomes back to it.",
+  description: "Any other warehouse or order system: it posts orders and status changes to JR, and JR posts every parcel event back to it.",
   fields: [
-    { key: "callbackUrl", label: "Send JR outcomes to (optional)", type: "url", placeholder: "https://warehouse.example.com/jr-callback", help: "We POST delivered / failed / returned / cancelled events here, signed with your signing secret." },
-    { key: "signingSecret", label: "Signing secret", type: "password", secret: true, help: "Used to sign what we send you. Leave empty to have one generated." },
+    { key: "callbackUrl", label: "Send JR events to (optional)", type: "url", placeholder: "https://warehouse.example.com/jr-callback", help: "JR POSTs every parcel event you switch on here, signed with your signing secret." },
+    { key: "signingSecret", label: "Signing secret", type: "password", secret: true, help: "Used to sign what JR sends you. Leave empty to have one generated." },
   ],
-  capabilities: { lookup: false, webhookIn: true, registerWebhook: false, push: ["delivered", "failed", "returned", "cancelled"], label: false },
+  capabilities: { mode: "custom", lookup: false, webhookIn: true, webhookAuth: "header", registerWebhook: false, importOrders: true, pollOrders: false, track: false, push: JR_EVENTS.filter((e) => e !== "accepted"), label: false, carrierApi: false }, // "accepted" exists only for carrier-mode orders
   inboundTokenHeaders: ["authorization", "x-jr-token", "x-api-key"],
+  defaults: { importNew: true, sync: { picked_up: true, out_for_delivery: true, delivered: true, failed: true, returned: true, missing: true, cancelled: true } },
 
   async test(c) {
     const url = String(c.config.callbackUrl || "");
@@ -34,20 +59,24 @@ export const generic: Adapter = {
     return { message: `Your system answered ${r.status}` };
   },
 
-  parseWebhook(body): PartnerEvent | null {
-    if (!body || typeof body !== "object") return null;
-    const b = body as Record<string, unknown>;
-    const ref = String(b.reference ?? b.barcode ?? b.externalRef ?? b.orderId ?? "").trim();
-    const status = String(b.status ?? "").trim();
-    if (!ref || !status) return null;
-    const at = b.at ? new Date(String(b.at)) : new Date();
-    return { externalId: null, barcode: ref, invoice: null, status, kind: KINDS[status.toLowerCase()] ?? "status", at: Number.isNaN(at.getTime()) ? new Date() : at, note: b.note ? String(b.note).slice(0, 300) : null };
+  parseWebhook(body) {
+    const b = obj(body);
+    if (!b) return null;
+    const list = Array.isArray(b.items) && !b.reference ? arr(b.items).map(obj).filter((x): x is Record<string, unknown> => !!x).slice(0, 50) : [b];
+    const events: PartnerEvent[] = [], orders: PartnerOrderInput[] = [];
+    for (const x of list) { const r = one(x); if (r?.event) events.push(r.event); if (r?.order) orders.push(r.order); }
+    return events.length || orders.length ? { events, orders } : null;
   },
 
   async push(c, job) {
     const url = String(c.config.callbackUrl || "");
     if (!url) return { ok: true, skipped: "no callback URL configured" };
-    const payload = { event: `parcel.${job.action}`, reference: job.shipment.externalRef, code: job.shipment.code, reason: job.shipment.failReason, note: job.shipment.failNote, proof: job.shipment.proofType, occurredAt: new Date().toISOString() };
+    const s = job.shipment;
+    const payload = {
+      event: `parcel.${job.action}`, reference: job.order?.externalRef ?? s?.externalRef ?? null, awb: job.order?.awb ?? null, code: s?.code ?? null, status: job.status,
+      reason: s?.failReason ?? null, note: s?.failNote ?? job.note ?? null, proof: s?.proofType ?? null, attempts: s?.attempts ?? 0, receiverName: s?.receiverName ?? null,
+      codCollected: s?.codCollectedCents != null ? s.codCollectedCents / 100 : null, driver: job.driver?.name ?? null, occurredAt: job.at,
+    };
     const body = JSON.stringify(payload);
     const ts = Math.floor(Date.now() / 1000);
     const r = await c.http("POST", url, { headers: sign(c.secrets.signingSecret, ts, body, payload.event), json: payload });

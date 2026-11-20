@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { and, eq, asc } from "drizzle-orm";
 import { db } from "@/db";
 import { offers, requests, settlements, shipments, walletAccounts, tickets, jobEvents } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, mkStaff, publishedRequest, mkShipments, reqInput } from "../helpers/factories";
+import { shutdown, mkAdmin, mkBusiness, mkDriver, mkRule, mkStaff, publishedRequest, mkShipments, reqInput } from "../helpers/factories";
+import { resetDbWithFieldModes } from "../helpers/field-modes";
 import { work, parcelsOf } from "../helpers/work";
 import * as jobs from "@/server/jobs";
 import * as stops from "@/server/stops";
@@ -14,7 +15,7 @@ import { setSmsProvider } from "@/server/auth/otp";
 import { runMaintenance } from "@/server/maintenance";
 import { CUSTODY_ITEM_TYPES } from "@/server/catalog";
 
-beforeEach(resetDb);
+beforeEach(resetDbWithFieldModes); // J2 / J3: routing and B2B shipments default to OFF — this suite exercises the route / approve-route / business-parcel behaviour
 afterAll(shutdown);
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);

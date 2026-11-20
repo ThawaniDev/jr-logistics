@@ -6,7 +6,8 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { offers, requests, settlements, walletAccounts, driverProfiles, complaints, tickets, apiIdempotency, users, ledgerEntries, officeInvites } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, mkOffice, publishedRequest, reqInput, tomorrow } from "../helpers/factories";
+import { shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, mkOffice, publishedRequest, reqInput, tomorrow } from "../helpers/factories";
+import { resetDbWithFieldModes } from "../helpers/field-modes";
 import { call } from "../helpers/api";
 import * as jobs from "@/server/jobs";
 import * as settle from "@/server/settlement";
@@ -25,7 +26,7 @@ import { work, parcelsOf } from "../helpers/work";
 import * as stops from "@/server/stops";
 import { currentStopOf, otpFor } from "@/server/shipments";
 
-beforeEach(resetDb);
+beforeEach(resetDbWithFieldModes); // J2 / J3: routing and B2B shipments default to OFF — this suite exercises the route / approve-route / business-parcel behaviour
 afterAll(shutdown);
 
 const bal = async (id: string) => (await db.select().from(walletAccounts).where(eq(walletAccounts.id, (await ensureAccount(id)).id)))[0];
@@ -451,8 +452,9 @@ describe("profile & registration hardening", () => {
     const { registerUser, updateProfile, normalizeIban } = await import("@/server/accounts");
     expect(normalizeIban("sa03 8000 0000 6080 1016 7519")).toBe("SA0380000000608010167519");
     expect(normalizeIban("GB0380000000608010167519")).toBeNull();
-    await expect(registerUser("0500001234", { role: "office", name: "O", companyName: "Co", termsAccepted: true, iban: "SA12" } as never)).rejects.toMatchObject({ code: "VALIDATION" });
-    await expect(registerUser("0500001235", { role: "office", name: "O", companyName: "Co", termsAccepted: true, city: "atlantis" } as never)).rejects.toMatchObject({ code: "VALIDATION" });
+    const who = { role: "office", username: "office.one", password: "Test#Pass2026", name: "O", companyName: "Co", termsAccepted: true } as const;
+    await expect(registerUser({ ...who, phone: "0500001234", iban: "SA12" })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(registerUser({ ...who, phone: "0500001235", city: "atlantis" })).rejects.toMatchObject({ code: "VALIDATION" });
     const d = await mkDriver();
     await updateProfile(d, { iban: "sa44 2000 0001 2345 6789 1234", vehicleType: "van", vehicleTemperature: "cold" });
     const [p] = await db.select().from(driverProfiles).where(eq(driverProfiles.userId, d.id));

@@ -5,7 +5,8 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { offers, shipments, tickets, complaints, auditLogs, driverProfiles, partnerConnections } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, mkOffice, publishedRequest, mkShipments, reqInput } from "../helpers/factories";
+import { shutdown, mkAdmin, mkStaff, mkBusiness, mkDriver, mkRule, mkOffice, publishedRequest, mkShipments, reqInput } from "../helpers/factories";
+import { resetDbWithFieldModes } from "../helpers/field-modes";
 import { work } from "../helpers/work";
 import { moneyViolations } from "../helpers/invariants";
 import { call } from "../helpers/api";
@@ -20,7 +21,7 @@ import { createTicket, fileComplaint } from "@/server/support";
 import { ensureAccount } from "@/server/wallet";
 import { encryptSecrets } from "@/server/partners/crypto";
 
-beforeEach(resetDb);
+beforeEach(resetDbWithFieldModes); // J2 / J3: routing and B2B shipments default to OFF — this suite exercises the route / approve-route / business-parcel behaviour
 afterAll(shutdown);
 const tok = async (u: { id: string }) => (await createSession(u.id, "mobile")).token;
 const offerOf = async (requestId: string, driverId: string) => (await db.select().from(offers).where(and(eq(offers.requestId, requestId), eq(offers.driverId, driverId))))[0];

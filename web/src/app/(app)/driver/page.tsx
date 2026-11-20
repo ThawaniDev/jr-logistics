@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Briefcase, Star, Truck, Wallet, Hourglass, CheckCircle2, HandCoins } from "lucide-react";
+import { Briefcase, Building2, Star, Truck, Wallet, Hourglass, CheckCircle2, HandCoins } from "lucide-react";
 import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, PageLoading, Stat, StatGrid } from "@/components/ui";
 import { useDriverAction } from "@/components/features/driver-action";
 import { useApi } from "@/components/ui/data";
@@ -24,6 +24,7 @@ export default function DriverDashboard() {
   const o = ov.data; const available = o.availability === "available";
   const active = offersHidden({ activeJob: o.activeJob }).activeJob; const hidden = offersHidden(offers.data); const cashCents: number = o.cash?.outstandingCents ?? 0;
   const suspended = o.suspendedUntil && new Date(o.suspendedUntil) > new Date();
+  const managed = o.walletManagedByOffice === true; const pendingCents: number = o.wallet?.pendingCents ?? 0; // J4: an office driver has no wallet / earnings figures
   const toggle = () => a.run("av", () => put("/driver/availability", { available: !available }), { success: available ? "driver.now_offline" : "driver.now_online", onDone: () => ov.mutate() });
   return (
     <>
@@ -46,12 +47,14 @@ export default function DriverDashboard() {
         <Stat label={t("driver.new_offers")} value={o.newOffers} icon={<Briefcase className="size-5" />} tone="cyan" hint={t("rdo.d_offers_hint")} href="/driver/opportunities" />
         <Stat label={t("driver.active_jobs")} value={o.activeJobs} icon={<Truck className="size-5" />} hint={t("rdo.d_active_hint")} href="/driver/jobs" />
         <div data-testid="cash-card" data-value={cashCents} className="[&>*]:h-full"><Stat label={t("fod.cash_with_me")} value={<span className="ltr-num">{fmtMoney(cashCents, locale)}</span>} hint={cashCents > 0 ? t("fod.cash_card_hint") : t("fod.cash_nothing")} icon={<HandCoins className="size-5" />} tone="gold" href="/driver/cash" /></div>
-        <Stat label={t("wallet.available")} value={<span className="ltr-num">{fmtMoney(o.wallet.availableCents, locale)}</span>} icon={<Wallet className="size-5" />} tone="gold" hint={t("rdo.d_wallet_hint")} href="/driver/wallet" />
+        {managed
+          ? <div data-testid="wallet-managed-card" className="[&>*]:h-full"><Stat label={t("jd.dash_wallet")} value={<span className="text-xl">{o.officeName ?? t("jd.your_office")}</span>} icon={<Building2 className="size-5" />} tone="cyan" hint={t("jd.dash_wallet_hint")} href="/driver/wallet" /></div>
+          : <Stat label={t("wallet.available")} value={<span className="ltr-num">{fmtMoney(o.wallet.availableCents, locale)}</span>} icon={<Wallet className="size-5" />} tone="gold" hint={t("rdo.d_wallet_hint")} href="/driver/wallet" />}
       </StatGrid>
-      <StatGrid cols={o.wallet.pendingCents > 0 ? 3 : 2} className="mb-8">
+      <StatGrid cols={pendingCents > 0 ? 3 : 2} className="mb-8">
         <Stat label={t("driver.completed")} value={o.jobsCompleted} icon={<CheckCircle2 className="size-5" />} hint={t("rdo.d_completed_hint")} href="/driver/jobs?scope=history" />
         <Stat label={t("driver.rating")} value={o.rating ?? "—"} icon={<Star className="size-5" />} tone="gold" hint={o.rating == null ? t("rdo.d_rating_none") : t("rdo.d_rating_hint")} />
-        {o.wallet.pendingCents > 0 && <div data-testid="wallet-on-hold" className="[&>*]:h-full"><Stat label={t("fod.on_hold")} value={<span className="ltr-num">{fmtMoney(o.wallet.pendingCents, locale)}</span>} hint={t("fod.on_hold_hint")} icon={<Hourglass className="size-5" />} tone="gold" href="/driver/wallet" /></div>}
+        {pendingCents > 0 && <div data-testid="wallet-on-hold" className="[&>*]:h-full"><Stat label={t("fod.on_hold")} value={<span className="ltr-num">{fmtMoney(pendingCents, locale)}</span>} hint={t("fod.on_hold_hint")} icon={<Hourglass className="size-5" />} tone="gold" href="/driver/wallet" /></div>}
       </StatGrid>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="font-semibold">{t("driver.offers_for_you")} {offers.data.items.length > 0 && <Badge tone="info" className="ms-2">{offers.data.items.length}</Badge>}</h2>

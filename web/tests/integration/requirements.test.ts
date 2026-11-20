@@ -158,14 +158,14 @@ describe("storage & enumeration hardening", () => {
     } finally { env.NODE_ENV = prev.n; if (prev.s === undefined) delete env.STORAGE_DRIVER; else env.STORAGE_DRIVER = prev.s; setStorage(null); }
   });
 
-  it("OTP send does not reveal which phone numbers belong to staff", async () => {
+  it("sign-in does not reveal which usernames exist (unknown name, wrong password and a phone number all look the same)", async () => {
     const staff = await mkStaff(["requests.view"]);
     const { users } = await import("@/db/schema");
     await db.update(users).set({ phone: "+966577700001" }).where(eq(users.id, staff.id));
-    const known = await call("POST", "/auth/otp/send", { body: { phone: "0577700001" } });
-    const unknown = await call("POST", "/auth/otp/send", { body: { phone: "0577700002" } });
-    expect(known.status).toBe(unknown.status);
-    expect(Object.keys(known.json).sort()).toEqual(Object.keys(unknown.json).sort());
+    const wrong = await call("POST", "/auth/login", { body: { username: staff.username, password: "Not-the-password1" } });
+    const unknown = await call("POST", "/auth/login", { body: { username: "nobody.at.all", password: "Not-the-password1" } });
+    const byPhone = await call("POST", "/auth/login", { body: { username: "0577700001", password: "Password123" } }); // a phone number is not a sign-in name
+    for (const r of [wrong, unknown, byPhone]) expect([r.status, r.json.error.code, r.json.error.message]).toEqual([401, "UNAUTHENTICATED", "Invalid credentials"]);
   });
 });
 

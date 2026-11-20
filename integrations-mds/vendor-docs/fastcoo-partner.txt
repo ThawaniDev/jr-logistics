@@ -1,0 +1,728 @@
+API
+API Documentation
+LASTMILE
+FULLFILLMENT
+WEBHOOK
+WEBHOOK&WOOCOMMERCE
+WOOCOMMERCE
+PRODUCT
+MANIFEST
+FASTCOO PARTNER
+OPENCART
+-->
+LASTMILE
+FULLFILLMENT
+WEBHOOK
+WEBHOOK & WOOCOMMERCE
+PRODUCT
+MANIFEST
+FASTCOO PARTNER
+OPENCART
+MAGENTO
+WORDPRESS
+SHOPIFY
+REVERSE
+Shipment
+Version:
+.0.055
+Last Updated:
+10th July, 2024
+Introduction
+Auth Details
+Response Code
+Label Update Details
+Status Update
+Order Pay Load
+Order Get
+Rate Limiting
+Refresh Token
+Introduction
+Fastcoo Partner API Integration allows companies participating in the Fastcoo Partner Program to
+connect their e-commerce or order management systems directly with Fastcoo and supported
+third-party courier services. Through the Fastcoo Partner API, they can automate a wide range of
+logistics and fulfillment operations, including order creation, shipment tracking, pickup
+scheduling, cancellations, rate calculations, and shipping label generation — all without the
+need for manual integrations with multiple carriers.
+This integration helps streamline order processing, ensures real-time shipment updates, and
+simplifies the entire last-mile delivery workflow.
+Auth Details
+This section describes the authentication response parameters returned by the Fastcoo Partner API
+after a successful login or token generation. These details must be stored securely and included
+in subsequent API requests to authorize your operations.
+{
+"event.auth": {
+"access_token": "56xxxxxxxxxxxxxxxxxxxxxxxxx",
+"expires_in": 31xxxxxxx,
+"token_type": "Bearer",
+"scope": null,
+"refresh_token": "33xxxxxxxxxxxxxxxxxxxx",
+"app_id": "2dxxx"
+},
+"merchent_details": {
+"id": "5fxxxx",
+"email": "test@gmail.com",
+"name": "Faxxxxx"
+}
+}
+Table 1. Request Parameters:
+Parameter
+Type
+Description
+-->
+Mandatory
+Description
+awb
+Varchar (20)
+AWB Number is shipment
+unique number
+Yes
+136,138
+-->
+event.auth.access_token
+string
+Yes
+The access token issued for authenticating subsequent API calls
+event.auth.expires_in
+string
+Yes
+Lifetime of the access token in seconds
+event.auth.token_type
+String
+AWB Number is shipment
+unique number
+-->
+Yes
+Type of token (usually “Bearer”)
+date
+date
+AWB Number is shipment
+unique number
+Yes
+Date of the transaction or status update (format: YYYY-MM-DD)
+-->
+event.auth.scope
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Token scope (null if not restricted)
+event.auth.refresh_token
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Token used to refresh the access token
+event.auth.app_id
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Unique application identifier
+merchent_details.id
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Merchant ID registered with Fastcoo
+merchent_details.email
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Merchant’s email address
+merchent_details.name
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Merchant’s name
+❖Response Code
+Code
+Reason
+200
+Successful
+401
+Authentication Error
+400
+Already Exist
+Shipment Cancel API
+-->
+Label Update Details
+This API is used to update and retrieve third-party logistics (3PL) details after successfully
+creating or updating a shipment. The response provides key shipment identifiers, tracking
+resources, and label generation URLs The request must also include appropriate headers (Content-Type, Authorization Bearer).
+This depends on operation if they charge for you that order or not
+-->
+Url: baseurl/Update3plDetails
+-->
+URL:
+{baseUrl}/Update3plDetails
+API URL:
+-->
+Header
+CURLOPT_HTTPHEADER => array(
+'Authorization: Bearer 285daXXXXXXXXXXXXXXX',
+'Content-Type: application/json',
+),
+{
+"App_ID": "b3c2ec1xxxxxxxxxxxxxxxxxxxx",
+"ref_no": "FSL97xxxxxxxxxxx",
+"client_awb": "CRY18xxxxxxxxxxx",
+"label": "https:\/\/api.fastcoo-tech.com\/API\/Print\/CRY1818120738",
+"tracking_url": "https:\/\/fastcoo-tech.com\/result_detail\/CRY1818120738",
+"order_type" : "LM"
+}
+Response
+{
+"status": 200,
+"message": "Details updated Successfully !"
+}
+Response Codes:
+-->
+Table 1. Request Parameters:
+Parameter
+Type
+Description
+-->
+Mandatory
+Description
+awb
+Varchar (20)
+AWB Number is shipment
+unique number
+Yes
+136,138
+-->
+App_ID
+string
+Yes
+Unique application identifier provided by Fastcoo
+ref_no
+string
+Yes
+Fastcoo system reference number for the shipment
+client_awb
+String
+AWB Number is shipment
+unique number
+-->
+Yes
+AWB (air waybill) number generated for the client by the 3PL/courier
+date
+date
+AWB Number is shipment
+unique number
+Yes
+Date of the transaction or status update (format: YYYY-MM-DD)
+-->
+label
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+URL to download or print the shipment label
+tracking_url
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Tracking page URL to monitor the shipment’s progress
+order_type
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Type of order (e.g., “LM” for Last Mile)
+Code 1: Successfully Cancelled
+Code 5: Unable to find order, or it’s already cancelled
+Code 0: Authentication Error, Please check Secretkey or Account Number
+-->
+RATE CALCULATOR API
+-->
+Status Update
+This API is used to update the shipment status on the Fastcoo Partner system with real-time
+tracking details received from the 3PL or courier partner. Clients can push shipment progress
+updates to maintain synchronized status between their system and Fastcoo. The request must also include appropriate headers (Content-Type, Authorization Bearer token).
+Header
+CURLOPT_HTTPHEADER => array(
+'Content-Type: application/json',
+'Authorization: Bearer 4e703e3XXXXXXXXXXXXXXXX',
+),
+{
+"reference_number": "2914xxxxxx",
+"UniqueReference": "FST98xxxxxxxx",
+"FailDeliveryReason": "Customer rejects to receive",
+"StatusCode": "IT",
+"StatusDescription": "In Transit",
+"UpdateDate": "2025-03-07 08:18:22",
+"App_ID": "261xxxxxxxxxxxxxxxxxxxx",
+"order_type": "FM" //LM
+}
+Response
+{
+"status": 200,
+"message": "Status Update Successfully !"
+}
+Response Codes:
+-->
+Table 1. Request Parameters:
+Parameter
+Type
+Description
+-->
+Mandatory
+Description
+awb
+Varchar (20)
+AWB Number is shipment
+unique number
+Yes
+136,138
+-->
+order_type
+string
+Yes
+LM
+-->
+reference_number
+string
+Yes
+3PL airway bill number assigned by the courier
+UniqueReference
+string
+Yes
+System-generated airway bill or unique reference number
+FailDeliveryReason
+String
+AWB Number is shipment
+unique number
+-->
+Yes
+Reason for failed delivery (e.g., “Customer rejects to receive”)
+StatusCode
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Shipment status code (e.g., “IT” for In Transit)
+StatusDescription
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Human-readable status description (e.g., “In Transit”)
+UpdateDate
+datetime
+AWB Number is shipment
+unique number
+-->
+Yes
+Date and time of the latest shipment status update in the format YYYY-MM-DD
+HH:MM:SS
+App_ID
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Unique application identifier provided by Fastcoo
+order_type
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Type of order (e.g., “LM” for Last Mile)
+Code 1: Successfully Cancelled
+Code 5: Unable to find order, or it’s already cancelled
+Code 0: Authentication Error, Please check Secretkey or Account Number
+-->
+This depends on operation if they charge for you that order or not
+-->
+Url: https://api.fastcoo-tech.com/webhook/API/StatusUpdate
+-->
+URL:
+{baseUrl}/webhook/API/StatusUpdate
+API URL:
+-->
+Status Codes:
+Main Category
+S.N
+Main Status
+code
+1.
+Not Delivered
+-->
+2.
+On Process
+OP
+-->
+1.
+Pick Up Collected
+PUC
+2.
+Received Inbound
+RI
+4.
+Shelve
+SH
+-->
+3.
+In Transit
+IT
+8.
+Damage Shipment Arrival
+DSA
+-->
+9.
+Hold for pickup
+-->
+4.
+Out for delivery
+OD
+5.
+Delievry On Process
+DOP
+6.
+Failed Delivery
+FD
+7.
+Delivered
+POD
+8.
+Return On Process
+ROP
+11.
+Booked-Pickup Scheduled
+B
+-->
+8.
+Ready For Delivery
+RFDE
+-->
+13.
+General Update
+GU
+-->
+14.
+CS Update
+-->
+15.
+Booked-reverse pick
+RP
+-->
+16.
+Cancelled as per Client request.
+CCR
+-->
+17.
+Forward to Delivery Station
+FDD
+-->
+18.
+Missing Shipments
+MS
+19.
+Damage Shipments
+DS
+-->
+Order Receive Webhook
+This webhook is triggered when an order is received successfully into the Fastcoo Partner system.
+It notifies the client system with complete shipment and order details, ensuring real-time
+acknowledgment of new orders without the need for manual polling.
+{
+"app_id": "f136xxxxxxxxxxxxxxxxxxxxxx",
+"merchent_id" : "5f8xxxxxxxxxxxx",
+"reference_id" : "78647xxxxxxxxxxx",
+"BookingMode": "CC",
+"codValue": 0,
+"awb_no": "FSL25xxxxxxxxx",
+"sender_city": "Riyadh",
+"sender_name": "fastcooe",
+"sender_address": "Riyadh old city ",
+"sender_phone": "966xxxxxxxxxx",
+"sender_email": "test@gmail.com",
+"sender_zip": "54xxxxxx",
+"receiver_city": "Riyadh",
+"receiver_name": "xxxxxxxxx",
+"receiver_address": "Address xxxxxxxxx",
+"receiver_phone": "054xxxxxxxxxx",
+"receiver_email": "test@gmail.com",
+"country_dial_code": "+966",
+"description": "test",
+"pieces": "1",
+"weight": "1",
+"sku_details": "test",
+"national_address_id" : "FST5XXXXXXX",
+"sender_national_id" : "FST5XXXXXXX"
+}
+Response Codes:
+-->
+URL:
+{base_url}/webhook/API/OrderRecieveLM
+Table 1. Request Parameters:
+Parameter
+Type
+Description
+-->
+Mandatory
+Description
+app_id
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Unique application identifier provided by Fastcoo
+merchent_id
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Unique merchant identifier registered with Fastcoo
+reference_id
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Unique reference ID of the shipment
+BookingMode
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Booking mode (e.g., “COD” for Cash Collect, “CC” for Prepaid)
+codValue
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Cash on Delivery amount if applicable
+sender_city
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Sender’s city
+sender_name
+string
+Yes
+Sender’s name
+sender_address
+string
+Yes
+Sender’s full address
+sender_phone
+String
+AWB Number is shipment
+unique number
+-->
+Yes
+Sender’s phone number
+sender_email
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Sender’s email address
+sender_zip
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Sender’s ZIP/postal code
+receiver_city
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Receiver’s city
+receiver_name
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Receiver’s name
+receiver_address
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Sender’s ZIP/postal code
+receiver_phone
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Receiver’s phone number
+country_dial_code
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Country dial code prefix (e.g., “+966”)
+description
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Order description
+pieces
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Number of shipment pieces
+weight
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Total shipment weight
+sku_details
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Product SKU details
+national_address_id
+string
+AWB Number is shipment
+unique number
+-->
+No
+National Address ID
+sender_national_id
+string
+No
+Sender National Address ID
+Order Get
+This API allows clients to retrieve order details by providing the unique reference or AWB
+number. It helps partners verify shipment status and order data in real time without additional
+manual lookup.
+{
+"App_ID": "2d862xxxxxxxxxxxxxxxxxxxxxxxxxx",
+"UniqueReference": "FST4xxxxxxxxxxx",
+"client_awb": "CRY181xxxxxxxxxx",
+"order_type": "FM"
+}
+Response
+{
+"status": true,
+"data": {
+"reference_id": "",
+"BookingMode": "COD",
+"codValue": "117.00",
+"awb_no": "FST46xxxxxxxxxx",
+"sender_city": "Riyadh",
+"sender_name": "fastcoo test",
+"sender_address": "Olaya",
+"sender_phone": "05xxxxxxxxxxxx",
+"sender_email": "test@gmail.com",
+"sender_zip": "",
+"receiver_city": "Riyadh",
+"receiver_name": "test user",
+"receiver_address": "Riyadh",
+"receiver_phone": "123xxxxxxxxxxx",
+"receiver_email": "test@gmail.com",
+"country_dial_code": "+966",
+"description": "test",
+"pieces": "3",
+"weight": "1",
+"sku_details": "VD0xxx",
+"order_type": "FM",
+"area_name": "Al Dirah",
+"area": "",
+"sku": "VDxxxx",
+"national_address_id" : "FST5XXXXXXX",
+"sender_national_id" : "FST5XXXXXXX"
+}
+}
+Response Codes:
+-->
+Table 1. Request Parameters:
+Parameter
+Type
+Description
+-->
+Mandatory
+Description
+App_ID
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+Unique application identifier provided by Fastcoo
+UniqueReference
+string
+AWB Number is shipment
+unique number
+-->
+Yes
+System-generated unique reference number
+client_awb
+string
+Yes
+Client’s airway bill number provided by the 3PL or courier
+order_type
+string
+Yes
+Order type (e.g., “FM” for First Mile, “LM” for Last Mile)
+Rate Limiting
+To ensure fair use of system resources and maintain consistent performance, the Fastcoo Partner
+API enforces a rate limit policy on order creation requests.
+Limit: Maximum 180 order creation requests per minute
+Enforcement: If the limit is exceeded, the API will reject further order creation requests
+within the same minute and return an error response.
+Refresh Token
+When an access token expires, the client must generate a new token by calling the token endpoint with grant_type=refresh_token, passing the refresh_token, client_id, and client_secret in the body. The request must also include appropriate headers (Content-Type). The API will return a new valid access token, which should replace the old one for subsequent requests.
+URL:
+{base_url}/oauth/token
+Header
+CURLOPT_HTTPHEADER => array(
+'Content-Type: application/x-www-form-urlencoded'
+),
+CURLOPT_POSTFIELDS => 'grant_type=refresh_token&
+refresh_token=12b0XXXXXXXXXXXXXXX&
+client_id=10XXX&
+client_secret=2cedXXXXXXXXXXXXXXXXXXX',
+Response
+{
+"access_token": "3ff30XXXXXXXXXXXXXXXXXXXXXXXXX",
+"expires_in": 315XXXXXX,
+"token_type": "Bearer",
+"scope": null,
+"refresh_token": "09667XXXXXXXXXXXXXXXXXXXXXXXXX"
+}
+Limit: Maximum 180 order creation requests per minute
+Enforcement: If the limit is exceeded, the API will reject further order creation requests
+within the same minute and return an error response.
+-->

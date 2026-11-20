@@ -15,6 +15,8 @@ const haystack = (d: DemoShipment) => `${d.n} ${d.ref} ${d.recipientName} ${d.di
 
 interface Props {
   city: string; cityLabel: string;
+  /** The platform's B2B switch: off → demo parcels are added as individuals and their type is not shown. */
+  b2b?: boolean;
   /** Lower-cased order references already in the manifest (those demo parcels are skipped). */
   existingRefs: Set<string>;
   /** How many more parcels the order can still take. */
@@ -25,7 +27,7 @@ interface Props {
 }
 
 /** Picker for the 80 fictitious parcels of a demo/test deployment. Mount only while open. */
-export function DemoPickerDialog({ city, cityLabel, existingRefs, room, onClose, onAdd }: Props) {
+export function DemoPickerDialog({ city, cityLabel, b2b = true, existingRefs, room, onClose, onAdd }: Props) {
   const { t, locale } = useI18n();
   const { data, error, mutate } = useApi<DemoShipmentPage>(`/business/demo-shipments?city=${encodeURIComponent(city)}`, { shouldRetryOnError: false });
   const [q, setQ] = useState(""); const [picked, setPicked] = useState<Set<number>>(new Set());
@@ -40,7 +42,7 @@ export function DemoPickerDialog({ city, cityLabel, existingRefs, room, onClose,
 
   const toggle = (n: number, on: boolean) => setPicked((p) => { const x = new Set(p); if (on) x.add(n); else x.delete(n); return x; });
   const pick = (list: DemoShipment[]) => setPicked(new Set(list.map((d) => d.n)));
-  const submit = () => onAdd(fresh.slice(0, Math.max(0, room)).map(demoToRow), willSkip);
+  const submit = () => onAdd(fresh.slice(0, Math.max(0, room)).map((d) => demoToRow(d, b2b)), willSkip);
 
   return (
     <Modal open onClose={onClose} title={t("pb.demo_title")}
@@ -70,7 +72,7 @@ export function DemoPickerDialog({ city, cityLabel, existingRefs, room, onClose,
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="ltr-num font-semibold tabular-nums" dir="ltr">{d.ref}</span><span className="font-medium">{d.recipientName}</span>
-                          <Badge tone={d.recipientType === "business" ? "info" : "neutral"}>{t(`rtype.${d.recipientType}`)}</Badge>
+                          {b2b && <Badge tone={d.recipientType === "business" ? "info" : "neutral"}>{t(`rtype.${d.recipientType}`)}</Badge>}
                           {inList(d) && <Badge tone="success">{t("pb.demo_in_list")}</Badge>}
                         </span>
                         <span className="block text-xs text-muted">{d.district ? `${d.district} · ` : ""}{d.address}</span>

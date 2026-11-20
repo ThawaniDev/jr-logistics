@@ -166,8 +166,8 @@ export async function requestWithdrawal(user: User, amountCents: number) {
     let iban: string | null = null, bank: string | null = null;
     if (user.role === "driver") {
       const [p] = await tx.select().from(driverProfiles).where(eq(driverProfiles.userId, user.id));
-      // Linked drivers are paid by their office, but money they earned BEFORE linking is theirs: let them withdraw that balance.
-      if (p?.officeLinkStatus === "linked" && (await ensureAccount(user.id, tx)).availableCents < amountCents) throw err("FORBIDDEN", "Office-linked drivers are paid by their office");
+      // J4: a driver of an office does not manage a wallet at all — the office is paid and handles payouts (the wallet comes back if he leaves the office).
+      if (p?.officeId) throw err("WALLET_MANAGED_BY_OFFICE", "Your wallet is managed by your office");
       iban = p?.iban ?? null; bank = p?.bankName ?? null;
     } else {
       const { officeProfiles } = await import("@/db/schema");

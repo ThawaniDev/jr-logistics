@@ -8,6 +8,8 @@ import { useApi } from "@/components/ui/data";
 import { JobChat } from "@/components/features/chat";
 import { Timeline } from "@/components/features/timeline";
 import { ManifestFlow } from "@/components/features/driver-stops";
+import { RouteToggle } from "@/components/features/driver-stops-steps";
+import { routingEnabledOf } from "@/components/features/driver-shipments-lib";
 import { ArrivalCheckin } from "@/components/features/driver-arrival";
 import { JobStatCards } from "@/components/features/driver-job-stats";
 import { ApiError, get, post } from "@/lib/api";
@@ -50,6 +52,10 @@ export default function DriverJob({ params }: { params: Promise<{ id: string }> 
   const hasShip = j.service === "delivery_driver";
   const manifest = j.manifest === true; // per-parcel job: the whole hand-over → route → stop-by-stop flow is rendered by <ManifestFlow>, legacy jobs keep the count flow below
   const flowActive = manifest && j.status === "attendance_confirmed";
+  // the shipment run sheet carries its own counters (same `stat-*` ids) while it is on screen; the stat cards are for the stages without it
+  const runSheet = manifest && ((j.status === "attendance_confirmed" && (has("work_stops") || (has("report_delivered") && !!j.stopsSummary))) || (["delivered_reported", "qty_disputed", "pending_settlement", "completed"].includes(j.status) && (j.stopsSummary?.total ?? 0) > 0));
+  const routing = routingEnabledOf(j); // J2: the platform's routing switch — off hides the route map / re-ordering and unlocks every stop
+  const routeBtn = flowActive && routing && (has("work_stops") || has("approve_route")) && (j.stops?.length ?? 0) > 0;
   const ackPending = j.status === "attendance_confirmed" && j.loadedUnits != null;
   const hintKey = ackPending && j.loadedAckByDriver == null ? "job.hint_attendance_confirmed_ack" : ackPending && j.loadedAckByDriver === false ? "job.hint_attendance_disputed" : `job.hint_${j.status}`;
 
@@ -62,19 +68,20 @@ export default function DriverJob({ params }: { params: Promise<{ id: string }> 
   return (
     <>
       <Link href="/driver/jobs" className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-sm text-muted hover:text-ink"><ArrowLeft className="size-4 rtl:rotate-180" />{t("nav.my_jobs")}</Link>
-      <PageHeader title={`${t(`svc.${j.service}`)} · ${j.ref}`} subtitle={j.business ?? undefined} actions={<StatusBadge status={j.status} ns="jobstatus" />} />
+      <PageHeader title={manifest ? j.ref : `${t(`svc.${j.service}`)} · ${j.ref}`} subtitle={manifest ? [t(`svc.${j.service}`), j.deliveryCity ? t(`city.${j.deliveryCity}`) : null, j.business].filter(Boolean).join(" · ") : j.business ?? undefined}
+        actions={<>{routeBtn && <RouteToggle />}<StatusBadge status={j.status} ns="jobstatus" /></>} />
       {error && <div className="mb-4"><Notice tone="warn">{t("ux.d_stale")} <button type="button" onClick={() => mutate()} className="min-h-11 font-semibold text-cyan underline">{t("common.retry")}</button></Notice></div>}
       {step >= 0 && <ol className="mb-6 flex gap-1" aria-label={t("a11y.progress")}>{FLOW.map((s, i) => <li key={s} className="flex-1" aria-current={i === step ? "step" : undefined}><div className={cn("h-1.5 rounded-full", i <= step ? "bg-accent" : "bg-line")} /><p className={cn("mt-1 text-xs", i === step ? "block font-semibold text-accent" : "hidden text-muted sm:block")}>{t(`jobstatus.${s}`)}</p></li>)}</ol>}
 
       {manifest && j.allowPartial === false && ["offered", "accepted", "arrived"].includes(j.status) && <div className="mb-5"><Notice tone="warn">{t("dstop.all_or_nothing")}</Notice></div>}
 
       {/* E13 — stat cards, outside the stop panels */}
-      {manifest && !["offered", "rejected", "expired"].includes(j.status) && <JobStatCards job={j} />}
+      {manifest && !["offered", "rejected", "expired"].includes(j.status) && !runSheet && <JobStatCards job={j} />}
 
       {/* E16/E18 — the job is over: the delivery was confirmed and the earnings paid automatically */}
       {j.status === "completed" && (
         <Card data-testid="job-completed" className="mb-5 space-y-3 border-2 border-accent/50 bg-accent/5">
-          <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 size-8 shrink-0 text-accent" aria-hidden /><div><h2 className="text-xl font-bold">{t("fod.job_completed_title")}</h2><p className="mt-1 text-sm text-muted">{t(j.earningHidden ? "fod.job_completed_office" : "fod.job_completed_body")}</p></div></div>
+          <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 size-8 shrink-0 text-accent" aria-hidden /><div><h2 className="text-xl font-bold">{t("fod.job_completed_title")}</h2><p className="mt-1 text-sm text-muted">{t(j.earningHidden ? "jd.job_completed_office" : "fod.job_completed_body")}</p></div></div>
           {!j.earningHidden && <Link href="/driver/wallet" data-testid="job-completed-wallet" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-line bg-bg2 px-6 font-semibold hover:border-accent/60"><Wallet className="size-5" aria-hidden />{t("fod.go_wallet")}</Link>}
         </Card>
       )}
@@ -111,7 +118,7 @@ export default function DriverJob({ params }: { params: Promise<{ id: string }> 
           {j.pickup || j.delivery ? <>
             <div className="rounded-xl bg-bg2 p-3"><p className="text-xs text-muted">{t("wizard.pickup_address")}</p><p className="text-sm font-medium">{j.pickup?.address ?? "—"}</p></div>
             {manifest
-              ? <div className="rounded-xl bg-bg2 p-3"><p className="text-xs text-muted">{t("dstop.stops_label")}</p><p className="text-sm font-medium">{t("dstop.n_stops_in", { n: fmtNum(j.stopsSummary?.total ?? j.expectedUnits, locale), city: t(`city.${j.deliveryCity}`) })}</p><p className="mt-1 text-xs text-muted">{t("dstop.stops_privacy")}</p></div>
+              ? <div className="rounded-xl bg-bg2 p-3"><p className="text-xs text-muted">{t("dstop.stops_label")}</p><p className="text-sm font-medium">{t("dstop.n_stops_in", { n: fmtNum(j.stopsSummary?.total ?? j.expectedUnits, locale), city: t(`city.${j.deliveryCity}`) })}</p><p className="mt-1 text-xs text-muted">{t(routing ? "dstop.stops_privacy" : "jf2.stops_open")}</p></div>
               : <div className="rounded-xl bg-bg2 p-3"><p className="text-xs text-muted">{t("wizard.delivery_address")}</p><p className="text-sm font-medium">{j.delivery?.address ?? "—"}</p></div>}
             {mapsUrl && <a href={mapsUrl} target="_blank" rel="noreferrer"><Button variant="secondary" full><Navigation className="size-4" />{t(manifest ? "dstop.navigate_pickup" : "job.navigate")}</Button></a>}
           </> : <Notice tone="info">{t(j.status === "offered" ? "job.locked_until_accept" : "job.details_hidden")}</Notice>}

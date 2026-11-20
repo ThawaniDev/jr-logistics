@@ -5,8 +5,11 @@ import '../../core/i18n.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
+import '../../providers_extra.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../cash/cash_screen.dart';
+import 'wallet_managed.dart';
 
 final withdrawalsProvider = FutureProvider.autoDispose((ref) => ref.watch(apiProvider).withdrawals());
 
@@ -26,13 +29,22 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   Widget build(BuildContext context) {
     final t = context.tr;
     final lang = ref.watch(localeProvider);
-    final w = ref.watch(walletProvider);
-    final wd = ref.watch(withdrawalsProvider);
     final ov = ref.watch(overviewProvider).value;
-    Future<void> reload() async { ref.invalidate(walletProvider); ref.invalidate(withdrawalsProvider); ref.invalidate(overviewProvider); await ref.read(walletProvider.future); }
+    // A driver of an office has no wallet (the overview says so): do not even ask for one — the page is the calm "managed by your office" card + his cash.
+    final AsyncValue<Json> w = ov?.walletManagedByOffice == true ? const AsyncData(<String, dynamic>{'managedByOffice': true}) : ref.watch(walletProvider);
+    final managed = walletManagedByOffice(w.value, ov);
+    final wd = managed ? null : ref.watch(withdrawalsProvider);
+    Future<void> reload() async { ref.invalidate(walletProvider); ref.invalidate(withdrawalsProvider); ref.invalidate(cashProvider); ref.invalidate(overviewProvider); await ref.read(overviewProvider.future); if (!managed) await ref.read(walletProvider.future); }
     return Scaffold(
-      appBar: AppBar(title: Text(t('nav.earnings'))),
+      appBar: AppBar(title: Text(t(managed ? 'drs.wallet_cash_title' : 'nav.earnings'))),
       body: RefreshIndicator(color: JR.accent, onRefresh: reload, child: AsyncBody(value: w, onRetry: reload, builder: (d) {
+        if (walletManagedByOffice(d, ov)) {
+          return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [
+            ManagedWalletCard(officeName: walletOfficeName(d, ov)),
+            const SizedBox(height: 20),
+            const WalletCashSection(),
+          ]);
+        }
         final linked = ov?.officeLinked == true;
         final entries = ((d['entries'] as List?) ?? const []).whereType<Map>().toList();
         final available = _cents(d['availableCents']);
@@ -61,10 +73,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
             ],
           ])),
           const SizedBox(height: 20),
-          if (wd.value?.isNotEmpty == true) ...[
+          if (wd?.value?.isNotEmpty == true) ...[
             Text(t('wallet.withdrawals'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
-            for (final x in wd.value!) Padding(padding: const EdgeInsets.only(bottom: 8), child: SectionCard(child: Row(children: [
+            for (final x in wd!.value!) Padding(padding: const EdgeInsets.only(bottom: 8), child: SectionCard(child: Row(children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(fmtMoney(_cents(x['amountCents']), lang), textDirection: TextDirection.ltr, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)), Text(fmtDateTime('${x['createdAt'] ?? ''}', lang), style: const TextStyle(color: JR.muted, fontSize: 12))])),
               Pill(t.has('wdstatus.${x['status']}') ? t('wdstatus.${x['status']}') : '${x['status'] ?? ''}', tone: switch (x['status']) { 'paid' => Tone.success, 'rejected' => Tone.danger, _ => Tone.warn }),
             ]))),

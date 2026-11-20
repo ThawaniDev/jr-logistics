@@ -1,13 +1,17 @@
 "use client";
 import { Suspense, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { KeyRound, Lock, LockOpen, ShieldCheck, ShieldOff, UserPlus, UserRoundCog, Users } from "lucide-react";
-import { Avatar, Badge, Button, CellPair, EmptyState, ErrorState, Input, Modal, Notice, PageHeader, PageLoading, SearchBox, Segmented, Stat, StatGrid, StatusBadge, Table, Td, Toolbar, useAction } from "@/components/ui";
+import { Avatar, Badge, Button, CellPair, EmptyState, ErrorState, Input, Modal, Notice, PageHeader, PageLoading, SearchBox, Segmented, Select, Stat, StatGrid, StatusBadge, Table, Td, Toolbar, useAction } from "@/components/ui";
 import { useApi, useUrlState } from "@/components/ui/data";
 import { patch, post } from "@/lib/api";
 import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
 import { ConfirmModal, fullErr } from "./admin-common";
-import { StaffFormModal, type StaffEdit, type StaffMeta } from "./admin-system-staff-form";
+import { StaffFormModal, type StaffEdit } from "./admin-system-staff-form";
+import { useCatalog, useRoleList } from "./admin-roles-data";
+import { roleLabel, type RoleItem } from "./admin-roles-lib";
 import { filterStaff, isLocked, staffStats, type StaffRow } from "./admin-system-lib";
 
 /** An icon button of a table row; on phones (stacked cards) its label is visible, on wider screens it is a tooltip + screen-reader text. */
@@ -15,19 +19,29 @@ function RowAction({ label, icon, onClick, loading, danger, testid }: { label: s
   return <Button data-testid={testid} size="sm" variant={danger ? "danger" : "ghost"} title={label} loading={loading} onClick={onClick}>{icon}<span className="sm:sr-only">{label}</span></Button>;
 }
 
+/** The role of a staff member as a badge that opens the role on Roles & permissions (system roles by their translated name, custom roles by their own). */
+function RoleChip({ roleKey, roles }: { roleKey: string; roles: RoleItem[] }) {
+  const { t } = useI18n(); const me = useUser();
+  const r = roles.find((x) => x.key === roleKey);
+  const label = r ? roleLabel(t, r) : t(`preset.${roleKey}`) === `preset.${roleKey}` ? roleKey : t(`preset.${roleKey}`);
+  const badge = <Badge tone="info">{label}</Badge>;
+  return r && (hasPerm(me, "staff.view") || hasPerm(me, "staff.manage")) ? <Link data-testid={`rj-staff-role-${roleKey}`} href={`/admin/roles?role=${encodeURIComponent(roleKey)}`} className="hover:opacity-80">{badge}</Link> : badge;
+}
+
 /** Staff accounts (`/admin/staff`): KPI row, filters, table with security state, role / permission editing, password and two-step resets, unlock, suspend. */
 export function StaffConsole() { return <Suspense fallback={<PageLoading />}><StaffInner /></Suspense>; }
 
 function StaffInner() {
   const { t } = useI18n(); const a = useAction(); const me = useUser();
-  const { data, error, mutate } = useApi<{ items: StaffRow[] }>("/admin/staff"); const meta = useApi<StaffMeta>("/admin/meta");
-  const [filter, setFilter] = useUrlState("filter", "all"); const [q, setQ] = useState("");
-  const [m, setM] = useState<StaffEdit | null>(null);
+  const { data, error, mutate } = useApi<{ items: StaffRow[] }>("/admin/staff"); const rl = useRoleList(); const cat = useCatalog(); const metaError = rl.error ?? cat.error;
+  const meta = rl.data && cat.data ? { roles: rl.data.items, groups: cat.data.groups } : null; // roles (system + custom) and the permission catalogue feed the role select and the custom picker
+  const [filter, setFilter] = useUrlState("filter", "all"); const [role, setRole] = useUrlState("role", ""); const [q, setQ] = useState("");
+  const sp = useSearchParams(); const [m, setM] = useState<StaffEdit | null>(() => (sp.get("add") === "1" && hasPerm(me, "staff.manage") ? {} : null)); // `/admin/staff?add=1` (the "Staff member" card of Add user) opens the form
   const [conf, setConf] = useState<null | { kind: "mfa" | "status"; s: StaffRow }>(null); const [pw, setPw] = useState<null | { id: string; name: string }>(null); const [pwv, setPwv] = useState(""); const [pwErr, setPwErr] = useState<string | null>(null);
-  if (error || meta.error) return <ErrorState error={error ?? meta.error} retry={() => { mutate(); meta.mutate(); }} />;
-  if (!data || !meta.data) return <PageLoading />;
+  if (error || metaError) return <ErrorState error={error ?? metaError} retry={() => { mutate(); rl.mutate(); cat.mutate(); }} />;
+  if (!data || !meta) return <PageLoading />;
   const canManage = hasPerm(me, "staff.manage");
-  const rows = data.items; const st = staffStats(rows); const shown = filterStaff(rows, filter, q);
+  const rows = data.items; const st = staffStats(rows); const shown = filterStaff(rows, filter, q).filter((s) => !role || (role === "custom" ? !s.staffRole : s.staffRole === role));
   const reset = () => a.run("pw", () => post(`/admin/staff/${pw!.id}/reset-password`, { password: pwv }), { success: "common.saved", onDone: () => { setPw(null); setPwv(""); }, onError: (e) => setPwErr(fullErr(e, t)) });
   const edit = (s: StaffRow) => setM({ id: s.id, had: s.permissions, name: s.name, staffRole: s.staffRole, permissions: s.permissions });
   const options = [{ key: "all", label: t("common.all"), count: st.total }, { key: "active", label: t("status.active"), count: st.active }, { key: "suspended", label: t("status.suspended"), count: st.suspended },
@@ -47,15 +61,17 @@ function StaffInner() {
       <Toolbar>
         <SearchBox value={q} onChange={setQ} placeholder={t("rdb.staff_search_ph")} label={t("common.search")} />
         <Segmented label={t("common.status")} value={filter} onChange={setFilter} options={options} />
+        <div className="w-full sm:w-56"><Select data-testid="rj-staff-role-filter" aria-label={t("rj.role")} placeholder={t("rj.filter_all_roles")} value={role} onChange={(e) => setRole(e.target.value)}
+          options={[...meta.roles.map((r) => ({ value: r.key, label: roleLabel(t, r) })), { value: "custom", label: t("rj.filter_custom") }]} /></div>
       </Toolbar>
 
       {rows.length === 0 ? <EmptyState icon={<UserRoundCog className="size-9" aria-hidden />} title={t("staff.none")} hint={t("rdb.staff_none_hint")} action={canManage ? <Button size="sm" onClick={() => setM({})}><UserPlus className="size-4" aria-hidden />{t("staff.add")}</Button> : undefined} />
-        : shown.length === 0 ? <EmptyState title={t("common.no_results")} action={<Button variant="secondary" size="sm" onClick={() => { setQ(""); setFilter("all"); }}>{t("uxa.clear_filters")}</Button>} /> : (
-        <Table stack label={t("nav.staff")} head={[t("common.name"), t("staff.preset"), { label: t("staff.perms"), align: "end" }, t("rdb.staff_2step"), t("common.status"), { label: t("rdb.staff_actions"), srOnly: true }]}>
+        : shown.length === 0 ? <EmptyState title={t("common.no_results")} action={<Button variant="secondary" size="sm" onClick={() => { setQ(""); setFilter("all"); setRole(""); }}>{t("uxa.clear_filters")}</Button>} /> : (
+        <Table stack label={t("nav.staff")} head={[t("common.name"), t("rj.role"), { label: t("staff.perms"), align: "end" }, t("rdb.staff_2step"), t("common.status"), { label: t("rdb.staff_actions"), srOnly: true }]}>
           {shown.map((s) => { const self = s.id === me.id; const locked = isLocked(s); return (
             <tr key={s.id} data-testid={`rdb-staff-row-${s.id}`}>
               <Td label={t("common.name")}><div className="flex min-w-0 items-center gap-3"><Avatar name={s.name} size={36} /><CellPair title={<span className="inline-flex items-center gap-2">{s.name}{self && <Badge>{t("adm.you")}</Badge>}</span>} sub={<span className="ltr-num">{s.email}</span>} /></div></Td>
-              <Td label={t("staff.preset")}>{s.staffRole ? <Badge tone="info">{t(`preset.${s.staffRole}`)}</Badge> : <span className="text-muted">{t("staff.custom")}</span>}</Td>
+              <Td label={t("rj.role")}>{s.staffRole ? <RoleChip roleKey={s.staffRole} roles={meta.roles} /> : <span className="text-muted">{t("staff.custom")}</span>}</Td>
               <Td label={t("staff.perms")} num>{s.permissions.length}</Td>
               <Td label={t("rdb.staff_2step")}>{s.totpEnabledAt ? <Badge tone="success"><ShieldCheck className="size-3" aria-hidden />{t("rdb.staff_mfa_on")}</Badge> : <Badge tone="neutral"><ShieldOff className="size-3" aria-hidden />{t("rdb.staff_mfa_off")}</Badge>}</Td>
               <Td label={t("common.status")}><span className="inline-flex flex-wrap items-center gap-1.5"><StatusBadge status={s.status} />{locked && <Badge tone="danger"><Lock className="size-3" aria-hidden />{t("rdb.staff_locked")}</Badge>}{s.mustChangePassword && <Badge tone="warn">{t("rdb.staff_temp_badge")}</Badge>}</span></Td>
@@ -70,7 +86,7 @@ function StaffInner() {
             </tr>); })}
         </Table>)}
 
-      {m && <StaffFormModal key={m.id ?? "new"} edit={m} meta={meta.data} onClose={() => setM(null)} onSaved={() => mutate()} />}
+      {m && <StaffFormModal key={m.id ?? "new"} edit={m} meta={meta} onClose={() => setM(null)} onSaved={() => mutate()} />}
       <ConfirmModal open={!!conf} onClose={() => setConf(null)} danger busy={a.any}
         title={conf ? `${conf.kind === "mfa" ? t("mfa.reset") : t("admin.suspend")} · ${conf.s.name}` : ""} confirmLabel={conf?.kind === "mfa" ? t("mfa.reset") : t("admin.suspend")}
         onConfirm={() => conf && (conf.kind === "mfa"

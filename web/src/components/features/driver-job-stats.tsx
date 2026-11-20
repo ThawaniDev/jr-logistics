@@ -5,6 +5,7 @@ import { fmtMoney, fmtNum } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { cn } from "@/lib/cn";
 import { jobStats } from "./driver-fieldops-utils";
+import { cardStatsOf, isFinalJob } from "./driver-job-stats-lib";
 
 /**
  * E13 — the stat cards at the top of the driver's job page (outside the stop panels):
@@ -35,21 +36,47 @@ export function JobStatCards({ job }: { job: { stopsSummary?: unknown; cod?: unk
   );
 }
 
-/** Compact counters for the job card in lists (same maths, one line). */
-export function JobCounters({ job, className }: { job: { stopsSummary?: unknown; cod?: unknown }; className?: string }) {
+/**
+ * J5 — the compact stat cards of EVERY order card in lists (offered, accepted, active, history): parcels · to deliver · delivered · not delivered,
+ * and the cash of the job — to collect / collected while it runs, collected / handed over once it is over. Same maths as the job page, one block.
+ */
+export function JobCounters({ job, className }: { job: { status?: string; stats?: unknown; stopsSummary?: unknown; cod?: unknown }; className?: string }) {
   const { t, locale } = useI18n();
-  const s = jobStats(job.stopsSummary as Parameters<typeof jobStats>[0], job.cod as Parameters<typeof jobStats>[1]);
-  if (!s || s.total <= 0) return null;
-  const pill = (id: string, n: number, label: string, cls: string) => <li key={id} data-testid={id} data-value={n} className={cn("flex min-w-0 flex-col items-center rounded-lg bg-bg2 px-1.5 py-1.5 text-center", cls)}><span className="ltr-num text-base font-bold leading-none">{fmtNum(n, locale)}</span><span className="mt-1 max-w-full truncate text-[10px] text-muted">{label}</span></li>;
+  const s = cardStatsOf(job);
+  if (!s) return null;
+  const final = isFinalJob(job);
+  const money = (c: number) => <span className="ltr-num">{fmtMoney(c, locale)}</span>;
+  const pill = (id: string, v: number, label: string, cls: string, shown?: React.ReactNode) => (
+    <li key={id} data-testid={id} data-value={v} className={cn("flex min-w-0 flex-col items-center justify-start rounded-lg bg-bg2 px-1 py-1.5 text-center", cls)}>
+      <span className="ltr-num text-base font-bold leading-none">{shown ?? fmtNum(v, locale)}</span><span className="mt-1 max-w-full break-words text-[10px] leading-tight text-muted">{label}</span>
+    </li>
+  );
+  const cash = (id: string, v: number, label: string, cls: string) => (
+    <div key={id} data-testid={id} data-value={v} className={cn("min-w-0 rounded-lg px-2.5 py-1.5", cls)}>
+      <p className="flex items-center gap-1 text-[10px] leading-tight text-muted"><Banknote className="size-3 shrink-0" aria-hidden /><span className="break-words">{label}</span></p>
+      <p className="mt-0.5 text-sm font-bold leading-tight">{money(v)}</p>
+    </div>
+  );
+  const c = s.cod;
   return (
-    <div className={cn("space-y-2", className)} data-testid="job-card-stats">
-      <ul className="grid grid-cols-4 gap-1.5">
-        {pill("card-stat-total", s.total, t("fod.stat_total"), "text-ink")}
+    <div className={cn("space-y-2", className)} data-testid="job-card-stats" data-final={final} data-estimated={s.estimated}>
+      <ul className="grid grid-cols-4 gap-1.5" title={s.estimated ? t("jd.stat_expected") : undefined}>
+        {pill("card-stat-total", s.total, t("fod.stat_total"), "text-ink", s.estimated && !final ? <span dir="ltr">≤{fmtNum(s.total, locale)}</span> : undefined)}
         {pill("card-stat-to-deliver", s.toDeliver, t("fod.stat_to_deliver"), "text-cyan")}
         {pill("card-stat-delivered", s.delivered, t("fod.stat_delivered"), "text-accent")}
         {pill("card-stat-not-delivered", s.notDelivered, t("fod.stat_not_delivered"), s.notDelivered > 0 ? "text-danger" : "text-muted")}
       </ul>
-      {s.cod && <p data-testid="card-stat-cod" className="flex items-center justify-between rounded-lg bg-gold/10 px-2.5 py-1.5 text-xs font-medium text-gold"><span className="flex items-center gap-1.5"><Banknote className="size-3.5" aria-hidden />{t("fod.stat_cod_collect")}</span><span className="ltr-num font-bold">{fmtMoney(s.cod.toCollectCents, locale)}</span></p>}
+      {final && s.notDelivered > 0 && (s.failed > 0 || s.returned > 0) && (
+        <p data-testid="card-stat-breakdown" className="text-xs text-muted">{[s.failed > 0 && `${t("jd.stat_failed")} ${fmtNum(s.failed, locale)}`, s.returned > 0 && `${t("jd.stat_returned")} ${fmtNum(s.returned, locale)}`].filter(Boolean).join(" · ")}</p>
+      )}
+      {c && (
+        <div className="grid grid-cols-2 gap-1.5">
+          {final
+            ? <>{cash("card-stat-cod-collected", c.collectedCents, t("fod.stat_cod_collected"), "bg-accent/10 text-accent")}{c.handedOverCents != null && cash("card-stat-cod-handed", c.handedOverCents, t("jd.stat_cod_handed"), "bg-gold/10 text-gold")}</>
+            : <>{cash("card-stat-cod", c.toCollectCents, t("fod.stat_cod_collect"), "bg-gold/10 text-gold")}{cash("card-stat-cod-collected", c.collectedCents, t("fod.stat_cod_collected"), "bg-accent/10 text-accent")}</>}
+        </div>
+      )}
+      {final && c && (c.outstandingCents ?? 0) > 0 && <p data-testid="card-stat-cod-open" className="text-xs font-medium text-gold">{t("jd.stat_cod_open", { amount: fmtMoney(c.outstandingCents ?? 0, locale) })}</p>}
     </div>
   );
 }

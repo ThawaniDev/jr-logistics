@@ -41,16 +41,21 @@ describe("company warnings", () => {
 describe("company tabs follow the permissions the tab's API needs", () => {
   it("everyone gets the overview; the rest depends on permissions", () => {
     expect(companyTabs(perms("verification.manage"))).toEqual(["overview", "documents"]);
-    expect(companyTabs(perms("users.view", "requests.view"))).toEqual(["overview", "orders", "warehouse"]);
+    expect(companyTabs(perms("users.view", "requests.view"))).toEqual(["overview", "orders", "parcels", "warehouse", "integrations", "security", "activity", "notes", "raw"]);
     expect(companyTabs(perms("wallets.view"))).toEqual(["overview", "finance"]);
     expect(companyTabs(perms("cod.manage"))).toEqual(["overview", "finance"]);
     expect(companyTabs(perms("documents.review"))).toEqual(["overview", "documents"]);
+    expect(companyTabs(perms("tickets.view"))).toEqual(["overview", "support"]);
+    expect(companyTabs(perms("complaints.manage"))).toEqual(["overview", "support"]);
+    expect(companyTabs(perms("offices.view"))).toEqual(["overview", "activity", "notes"]);
     expect(companyTabs(perms())).toEqual(["overview"]);
-    expect(companyTabs(ALL)).toEqual(["overview", "orders", "warehouse", "finance", "documents"]);
+    expect(companyTabs(ALL)).toEqual(["overview", "orders", "parcels", "finance", "warehouse", "integrations", "documents", "support", "security", "activity", "notes", "raw"]);
   });
   it("builds route hrefs", () => {
     expect(companyTabHref("abc", "overview")).toBe("/admin/companies/abc");
     expect(companyTabHref("abc", "finance")).toBe("/admin/companies/abc/finance");
+    expect(companyTabHref("abc", "parcels")).toBe("/admin/companies/abc/parcels");
+    expect(companyTabHref("abc", "raw")).toBe("/admin/companies/abc/raw");
   });
 });
 

@@ -50,7 +50,10 @@ test("connect LogesTech, test it, import a barcode into a request, complete the 
   await page.getByTestId("add-connection").click();
   await page.getByTestId("provider-logestechs").click();
   // The form is generated from the provider's field list: password input for the secret, url input for the address.
+  // Fields the provider marks `advanced` (the API address, the time zone) sit under a collapsed "Advanced" group.
   await expect(page.getByTestId("field-apiKey")).toHaveAttribute("type", "password");
+  await expect(page.getByTestId("field-baseUrl")).toHaveCount(0);
+  await page.getByTestId("advanced-toggle").click();
   await expect(page.getByTestId("field-baseUrl")).toHaveAttribute("type", "url");
   await page.getByTestId("conn-name").fill("E2E LogesTech");
   await page.getByTestId("create-connection").click();

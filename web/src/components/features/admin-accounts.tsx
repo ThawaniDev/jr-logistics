@@ -59,6 +59,7 @@ export function AccountModal({ userId, onClose, onChanged }: { userId: string | 
           <KV label={t("common.role")}>{t(`role.${u.role}`)}</KV>
           <KV label={t("auth.phone")}><span className="ltr-num">{u.phone ?? "—"}</span></KV>
           <KV label={t("reg.cr")}><span className="ltr-num">{p?.crNumber ?? "—"}</span></KV>
+          {u.role === "business" && p?.taxNumber !== undefined && <KV label={t("reg.tax")}><span className="ltr-num" data-testid="account-tax">{p.taxNumber ?? "—"}</span></KV>}
           <KV label={t("reg.address")}>{p?.address ?? "—"}</KV>
           <KV label={t("verify.title")}>{p?.verificationStatus ? <StatusBadge status={p.verificationStatus} /> : "—"}</KV>
           <KV label={t("common.status")}><StatusBadge status={u.status} /></KV>

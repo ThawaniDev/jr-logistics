@@ -1,5 +1,4 @@
 "use client";
-import { ActivityLog } from "../../activity";
-import { useConnection } from "../../connection-detail";
+import { ActivityTab } from "@/components/features/partner-conn-activity";
 
-export default function Page() { const { conn } = useConnection(); return <ActivityLog conn={conn} />; }
+export default function Page() { return <ActivityTab />; }

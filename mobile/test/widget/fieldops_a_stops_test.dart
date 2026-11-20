@@ -430,17 +430,20 @@ void main() {
       expect(find.text('ڈیلیور کرنے ہیں'), findsOneWidget);
     });
 
-    testWidgets('job card: compact counters', (t) async {
+    testWidgets('job card: stat cards (shipments · to deliver · delivered · not delivered · cash)', (t) async {
       await pumpScreen(t, Scaffold(body: SingleChildScrollView(child: JobCard(job: underWay(), lang: 'en'))), api: FakeApi());
-      expect(find.text('2 to deliver'), findsOneWidget);
-      expect(find.text('2 delivered'), findsOneWidget);
-      expect(find.text('1 not delivered'), findsOneWidget);
-      expect(find.text('Cash SAR 400.00 / SAR 1,630.00'), findsOneWidget); // collected / (collected + still to collect)
+      String v(String k) => t.widget<Text>(find.byKey(Key('card-stat-$k-value'))).data!;
+      expect([v('total'), v('to-deliver'), v('delivered'), v('not-delivered')], ['5', '2', '2', '1']);
+      expect(v('cash'), 'SAR 1,230.00'); // still to collect
+      expect(v('collected'), 'SAR 400.00');
     });
 
-    testWidgets('job card: no counters for an offer or an untouched job', (t) async {
+    testWidgets('job card: an offer shows the expected parcels with nothing delivered yet (J5)', (t) async {
       await pumpScreen(t, Scaffold(body: SingleChildScrollView(child: JobCard(job: mkManifestJob(status: 'offered', actions: ['accept']), lang: 'en'))), api: FakeApi());
-      expect(find.byKey(const Key('job-counters')), findsNothing);
+      expect(find.byKey(const Key('job-card-stats')), findsOneWidget);
+      String v(String k) => t.widget<Text>(find.byKey(Key('card-stat-$k-value'))).data!;
+      expect([v('total'), v('to-deliver'), v('delivered'), v('not-delivered')], ['3', '3', '0', '0']);
+      expect(find.byKey(const Key('card-stat-cash')), findsNothing);
     });
   });
 

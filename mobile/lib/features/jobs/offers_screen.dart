@@ -19,6 +19,8 @@ class OffersScreen extends ConsumerWidget {
     ref.read(catalogProvider); // warm the terms/policy text so tapping Accept never waits on the network for it
     // E11: with an active job the server sends no offers (`hidden`) — say why, and offer the way back to that job.
     final info = ref.watch(offersInfoProvider).value ?? OffersInfo.none;
+    // A driver of an office sees no earnings anywhere (the office is paid).
+    final hideMoney = ref.watch(overviewProvider).value?.walletManagedByOffice == true;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -47,7 +49,7 @@ class OffersScreen extends ConsumerWidget {
                     Text('${fmtDateTime('${o['startsAt'] ?? ''}', lang)}\n${cityLabel(context, '${o['pickupCity'] ?? ''}')} → ${cityLabel(context, '${o['deliveryCity'] ?? ''}')}', style: const TextStyle(color: JR.muted, height: 1.5)),
                     if (o['service'] == 'delivery_driver' && o['expectedUnits'] != null) ...[const SizedBox(height: 6), Text(t('ms.up_to_in_city', {'n': o['expectedUnits'], 'city': cityLabel(context, '${o['deliveryCity'] ?? ''}')}), key: Key('opp-parcels-${o['requestId']}'), style: const TextStyle(fontWeight: FontWeight.w600))],
                     if (o['allowPartial'] == false) ...[const SizedBox(height: 6), Text(t('ms.all_or_nothing'), key: Key('opp-all-or-nothing-${o['requestId']}'), style: const TextStyle(color: JR.gold, fontSize: 13, height: 1.4))],
-                    if (o['expectedEarningCents'] != null) ...[const SizedBox(height: 10), Text(fmtMoney((o['expectedEarningCents'] as num).toInt(), lang), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w800, fontSize: 17))],
+                    if (o['expectedEarningCents'] != null && !hideMoney && o['earningHidden'] != true) ...[const SizedBox(height: 10), Text(fmtMoney((o['expectedEarningCents'] as num).toInt(), lang), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w800, fontSize: 17))],
                     const SizedBox(height: 12),
                     FilledButton(key: Key('apply-${o['requestId']}'), onPressed: () => acceptWithTerms(context, ref, () => ref.read(apiProvider).apply('${o['requestId']}'), null), child: Text(t('act.apply'))),
                   ]));

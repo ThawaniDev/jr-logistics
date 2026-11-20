@@ -8,6 +8,8 @@ import { fmtDate, fmtDateTime } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { ReasonModal, PrevNext, fullErr, qs, useTx } from "./admin-common";
 import { IconAction } from "./admin-verification-parts";
+import { hasPerm, useUser } from "@/components/layout/auth-context";
+import { ActivityLog } from "./activity-log";
 import { useCompany, useRefreshCompanies } from "./admin-companies-ctx";
 
 type Decision = "approved" | "rejected" | "info_requested";
@@ -15,7 +17,7 @@ const KEY: Record<Decision, string> = { approved: "verify.approve", rejected: "v
 
 /** Documents tab: everything this company uploaded, with the review decisions (`POST /admin/documents/:id/review`; reject and request-info need a note). */
 export function CompanyDocuments() {
-  const { t, locale } = useI18n(); const c = useCompany(); const a = useAction(); const tx = useTx(); const refresh = useRefreshCompanies();
+  const { t, locale } = useI18n(); const c = useCompany(); const a = useAction(); const tx = useTx(); const refresh = useRefreshCompanies(); const me = useUser();
   const [page, setPage] = useState(1); const [ask, setAsk] = useState<null | { doc: any; decision: Decision }>(null); const [err, setErr] = useState<string | null>(null);
   const { data: cat } = useApi("/catalog");
   const { data, error, mutate } = useApi(`/admin/documents${qs({ kind: "business", ownerId: c.id, page })}`, { keepPreviousData: true, shouldRetryOnError: false });
@@ -58,6 +60,7 @@ export function CompanyDocuments() {
           </Table>)}
       </Section>
       <PrevNext page={page} hasNext={items.length >= 50} onPage={setPage} />
+      {(hasPerm(me, "users.view") || hasPerm(me, "offices.view")) && <div data-testid="dv3-doc-history"><ActivityLog entity="user" id={c.id} kinds={["document"]} compact pageSize={10} title={t("dv3.doc_history")} /></div>}
       <ReasonModal open={!!ask} onClose={() => setAsk(null)} danger={ask?.decision === "rejected"} busy={!!ask && a.is(`${ask.decision}${ask.doc.id}`)}
         title={ask ? `${t(KEY[ask.decision])} · ${tx(`doc.${ask.doc.type}`, ask.doc.type)}` : ""} confirmLabel={ask ? t(KEY[ask.decision]) : undefined} label={t("verify.note")} hint={t("verify.note_hint")}
         onSubmit={(note) => ask && decide(ask.doc, ask.decision, note)}>{err && <p role="alert" className="text-sm text-danger">{err}</p>}</ReasonModal>

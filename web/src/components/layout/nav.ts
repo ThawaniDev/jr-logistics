@@ -1,10 +1,12 @@
-import { LayoutDashboard, FilePlus2, ListChecks, Wallet, Bell, LifeBuoy, KeyRound, UserCog, Truck, Briefcase, FileText, Users, Building2, Factory, ShieldCheck, Settings, ScrollText, BarChart3, Map, Coins, Tag, Handshake, ClipboardList, Gavel, UserRoundCog, Banknote, Radar, Star, Ban, BookOpen, Plug, Receipt, ArrowDownToLine, BookText, PieChart } from "lucide-react";
+import { LayoutDashboard, FilePlus2, ListChecks, Wallet, Bell, LifeBuoy, KeyRound, UserCog, Truck, Briefcase, FileText, Users, Building2, Factory, ShieldCheck, Settings, ScrollText, Map, Coins, Tag, Handshake, ClipboardList, Gavel, UserRoundCog, Banknote, Radar, Star, Ban, BookOpen, Plug, Receipt, ArrowDownToLine, BookText, PieChart, Activity, PackageCheck, CircleDollarSign, Headset, MapPinned, Database, TrendingUp, Gauge } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Inbox } from "lucide-react";
 
 /** `badge` names a live counter the shell fills in (see `BADGES` in shell.tsx); items without one never show a number. */
-export type BadgeId = "notifications" | "verification" | "cases" | "complaints" | "withdrawals" | "settlements" | "requests_action";
+export type BadgeId = "notifications" | "verification" | "cases" | "complaints" | "withdrawals" | "settlements" | "requests_action" | "incoming_orders";
 /** `exact` items (the role dashboards) are active only on their own path, not on every page below it. */
-export interface NavItem { href: string; key: string; icon: LucideIcon; perm?: string | string[]; badge?: BadgeId; exact?: boolean }
+/** `perm`: any one of these is enough; `all`: every one of these is needed (a report that needs both `reports.view` and `finance.view`). */
+export interface NavItem { href: string; key: string; icon: LucideIcon; perm?: string | string[]; all?: string[]; badge?: BadgeId; exact?: boolean }
 /** `id` is stable (it keys the saved open/closed state); a group without `key` has no heading and cannot be collapsed. */
 export interface NavGroup { id: string; key?: string; items: NavItem[] }
 
@@ -30,10 +32,16 @@ export const NAV: Record<string, NavGroup[]> = {
       { href: "/business/wallet", key: "nav.wallet", icon: Wallet },
       { href: "/business/cash", key: "nav.cash", icon: Coins },
     ] },
+    { id: "reports", key: "nav.group_reports", items: [
+      { href: "/business/reports", key: "nav.rep_overview", icon: PieChart, exact: true },
+      { href: "/business/reports/deliveries", key: "nav.rep_deliveries", icon: PackageCheck },
+      { href: "/business/reports/spending", key: "nav.rep_spending", icon: CircleDollarSign },
+    ] },
     { id: "company", key: "nav.group_company", items: [
       { href: "/business/profile", key: "nav.profile_warehouse", icon: Factory },
       { href: "/business/documents", key: "nav.documents", icon: FileText },
       { href: "/business/integrations", key: "nav.integrations", icon: Plug },
+      { href: "/business/integrations/orders", key: "iord.nav", icon: Inbox, badge: "incoming_orders" },
       { href: "/business/api", key: "nav.api", icon: KeyRound },
     ] },
     { id: "help", key: "nav.group_help", items: common("/business") },
@@ -64,8 +72,13 @@ export const NAV: Record<string, NavGroup[]> = {
     { id: "finance", key: "nav.group_finance", items: [
       { href: "/office/settlements", key: "nav.settlements", icon: Receipt },
       { href: "/office/wallet", key: "nav.payouts", icon: Wallet },
-      { href: "/office/reports", key: "nav.reports", icon: BarChart3 },
       { href: "/office/agreement", key: "nav.agreement", icon: Handshake },
+    ] },
+    { id: "reports", key: "nav.group_reports", items: [
+      { href: "/office/reports", key: "nav.rep_overview", icon: PieChart, exact: true },
+      { href: "/office/reports/drivers", key: "nav.rep_drivers", icon: Truck },
+      { href: "/office/reports/earnings", key: "nav.rep_earnings", icon: CircleDollarSign },
+      { href: "/office/reports/performance", key: "nav.rep_performance", icon: Gauge },
     ] },
     { id: "account", key: "nav.group_account", items: [
       { href: "/office/documents", key: "nav.documents", icon: FileText },
@@ -94,6 +107,7 @@ export const NAV: Record<string, NavGroup[]> = {
       { href: "/admin/finance", key: "nav.fin_overview", icon: Banknote, perm: "finance.view", exact: true },
       { href: "/admin/finance/settlements", key: "nav.settlements", icon: Receipt, perm: ["finance.view", "settlements.review"], badge: "settlements" },
       { href: "/admin/finance/withdrawals", key: "nav.fin_withdrawals", icon: ArrowDownToLine, perm: ["finance.view", "withdrawals.manage"], badge: "withdrawals" },
+      { href: "/admin/finance/drivers", key: "nav.fin_drivers", icon: Truck, perm: "finance.view" },
       { href: "/admin/finance/ledger", key: "nav.fin_ledger", icon: BookText, perm: ["finance.view", "wallets.view"] },
       { href: "/admin/finance/invoices", key: "nav.fin_invoices", icon: FileText, perm: "finance.view" },
       { href: "/admin/finance/cod", key: "nav.cod", icon: Coins, perm: ["cod.manage", "finance.view"] },
@@ -103,12 +117,25 @@ export const NAV: Record<string, NavGroup[]> = {
       { href: "/admin/cases", key: "nav.cases", icon: ClipboardList, perm: "tickets.view", badge: "cases" },
       { href: "/admin/complaints", key: "nav.complaints", icon: Gavel, perm: "complaints.manage", badge: "complaints" },
     ] },
-    { id: "insights", key: "nav.group_insights", items: [
-      { href: "/admin/reports", key: "nav.reports", icon: PieChart, perm: "reports.view" },
+    { id: "reports", key: "nav.group_reports", items: [
+      { href: "/admin/reports", key: "nav.rep_overview", icon: PieChart, perm: "reports.view", exact: true },
+      { href: "/admin/reports/operations", key: "nav.rep_operations", icon: Activity, perm: "reports.view" },
+      { href: "/admin/reports/deliveries", key: "nav.rep_deliveries", icon: PackageCheck, perm: "reports.view" },
+      { href: "/admin/reports/finance", key: "nav.rep_finance", icon: CircleDollarSign, all: ["reports.view", "finance.view"] },
+      { href: "/admin/reports/companies", key: "nav.rep_companies", icon: Factory, perm: "reports.view" },
+      { href: "/admin/reports/drivers", key: "nav.rep_drivers", icon: Truck, perm: "reports.view" },
+      { href: "/admin/reports/offices", key: "nav.rep_offices", icon: Building2, perm: "reports.view" },
+      { href: "/admin/reports/cod", key: "nav.rep_cod", icon: Coins, perm: "reports.view" },
+      { href: "/admin/reports/support", key: "nav.rep_support", icon: Headset, perm: "reports.view" },
+      { href: "/admin/reports/geography", key: "nav.rep_geography", icon: MapPinned, perm: "reports.view" },
+      { href: "/admin/reports/growth", key: "nav.rep_growth", icon: TrendingUp, perm: "reports.view" },
+      { href: "/admin/reports/explorer", key: "nav.rep_explorer", icon: Database, perm: "reports.export" },
       { href: "/admin/ratings", key: "nav.ratings", icon: Star, perm: ["reports.view", "users.view"] },
     ] },
     { id: "system", key: "nav.group_system", items: [
-      { href: "/admin/integrations", key: "nav.integrations", icon: Plug, perm: "requests.view" },
+      { href: "/admin/integrations", key: "nav.integrations", icon: Plug, perm: ["integrations.view", "requests.view"] },
+      { href: "/admin/integrations/orders", key: "iord.nav", icon: Inbox, perm: ["integrations.view", "requests.view"] },
+      { href: "/admin/roles", key: "nav.roles", icon: KeyRound, perm: ["staff.view", "staff.manage"] },
       { href: "/admin/staff", key: "nav.staff", icon: UserRoundCog, perm: ["staff.view", "staff.manage"] },
       { href: "/admin/settings", key: "nav.settings", icon: Settings, perm: ["settings.view", "settings.edit"] },
       { href: "/admin/audit", key: "nav.audit", icon: ScrollText, perm: "audit.view" },
@@ -122,7 +149,7 @@ NAV.staff = NAV.admin;
 /** The groups a user may see: items whose permission they lack are dropped, and so are groups left empty. Admins hold every permission. */
 export function visibleNav(role: string, can: (perm: string) => boolean): NavGroup[] {
   const ok = (p?: string | string[]) => !p || (Array.isArray(p) ? p.some(can) : can(p));
-  return (NAV[role] ?? []).map((g) => ({ ...g, items: g.items.filter((i) => ok(i.perm)) })).filter((g) => g.items.length > 0);
+  return (NAV[role] ?? []).map((g) => ({ ...g, items: g.items.filter((i) => ok(i.perm) && (!i.all || i.all.every(can))) })).filter((g) => g.items.length > 0);
 }
 
 /** The item whose href is the longest prefix of `path` (so `/admin/finance/ledger` lights Ledger, not Overview). `null` when none matches. */

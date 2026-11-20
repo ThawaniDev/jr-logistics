@@ -7,18 +7,12 @@ import 'package:jr_driver/data/driver_api.dart';
 import 'package:jr_driver/data/token_store.dart';
 import 'package:jr_driver/main.dart' as app;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../test/integration/live_login.dart';
 
 /// Real end-to-end test: the real app on a real (simulated) device talking to the real Next.js API + Postgres.
 /// Run with tool/live_test.sh --e2e
-Future<ApiClient> clientFor(String phone) async {
-  final tokens = MemoryTokenStore();
-  final c = ApiClient(baseUrl: AppConfig.baseUrl, tokens: tokens);
-  final api = DriverApi(c);
-  final sent = await api.sendOtp(phone);
-  final v = await api.verifyOtp(phone, sent['demoCode'] as String);
-  await tokens.write(v['token'] as String);
-  return c;
-}
+/// A signed-in API client for the seeded demo account with this phone (username + password, see test/integration/live_login.dart).
+Future<ApiClient> clientFor(String phone) => signedInClient(AppConfig.baseUrl, phone);
 
 /// Pumps until [f] finds something or [timeout] elapses (real timers drive polling).
 Future<void> pumpUntil(WidgetTester t, Finder f, {Duration timeout = const Duration(seconds: 40)}) async {
@@ -55,6 +49,7 @@ void main() {
     await SecureTokenStore().clear();
     final biz = await clientFor('0500000001');
     final driverApi = DriverApi(await clientFor('0500000011'));
+    final cred = await demoCredentials(ApiClient(baseUrl: AppConfig.baseUrl, tokens: MemoryTokenStore()), '0500000011'); // what the driver types on the sign-in screen
     await driverApi.updateProfile({'language': 'en'}); // the app syncs the saved profile language on sign-in
     final start = DateTime.now().add(const Duration(hours: 1)).toUtc().toIso8601String();
     final created = await biz.post('/requests', {
@@ -71,15 +66,17 @@ void main() {
     app.main();
     await t.pumpAndSettle(const Duration(seconds: 2));
 
-    // ── sign in with phone OTP ──
-    expect(find.text('Sign in with your phone'), findsOneWidget);
-    await t.enterText(find.byKey(const Key('phone')), '0500000011');
-    await t.pump(); // the Send button enables only once the number looks valid
-    await t.tap(find.byKey(const Key('submit')));
-    await pumpUntil(t, find.text('Demo verification code'));
-    final demo = t.widget<Text>(find.textContaining('Shown only in demo mode')).data!.split('\n').first.trim();
-    await t.enterText(find.byKey(const Key('code')), demo); // typed like a user would (the demo banner is the SMS stand-in)
-    await t.pumpAndSettle(const Duration(milliseconds: 600));
+    // ── sign in with username + password (no one-time code) ──
+    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.byKey(const Key('code')), findsNothing);
+    await t.enterText(find.byKey(const Key('username')), cred.username);
+    await t.enterText(find.byKey(const Key('password')), 'wrong-${cred.password}');
+    await t.pump(); // the button enables once both fields are filled
+    await tapVisible(t, find.byKey(const Key('submit')));
+    await pumpUntil(t, find.byKey(const Key('login-error')));
+    expect(find.text('Wrong username or password. Check them and try again.'), findsOneWidget);
+    await t.enterText(find.byKey(const Key('password')), cred.password);
+    await t.pump();
     await tapVisible(t, find.byKey(const Key('submit')));
     await pumpUntil(t, find.byKey(const Key('toggle')));
     expect(find.textContaining('Omar'), findsWidgets);
@@ -183,7 +180,7 @@ void main() {
     await t.pumpAndSettle(const Duration(seconds: 1));
     await t.tap(find.text('Me'));
     await t.pumpAndSettle(const Duration(seconds: 1));
-    await t.tap(find.text('Language'));
+    await tapVisible(t, find.text('Language')); // the profile list is longer now (username, change password): scroll to the row first
     await t.pumpAndSettle();
     await t.tap(find.text('العربية'));
     await t.pumpAndSettle(const Duration(seconds: 2));
@@ -193,9 +190,11 @@ void main() {
     await binding.takeScreenshot('jr_driver_arabic_profile');
 
     // ── sign out ──
+    await t.scrollUntilVisible(find.text('تسجيل الخروج'), 400, scrollable: find.byType(Scrollable).first); // the sign-out row is below the fold in the longer profile list
     await t.tap(find.text('تسجيل الخروج').last);
     await t.pumpAndSettle();
     await t.tap(find.widgetWithText(FilledButton, 'تسجيل الخروج'));
-    await pumpUntil(t, find.text('الدخول برقم الجوال'));
+    await pumpUntil(t, find.text('أهلاً بعودتك'));
+    expect(t.widget<TextField>(find.byKey(const Key('username'))).controller!.text, cred.username, reason: 'the last username is remembered on the device');
   });
 }

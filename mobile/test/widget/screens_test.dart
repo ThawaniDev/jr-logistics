@@ -19,41 +19,40 @@ Future<void> settle(WidgetTester t) async { await t.pump(); await t.pump(const D
 
 void main() {
   group('LoginScreen', () {
-    testWidgets('OTP flow: send → demo code helper → verify signs the driver in', (t) async {
+    testWidgets('username + password sign the driver in (trimmed, lower-case) and the username is remembered', (t) async {
       final api = FakeApi();
       await pumpScreen(t, const LoginScreen(), api: api);
-      expect(find.text('Sign in with your phone'), findsOneWidget);
-      await t.enterText(find.byKey(const Key('phone')), '0500000011');
+      expect(find.text('Welcome back'), findsOneWidget);
+      expect(find.byKey(const Key('code')), findsNothing, reason: 'no one-time code any more');
+      await t.enterText(find.byKey(const Key('username')), '  Demo.Driver ');
+      await t.enterText(find.byKey(const Key('password')), 'Demo#Pass2026');
       await t.pump();
       await t.tap(find.byKey(const Key('submit')));
       await settle(t);
-      expect(api.calls, contains('sendOtp:0500000011'));
-      expect(find.text('Demo verification code'), findsOneWidget);
-      await t.tap(find.text('Use code'));
-      await t.pump();
-      await t.tap(find.byKey(const Key('submit')));
-      await settle(t);
-      expect(api.calls, contains('verifyOtp:123456'));
+      expect(api.calls, contains('login:demo.driver:Demo#Pass2026'));
       final c = ProviderScope.containerOf(t.element(find.byType(LoginScreen)));
       expect(c.read(authProvider).value?.signedIn, isTrue);
       expect(c.read(authProvider).value?.isDriver, isTrue);
+      expect(c.read(prefsProvider).getString('last_username'), 'demo.driver');
     });
 
     testWidgets('shows a localized error and stays signed out on server errors', (t) async {
       final api = FakeApi()..errorOnNext = ApiException('RATE_LIMITED', 'x', status: 429);
       await pumpScreen(t, const LoginScreen(), api: api);
-      await t.enterText(find.byKey(const Key('phone')), '0500000011');
+      await t.enterText(find.byKey(const Key('username')), 'demo.driver');
+      await t.enterText(find.byKey(const Key('password')), 'whatever-123');
       await t.pump();
       await t.tap(find.byKey(const Key('submit')));
       await settle(t);
-      expect(find.text('Too many attempts. Please wait a few minutes.'), findsOneWidget);
-      expect(find.byKey(const Key('code')), findsNothing);
+      expect(find.text('Too many attempts, or the account is temporarily locked. Wait about 15 minutes and try again.'), findsOneWidget);
+      final c = ProviderScope.containerOf(t.element(find.byType(LoginScreen)));
+      expect(c.read(authProvider).value?.signedIn, isFalse);
     });
 
     testWidgets('renders RTL Arabic', (t) async {
       await pumpScreen(t, const LoginScreen(), api: FakeApi(), lang: 'ar');
       expect(Directionality.of(t.element(find.byType(LoginScreen))), TextDirection.rtl);
-      expect(find.text('الدخول برقم الجوال'), findsOneWidget);
+      expect(find.text('أهلاً بعودتك'), findsOneWidget);
     });
   });
 
@@ -808,18 +807,29 @@ void main() {
         ..catalogCities = [{'key': 'riyadh', 'ar': 'الرياض', 'en': 'Riyadh', 'ur': 'ریاض'}]
         ..catalogVehicles = ['sedan']
         ..catalogServices = [{'key': 'delivery_driver'}];
-      await pumpScreen(t, const RegisterScreen(token: 'tok', phone: '0500000011'), api: api, extra: [catalogProvider.overrideWith((ref) => api.catalog())]);
+      await pumpScreen(t, const RegisterScreen(), api: api, extra: [catalogProvider.overrideWith((ref) => api.catalog())]);
       await settle(t);
-      await t.enterText(find.byType(TextField).first, 'Omar Test');
+      await t.enterText(find.byKey(const Key('username')), 'omar.test');
+      await t.enterText(find.byKey(const Key('password')), 'Secret#Pass2026');
+      await t.enterText(find.byKey(const Key('confirm')), 'Secret#Pass2026');
+      await t.enterText(find.byKey(const Key('phone')), '0500000011');
+      await settle(t); // the username availability check runs after a short pause
+      await t.ensureVisible(find.byKey(const Key('name')));
+      await t.enterText(find.byKey(const Key('name')), 'Omar Test');
+      Future<void> centre(int i) async { await Scrollable.ensureVisible(t.element(find.byType(DropdownButtonFormField<String>).at(i)), alignment: 0.5); await t.pump(); }
+      await centre(0);
       await t.tap(find.byType(DropdownButtonFormField<String>).at(0));
       await settle(t);
       await t.tap(find.text('Riyadh').last);
       await settle(t);
+      await centre(1);
       await t.tap(find.byType(DropdownButtonFormField<String>).at(1));
       await settle(t);
       await t.tap(find.text('Sedan').last);
       await settle(t);
       await t.scrollUntilVisible(find.byKey(const Key('terms')), 300, scrollable: find.byType(Scrollable).first);
+      await Scrollable.ensureVisible(t.element(find.byKey(const Key('terms'))), alignment: 0.5);
+      await t.pump();
       await t.tap(find.byKey(const Key('terms')));
       await t.pump();
       bool enabled() => t.widget<FilledButton>(find.byKey(const Key('register'))).onPressed != null;

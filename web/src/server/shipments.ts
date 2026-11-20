@@ -8,7 +8,9 @@ import { normalizePhone } from "@/lib/phone";
 import { RECIPIENT_TYPES, MAX_SHIPMENTS_PER_REQUEST, type RecipientType } from "./catalog";
 import { getSettings } from "./settings";
 import { logEvent } from "./events";
-import { signingSecret, activeSmsProvider } from "./auth/otp";
+import { signingSecret, activeSmsProvider, sendSms } from "./auth/otp";
+import { logMessage, maskPhone as maskForLog } from "./data-capture"; // every SMS is recorded in the message log (masked recipient)
+import { batchOf, recordShipmentEvents, type ShipEvt } from "./shipment-events";
 import { can } from "./auth/permissions";
 
 /**
@@ -34,18 +36,29 @@ const clean = (v: string | null | undefined, max: number) => { const t = (v ?? "
  * `allowIncomplete` (the warehouse booked "details later"): name / phone / address may be left out — the parcel is stored as a placeholder
  * (`detailsComplete: false`) and must be completed before hand-over. A value that IS given is still fully validated, so a typo never silently becomes a placeholder.
  */
-export async function prepareManifest(items: ShipmentInput[], deliveryCity: string, x: Exec = db, opts: { allowIncomplete?: boolean } = {}) {
+/**
+ * J3 — what to do with `recipientType: "business"` while the platform has B2B shipments switched off (`b2bShipmentsEnabled = false`):
+ * `reject` (default) → `422 B2B_DISABLED`; `coerce` → store it as a consumer parcel (partner / public-API imports: an import is never failed for this,
+ * the count goes into `report.coerced`); `keep` → let it through (editing a parcel that already is a business parcel). With B2B on, nothing changes.
+ */
+export interface B2bOpts { b2b?: "reject" | "coerce" | "keep"; report?: { coerced: number } }
+export async function prepareManifest(items: ShipmentInput[], deliveryCity: string, x: Exec = db, opts: { allowIncomplete?: boolean } & B2bOpts = {}) {
   if (!Array.isArray(items) || items.length === 0) throw err("VALIDATION", "Add at least one shipment", { field: "shipments" });
   if (items.length > MAX_SHIPMENTS_PER_REQUEST) throw err("VALIDATION", `A request can hold at most ${MAX_SHIPMENTS_PER_REQUEST} shipments`, { field: "shipments", max: MAX_SHIPMENTS_PER_REQUEST });
   const s = await getSettings(x);
   const later = !!opts.allowIncomplete;
   const seenRefs = new Map<string, number>();
-  return items.map((it, i) => {
+  let coerced = 0;
+  const out = items.map((it, i) => {
     const row = i + 1;
     // `shipments.<i>.<field>` is both the `field` detail and its own key, so clients can map either shape (zod issues use the key form).
     const bad = (field: string, message: string) => err("VALIDATION", `Shipment ${row}: ${message}`, { field: `shipments.${i}.${field}`, [`shipments.${i}.${field}`]: message, row });
-    const type = (it.recipientType ?? "consumer") as RecipientType;
+    let type = (it.recipientType ?? "consumer") as RecipientType;
     if (!(RECIPIENT_TYPES as readonly string[]).includes(type)) throw bad("recipientType", "recipient type must be consumer or business");
+    if (type === "business" && !s.b2bShipmentsEnabled && opts.b2b !== "keep") {
+      if (opts.b2b === "coerce") { type = "consumer"; coerced++; }
+      else throw err("B2B_DISABLED", `Shipment ${row}: business shipments are turned off — every parcel goes to a consumer`, { field: "recipientType", path: `shipments.${i}.recipientType`, [`shipments.${i}.recipientType`]: "business shipments are turned off", row });
+    }
     const name = clean(it.recipientName, 120);
     if (!name) { if (!later) throw bad("recipientName", "recipient name is required"); }
     else if (name.length < 2) throw bad("recipientName", "recipient name is too short");
@@ -76,17 +89,26 @@ export async function prepareManifest(items: ShipmentInput[], deliveryCity: stri
       codCents: cod, contents: clean(it.contents, 300), notes: clean(it.notes, 500), externalRef, partnerId: externalRef && it.partnerId ? it.partnerId : null,
     };
   });
+  if (opts.report) opts.report.coerced += coerced;
+  return out;
 }
 
 export const shipmentCode = (ref: string, seq: number) => `${ref}-${String(seq).padStart(3, "0")}`;
 
 /** Replace a DRAFT's manifest. */
-export async function saveManifest(tx: Exec, r: Pick<Request, "id" | "ref" | "deliveryCity">, items: ShipmentInput[], opts: { allowIncomplete?: boolean } = {}) {
+export async function saveManifest(tx: Exec, r: Pick<Request, "id" | "ref" | "deliveryCity">, items: ShipmentInput[], opts: { allowIncomplete?: boolean; actor?: ShipEvt["actor"] } & B2bOpts = {}) {
   const rows = await prepareManifest(items, r.deliveryCity, tx, opts);
+  // A parcel may only be linked to a warehouse-system connection of the request's own company (never another company's).
+  const linkIds = [...new Set(rows.map((row) => row.partnerId).filter((v): v is string => !!v))];
+  if (linkIds.length) {
+    const owned = new Set(((await tx.execute(sql`select pc.id from partner_connections pc join requests q on q.business_id = pc.business_id where q.id = ${r.id} and pc.id in (${sql.join(linkIds.map((i) => sql`${i}::uuid`), sql`, `)})`)).rows as Array<{ id: string }>).map((x) => x.id));
+    for (const row of rows) if (row.partnerId && !owned.has(row.partnerId)) row.partnerId = null;
+  }
   await tx.delete(shipments).where(eq(shipments.requestId, r.id));
   const CHUNK = 500;
   for (let i = 0; i < rows.length; i += CHUNK) {
-    await tx.insert(shipments).values(rows.slice(i, i + CHUNK).map((row, j) => ({ ...row, requestId: r.id, seq: i + j + 1, code: shipmentCode(r.ref, i + j + 1) })));
+    const made = await tx.insert(shipments).values(rows.slice(i, i + CHUNK).map((row, j) => ({ ...row, requestId: r.id, seq: i + j + 1, code: shipmentCode(r.ref, i + j + 1) }))).returning({ id: shipments.id, seq: shipments.seq, code: shipments.code, detailsComplete: shipments.detailsComplete });
+    await recordShipmentEvents(tx, made.map((m) => ({ shipmentId: m.id, requestId: r.id, type: "created" as const, actor: opts.actor ?? null, payload: { seq: m.seq, code: m.code, ...(m.detailsComplete ? {} : { incomplete: true }) } })));
   }
   return rows.length;
 }
@@ -128,7 +150,7 @@ export async function syncOfferUnits(tx: Exec, offerId: string, providerCostCent
  * so drivers always receive balanced, contiguous blocks of the manifest, and a replacement receives exactly what is left.
  * `slotsLeft` includes the slot being filled.
  */
-export async function allocateToOffer(tx: Exec, r: Request, o: Offer, slotsLeft: number) {
+export async function allocateToOffer(tx: Exec, r: Request, o: Offer, slotsLeft: number, actor?: ShipEvt["actor"]) {
   const pool = await tx.select({ id: shipments.id }).from(shipments)
     .where(and(eq(shipments.requestId, r.id), isNull(shipments.offerId), eq(shipments.status, "pending"))).orderBy(asc(shipments.seq)).for("update");
   if (!pool.length) throw err("SLOT_TAKEN", "All shipments of this request are already covered");
@@ -138,6 +160,7 @@ export async function allocateToOffer(tx: Exec, r: Request, o: Offer, slotsLeft:
     from (select id, row_number() over (order by seq) rn from shipments where id in (${sql.join(take.map((id) => sql`${id}`), sql`, `)})) x where s.id = x.id`);
   const snap = r.pricingSnapshot as { providerCostCents: number } | null;
   await syncOfferUnits(tx, o.id, snap?.providerCostCents ?? 0);
+  await recordShipmentEvents(tx, batchOf(take, r.id, "assigned", { offerId: o.id, actor, payload: { driverId: o.driverId } }));
   await logEvent(tx, { requestId: r.id, offerId: o.id, type: "shipments_allocated", payload: { count: take.length } });
   return take.length;
 }
@@ -158,7 +181,7 @@ export function scanMatches(s: Pick<Shipment, "code" | "externalRef" | "seq">, r
  * The warehouse hands parcels to the driver: only the scanned/selected ones are loaded. Anything assigned but not handed over
  * goes back to the pool (so a replacement or a later slot can still take it) and stops counting against this driver.
  */
-export async function markLoaded(tx: Exec, r: Request, o: Offer, sel: { codes?: string[]; all?: boolean }) {
+export async function markLoaded(tx: Exec, r: Request, o: Offer, sel: { codes?: string[]; all?: boolean }, actor?: ShipEvt["actor"]) {
   const cand = await tx.select().from(shipments).where(and(eq(shipments.requestId, r.id), or(eq(shipments.offerId, o.id), isNull(shipments.offerId)), inArray(shipments.status, ["pending", "loaded"]))).orderBy(asc(shipments.seq));
   const mine = cand.filter((s) => s.offerId === o.id);
   let chosen: Shipment[];
@@ -187,6 +210,10 @@ export async function markLoaded(tx: Exec, r: Request, o: Offer, sel: { codes?: 
   if (rest.length) await tx.update(shipments).set({ offerId: null, stopOrder: null, status: "pending", updatedAt: now }).where(inArray(shipments.id, rest.map((s) => s.id)));
   const snap = r.pricingSnapshot as { providerCostCents: number } | null;
   await syncOfferUnits(tx, o.id, snap?.providerCostCents ?? 0);
+  await recordShipmentEvents(tx, [
+    ...chosen.map((c, i) => ({ shipmentId: c.id, requestId: r.id, offerId: o.id, type: "loaded" as const, actor, payload: { via: "warehouse", code: c.code, stopOrder: i + 1 } })),
+    ...batchOf(rest.map((s) => s.id), r.id, "unassigned", { offerId: o.id, actor, payload: { why: "not_handed_over" } }),
+  ]);
   return { loaded: chosen.length, released: rest.length };
 }
 
@@ -201,6 +228,7 @@ export async function releaseOfferShipments(tx: Exec, o: Pick<Offer, "id" | "req
     .where(and(eq(shipments.offerId, o.id), inArray(shipments.status, opts.loadedToPool ? ["pending", "loaded"] : ["pending"]))).returning({ id: shipments.id });
   const out = await tx.update(shipments).set({ status: "failed", failReason: why, failedAt: now, updatedAt: now })
     .where(and(eq(shipments.offerId, o.id), eq(shipments.status, "loaded"))).returning({ id: shipments.id });
+  await recordShipmentEvents(tx, [...batchOf(back.map((b) => b.id), o.requestId, "unassigned", { offerId: o.id, payload: { why } }), ...batchOf(out.map((b) => b.id), o.requestId, "failed", { offerId: o.id, payload: { reason: why, system: true } })]);
   if (back.length || out.length) await logEvent(tx, { requestId: o.requestId, offerId: o.id, type: "shipments_released", payload: { why, toPool: back.length, toReturn: out.length } });
   return { toPool: back.length, toReturn: out.length };
 }
@@ -257,14 +285,15 @@ export async function sendRecipientCodes(ids: string[], opts: { force?: boolean 
   for (const { s, r, b, bn } of rows) {
     if (s.status !== "loaded" || (s.notifiedAt && !opts.force)) continue;
     try {
-      if (!provider) throw new Error("SMS provider is not configured");
+      if (!provider) { await logMessage({ channel: "sms", type: "recipient_code", recipient: maskForLog(s.recipientPhone), requestId: r.id, shipmentId: s.id, status: "failed", error: "SMS provider is not configured" }); throw new Error("SMS provider is not configured"); }
       const biz = b ?? bn;
       if (!opsOf.has(r.businessId)) opsOf.set(r.businessId, (await effectiveOps(r.businessId)).requireDeliveryOtp);
       const track = trackingUrl(s.code, s.recipientPhone);
       const cash = s.codCents > 0 ? ` | المبلغ المطلوب عند الاستلام ${(s.codCents / 100).toFixed(2)} ر.س / Cash due on delivery SAR ${(s.codCents / 100).toFixed(2)}` : "";
-      await provider.send(s.recipientPhone, opsOf.get(r.businessId)
+      const withCode = !!opsOf.get(r.businessId);
+      await sendSms(provider, s.recipientPhone, withCode
         ? `${biz}: طلبك في الطريق. رمز الاستلام ${otpFor(s)} — أعطه للمندوب عند الاستلام فقط. | Your order is on its way. Delivery code ${otpFor(s)}. Track: ${track}${cash}`
-        : `${biz}: طلبك في الطريق. تتبّع الطلب: ${track} | Your order is on its way. Track: ${track}${cash}`);
+        : `${biz}: طلبك في الطريق. تتبّع الطلب: ${track} | Your order is on its way. Track: ${track}${cash}`, { type: withCode ? "recipient_code" : "recipient_track", requestId: r.id, shipmentId: s.id });
       await db.update(shipments).set({ notifiedAt: new Date(), otpSends: opts.force ? sql`${shipments.otpSends} + 1` : shipments.otpSends }).where(eq(shipments.id, s.id));
       await logEvent(db, { requestId: r.id, offerId: s.offerId, type: "recipient_notified", payload: { shipmentId: s.id, code: s.code, forced: !!opts.force } });
       sent++;
@@ -304,10 +333,18 @@ export function businessShipmentView(s: Shipment, viewer: Pick<User, "role" | "p
   };
 }
 
-/** What the driver sees. Name & phone only for the stop in front of them (and for finished ones); addresses so the route can be approved. */
-export function driverStopView(s: Shipment, ctx: { currentId: string | null; stopWaitMin: number; routeApproved: boolean; remaining: number; needsOtp?: boolean; needsSignature?: boolean }) {
-  const current = s.id === ctx.currentId;
+/**
+ * What the driver sees. Routing ON: name only for the stop in front of them (and finished ones), phone only for that stop; addresses so the route can be approved.
+ * Routing OFF (`ctx.routing === false`, J2): the driver works any stop of his own job in any order, so name AND phone are shown for every stop that is not resolved yet
+ * (finished stops keep showing the name), and `canDefer` / the door timer belong to every open stop, not only the "current" (first unresolved) one.
+ * `started` = the route has started (approved, or — routing off — loading confirmed): before that no stop is current or actionable.
+ */
+export function driverStopView(s: Shipment, ctx: { currentId: string | null; stopWaitMin: number; routeApproved: boolean; remaining: number; needsOtp?: boolean; needsSignature?: boolean; routing?: boolean; started?: boolean }) {
+  const routing = ctx.routing !== false;
+  const started = ctx.started ?? ctx.routeApproved;
+  const current = started && s.id === ctx.currentId;
   const resolved = ["delivered", "failed", "returned", "missing"].includes(s.status);
+  const actionable = routing ? current : started && s.status === "loaded"; // routing off: any open stop may be worked
   const needsOtp = ctx.needsOtp ?? true;
   // The door timer exists only when the platform turned it on (stopWaitMin > 0); otherwise there is nothing to count down.
   const waitMs = s.arrivedAt && ctx.stopWaitMin > 0 ? Math.max(0, ctx.stopWaitMin * 60_000 - (Date.now() - s.arrivedAt.getTime())) : null;
@@ -315,11 +352,12 @@ export function driverStopView(s: Shipment, ctx: { currentId: string | null; sto
     id: s.id, seq: s.seq, stopOrder: s.stopOrder, code: s.code, status: s.status, recipientType: s.recipientType,
     address: s.address, city: s.city, lat: s.lat, lng: s.lng, located: s.lat != null && s.lng != null, geoSource: s.geoSource,
     legDistanceM: s.legDistanceM, legDurationS: s.legDurationS, contents: s.contents, notes: s.notes,
-    recipientName: current || resolved ? s.recipientName : null,
-    recipientPhone: current && ctx.routeApproved ? s.recipientPhone : null,
-    current, attempts: s.attempts, deferCount: s.deferCount, canDefer: current && s.deferCount < 1 && ctx.remaining > 1,
-    arrivedAt: s.arrivedAt, waitRemainingSec: current && waitMs != null ? Math.ceil(waitMs / 1000) : null,
+    recipientName: !routing || current || resolved ? s.recipientName : null,
+    recipientPhone: !routing ? (resolved ? null : s.recipientPhone) : current && ctx.routeApproved ? s.recipientPhone : null,
+    current, attempts: s.attempts, deferCount: s.deferCount, canDefer: actionable && s.deferCount < 1 && ctx.remaining > 1,
+    arrivedAt: s.arrivedAt, waitRemainingSec: actionable && waitMs != null ? Math.ceil(waitMs / 1000) : null,
     needsOtp, needsSignature: ctx.needsSignature ?? false, codCents: s.codCents, codCollectedCents: s.codCollectedCents,
+    paymentMode: s.codCents > 0 ? "cod" as const : "prepaid" as const, createdAt: s.createdAt, pieces: 1, // J2: the platform has no pieces column — always 1 for now
     proofMode: !needsOtp ? "scan" : s.recipientType === "business" ? "code_or_receipt" : "code", hasProof: !!s.proofKey,
     otpAttemptsLeft: Math.max(0, OTP_MAX_ATTEMPTS - s.otpAttempts), canResend: needsOtp && s.otpSends < OTP_MAX_RESENDS,
     deliveredAt: s.deliveredAt, proofType: s.proofType, failReason: s.failReason, failNote: s.failNote,

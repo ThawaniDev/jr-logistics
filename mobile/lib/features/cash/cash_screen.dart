@@ -20,13 +20,34 @@ class CashScreen extends ConsumerWidget {
     Future<void> reload() async { ref.invalidate(cashProvider); ref.invalidate(overviewProvider); await ref.read(cashProvider.future); }
     return Scaffold(
       appBar: AppBar(title: Text(t('nav.cash_with_me'))),
-      body: RefreshIndicator(color: JR.accent, onRefresh: reload, child: AsyncBody<CashSummary>(value: cash, onRetry: () { ref.invalidate(cashProvider); }, builder: (c) => _Body(cash: c, lang: lang))),
+      body: RefreshIndicator(color: JR.accent, onRefresh: reload, child: AsyncBody<CashSummary>(value: cash, onRetry: () { ref.invalidate(cashProvider); }, builder: (c) => ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [CashSection(cash: c, lang: lang)]))),
     );
   }
 }
 
-class _Body extends StatelessWidget {
-  const _Body({required this.cash, required this.lang});
+/// The cash section as it appears under the wallet card of an office driver: a heading, then the same cards as the cash screen (it loads its own data).
+class WalletCashSection extends ConsumerWidget {
+  const WalletCashSection({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tr;
+    final lang = ref.watch(localeProvider);
+    final cash = ref.watch(cashProvider);
+    return Column(key: const Key('wallet-cash-section'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(t('drs.cash_section'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 10),
+      cash.when(
+        data: (c) => CashSection(cash: c, lang: lang),
+        loading: () => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: JR.accent))),
+        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(cashProvider)),
+      ),
+    ]);
+  }
+}
+
+/// Cash with me · collected · handed over · by order · recent hand-overs. Not scrollable itself: the screen that hosts it scrolls.
+class CashSection extends StatelessWidget {
+  const CashSection({super.key, required this.cash, required this.lang});
   final CashSummary cash;
   final String lang;
 
@@ -35,7 +56,7 @@ class _Body extends StatelessWidget {
     final t = context.tr;
     final withMe = cash.outstandingCents;
     final orders = cash.orders, recent = cash.recent;
-    return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Banner2(key: const Key('cash-explain'), text: t('fmb.cash_explain')),
       const SizedBox(height: 12),
       SectionCard(key: const Key('cash-with-me'), border: withMe > 0 ? JR.gold : JR.accent, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

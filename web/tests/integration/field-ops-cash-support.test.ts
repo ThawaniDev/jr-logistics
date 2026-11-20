@@ -5,7 +5,8 @@ import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLogs, jobEvents, notifications, offers, shipments, ticketAttachments, tickets } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkOffice, mkRule, mkStaff, publishedRequest, mkShipments, reqInput, WAREHOUSE } from "../helpers/factories";
+import { shutdown, mkAdmin, mkBusiness, mkDriver, mkOffice, mkRule, mkStaff, publishedRequest, mkShipments, reqInput, WAREHOUSE } from "../helpers/factories";
+import { resetDbWithFieldModes } from "../helpers/field-modes";
 import { call } from "../helpers/api";
 import * as jobs from "@/server/jobs";
 import * as stops from "@/server/stops";
@@ -20,7 +21,7 @@ import { demoShipments } from "@/server/demo-shipments";
 import { createTicket, getTicket, readTicketAttachment, reopenTicket, replyTicket, resolveTicket, staffUpdateTicket, ticketAssignees, uploadTicketAttachment } from "@/server/support";
 import { requests } from "@/db/schema";
 
-beforeEach(resetDb);
+beforeEach(resetDbWithFieldModes); // J2 / J3: routing and B2B shipments default to OFF — this suite exercises the route / approve-route / business-parcel behaviour
 afterAll(shutdown);
 afterEach(() => setSmsProvider(null));
 

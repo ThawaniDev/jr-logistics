@@ -6,7 +6,8 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { businessProfiles, documents, offers, requests, shipments, tickets, users } from "@/db/schema";
-import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkOffice, mkRule, mkStaff, mkShipments, publishedRequest, WAREHOUSE } from "../helpers/factories";
+import { shutdown, mkAdmin, mkBusiness, mkDriver, mkOffice, mkRule, mkStaff, mkShipments, publishedRequest, WAREHOUSE } from "../helpers/factories";
+import { resetDbWithFieldModes } from "../helpers/field-modes";
 import { call } from "../helpers/api";
 import { createSession } from "@/server/auth/session";
 import * as jobs from "@/server/jobs";
@@ -15,7 +16,7 @@ import { currentStopOf, otpFor } from "@/server/shipments";
 import { finishLoading, scanLoad } from "@/server/loading";
 import { receiveCash } from "@/server/cod";
 
-beforeEach(resetDb);
+beforeEach(resetDbWithFieldModes); // J2 / J3: routing and B2B shipments default to OFF — this suite exercises the route / approve-route / business-parcel behaviour
 afterAll(shutdown);
 const tok = async (u: { id: string }) => (await createSession(u.id, "web")).token;
 const get = async (u: { id: string }, path: string) => call("GET", path, { token: await tok(u) });

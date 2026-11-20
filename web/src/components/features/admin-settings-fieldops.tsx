@@ -2,6 +2,7 @@
 import { Checkbox, Input, Notice, Section } from "@/components/ui";
 import { useI18n } from "@/i18n/provider";
 import { FIELDOPS_RANGE, WAREHOUSE_SWITCHES, fieldopsErrors, settingValue, warehouseDefaultsOf, type FieldopsSettings, type WarehouseSwitch } from "./admin-fieldops-lib";
+import { PlatformSwitches } from "./admin-settings-switches";
 import { useSettings } from "./admin-system-settings";
 
 type BoolKey = "arrivalGeofenceEnabled" | "driverCanReorderRoute" | "rescheduleEvidenceText" | "rescheduleEvidencePhoto" | "driverSingleActiveJob" | "stopFailStrictRules";
@@ -36,6 +37,7 @@ export function FieldOpsSettings() {
   };
   return (
     <div className="space-y-5" data-testid="foa-settings-card">
+      <PlatformSwitches />
       <p className="text-sm text-muted">{t("foa.set_sub")}</p>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -61,7 +63,9 @@ export function FieldOpsSettings() {
           </div>
         </Section>
 
-        <Section title={t("foa.set_route")}>{b("driverCanReorderRoute", t("foa.set_reorder"), t("foa.set_reorder_hint"))}</Section>
+        <Section title={t("foa.set_route")}>
+          <div className="space-y-2">{b("driverCanReorderRoute", t("foa.set_reorder"), t("foa.set_reorder_hint"))}{!v("routingEnabled") && <p className="text-xs text-gold" data-testid="jf2-reorder-needs-routing">{t("jf2.set_reorder_needs_routing")}</p>}</div>
+        </Section>
         <Section title={t("foa.set_offers")}>{b("driverSingleActiveJob", t("foa.set_single_job"), t("foa.set_single_job_hint"))}</Section>
 
         <Section title={t("foa.set_postpone")} description={t("foa.set_postpone_hint")}>

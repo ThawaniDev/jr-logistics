@@ -1,5 +1,7 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { staffLogin, DEMO, apiLogin } from "./helpers";
+import { setFieldModes, type FieldModes } from "./field-modes";
+import { openNext } from "./driver-ui";
 
 /**
  * The driver's web screens end to end (decisions E1–E14, E17): geofenced check-in, loading by scanning, the route re-ordered by hand,
@@ -7,8 +9,12 @@ import { staffLogin, DEMO, apiLogin } from "./helpers";
  * the cash page and the new-offer notification. The warehouse side is driven through the API.
  */
 test.describe.configure({ mode: "serial" });
+
+let savedModes: FieldModes; // J2 / J3: routing and B2B shipments are OFF by default — this spec drives routes / "Approve route" / business parcels
+test.beforeAll(async ({ browser }) => { savedModes = await setFieldModes(browser, { routingEnabled: true, b2bShipmentsEnabled: true }); });
+test.afterAll(async ({ browser }) => { await setFieldModes(browser, savedModes); });
 test.use({ actionTimeout: 20_000 }); // a missing control fails with its name instead of waiting for the whole test to time out
-const BASE = "http://localhost:3100";
+const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 const WAREHOUSE = { latitude: 24.7136, longitude: 46.6753 };
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360f8cfc00000030101004d1b7ea60000000049454e44ae426082", "hex");
 
@@ -122,7 +128,9 @@ test("driver web: geofenced check-in → scan → re-order → map popup → evi
     await drv.keyboard.press("Escape");
     await drv.getByTestId("list-view-tab").click();
 
-    // E7: postponing needs evidence (text AND photo) — refused without, accepted with
+    // E7: postponing needs evidence (text AND photo) — refused without, accepted with (the shipment opens from its card; he has already arrived at it)
+    await openNext(drv);
+    await expect(drv.getByTestId("current-stop")).toHaveAttribute("data-code", nextCode);
     await drv.getByTestId("stop-defer").click();
     await drv.getByTestId("defer-confirm").click();
     expect((await api(drv.request, "GET", `/driver/jobs/${offer.offerId}`)).json.stops[0].code).toBe(nextCode); // still the same stop
@@ -138,14 +146,14 @@ test("driver web: geofenced check-in → scan → re-order → map popup → evi
     // E10 + E17: deliver the cash-on-delivery parcel — signature pad, "I collected SAR 150.00", the recipient's code
     const cur = (await api(drv.request, "GET", `/driver/jobs/${offer.offerId}`)).json.stops[0] as { id: string; code: string };
     const row = list.find((p) => p.code === cur.code)!;
+    await openNext(drv);
     await drv.getByRole("button", { name: "I've arrived" }).first().click();
     await drv.getByLabel("Parcel code").fill(row.code);
     await drv.getByLabel("Delivery code").fill(row.demoOtp);
     await drv.getByRole("button", { name: "Confirm delivery" }).last().click();
     await expect(drv.getByTestId("signature-error")).toBeVisible(); // the warehouse requires the signature
     const canvas = drv.getByTestId("signature-canvas");
-    await canvas.scrollIntoViewIfNeeded();
-    await drv.evaluate(() => window.scrollBy(0, -120)); // keep it clear of the sticky header
+    await canvas.evaluate((el) => el.scrollIntoView({ block: "center" })); // the form scrolls inside the shipment sheet: keep the pad clear of the sticky action bar
     const box = (await canvas.boundingBox())!;
     await drv.mouse.move(box.x + 20, box.y + 20); await drv.mouse.down(); await drv.mouse.move(box.x + 120, box.y + 60, { steps: 8 }); await drv.mouse.move(box.x + 60, box.y + 90, { steps: 8 }); await drv.mouse.up();
     if (row.codCents > 0) await drv.getByTestId("cod-collect-confirm").check();
@@ -155,6 +163,7 @@ test("driver web: geofenced check-in → scan → re-order → map popup → evi
     await expect(drv.getByTestId("stat-delivered")).toHaveAttribute("data-value", "1");
 
     // can't deliver: every reason works right away, with an optional photo
+    await openNext(drv);
     await drv.getByTestId("stop-fail").click();
     await drv.getByTestId("fail-reason-damaged").click(); // a reason that used to demand a note and an arrival
     await drv.getByTestId("fail-photo").setInputFiles({ name: "damaged.png", mimeType: "image/png", buffer: PNG });

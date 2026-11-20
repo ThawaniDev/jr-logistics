@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, or, sql, count } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, notInArray, or, sql, count } from "drizzle-orm";
 import { contains } from "@/lib/sql";
 import { db } from "@/db";
 import {
@@ -17,6 +17,7 @@ import { storage } from "./storage";
 import { matchesMime } from "./accounts";
 import { randomToken } from "@/lib/ids";
 import { logEvent } from "./events";
+import { bumpReopen, markFirstResponse } from "./data-capture";
 
 // ───────── Tickets ─────────
 /** The caller must be the business that owns the request, or a driver/office that has an offer on it. */
@@ -136,7 +137,8 @@ export async function replyTicket(user: User, id: string, body: string, internal
     await attach(tx, user, id, r.id, attachmentIds);
     const next = internal ? ticket.status : staff ? "in_review" : "open";
     await tx.update(tickets).set({ status: next, updatedAt: new Date(), assignedTo: staff ? user.id : ticket.assignedTo }).where(eq(tickets.id, id));
-    if (staff && !internal) await notify(ticket.openedBy, "ticket_reply", { ref: ticket.ref }, tx);
+    if (staff && !internal) { await notify(ticket.openedBy, "ticket_reply", { ref: ticket.ref }, tx); await markFirstResponse(tx, "tickets", id, user.id); }
+    if (staff && !internal && ticket.status === "resolved") await bumpReopen(tx, id); // a public staff reply on a resolved ticket brings it back (an internal note does not)
     // The customer wrote: the person handling it (or ops, while nobody is) is told.
     if (!staff) { if (ticket.assignedTo) await notify(ticket.assignedTo, "ticket_reply_user", { ref: ticket.ref }, tx); else await notifyOps("tickets.manage", "ticket_reply_user", { ref: ticket.ref }, tx); }
     return r;
@@ -147,7 +149,7 @@ export async function resolveTicket(user: User, id: string) {
   const { ticket } = await getTicket(user, id);
   if (ticket.openedBy !== user.id) requirePerm(user, "tickets.manage");
   const [u] = await db.update(tickets).set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() }).where(eq(tickets.id, id)).returning();
-  if (ticket.openedBy !== user.id) await notify(ticket.openedBy, "ticket_resolved", { ref: ticket.ref });
+  if (ticket.openedBy !== user.id) { await notify(ticket.openedBy, "ticket_resolved", { ref: ticket.ref }); await markFirstResponse(db, "tickets", id, user.id); }
   await audit(user, "ticket.resolve", "ticket", id);
   return u;
 }
@@ -161,6 +163,7 @@ export async function reopenTicket(user: User, id: string, body?: string, attach
   if (ticket.openedBy === user.id && Date.now() - since.getTime() > 14 * 864e5) throw err("INVALID_TRANSITION", "This ticket was resolved more than 14 days ago — please open a new one");
   return db.transaction(async (tx) => {
     const [u] = await tx.update(tickets).set({ status: "open", resolvedAt: null, updatedAt: new Date() }).where(eq(tickets.id, id)).returning();
+    await bumpReopen(tx, id);
     if (body?.trim() || attachmentIds?.length) {
       const [r] = await tx.insert(ticketReplies).values({ ticketId: id, authorId: user.id, authorRole: user.role, body: body?.trim() ?? "" }).returning();
       await attach(tx, user, id, r.id, attachmentIds);
@@ -189,7 +192,8 @@ export async function staffUpdateTicket(staff: User, id: string, patch: { status
   }
   return db.transaction(async (tx) => {
     const [u] = await tx.update(tickets).set(set).where(eq(tickets.id, id)).returning();
-    if (patch.status === "resolved" && t.status !== "resolved") await notify(t.openedBy, "ticket_resolved", { ref: t.ref }, tx);
+    if (patch.status === "resolved" && t.status !== "resolved") { await notify(t.openedBy, "ticket_resolved", { ref: t.ref }, tx); await markFirstResponse(tx, "tickets", id, staff.id); }
+    if (t.status === "resolved" && patch.status && patch.status !== "resolved") await bumpReopen(tx, id);
     await audit(staff, "ticket.update", "ticket", id, { from: { status: t.status, priority: t.priority, assignedTo: t.assignedTo }, patch }, tx);
     return u;
   });
@@ -268,6 +272,7 @@ export async function updateComplaint(staff: User, id: string, patch: { status?:
     }
     if (patch.resolution) set.resolution = patch.resolution;
     const [u] = await tx.update(complaints).set(set).where(eq(complaints.id, id)).returning();
+    await markFirstResponse(tx, "complaints", id, staff.id); // the first staff action on a complaint is its first response
     await audit(staff, "complaint.update", "complaint", id, patch, tx);
     if (set.status) await notify(c.filedBy, "complaint_update", { ref: c.ref, status: set.status }, tx);
     return u;
@@ -279,6 +284,7 @@ export async function addComplaintNote(user: User, id: string, body: string) {
   const { complaint } = await getComplaint(user, id);
   if (complaint.status === "closed") throw err("INVALID_TRANSITION", "Complaint is closed");
   const [n] = await db.insert(complaintNotes).values({ complaintId: id, authorId: user.id, authorRole: user.role, body }).returning();
+  if (user.role === "staff" || user.role === "admin") await markFirstResponse(db, "complaints", id, user.id);
   return n;
 }
 
@@ -340,10 +346,12 @@ export async function postMessage(user: User, offerId: string, body: string) {
 }
 
 // ───────── Notifications ─────────
-export async function listNotifications(user: User, unreadOnly = false, page = 1, pageSize = 30) {
-  const where = and(eq(notifications.userId, user.id), unreadOnly ? sql`${notifications.readAt} is null` : undefined);
+/** `hideTypes`: notification types left out of the list and of both counts (an office driver does not see his wallet notifications — J4). */
+export async function listNotifications(user: User, unreadOnly = false, page = 1, pageSize = 30, hideTypes?: string[]) {
+  const visible = hideTypes?.length ? notInArray(notifications.type, hideTypes) : undefined;
+  const where = and(eq(notifications.userId, user.id), unreadOnly ? sql`${notifications.readAt} is null` : undefined, visible);
   const rows = await db.select().from(notifications).where(where).orderBy(desc(notifications.createdAt)).limit(pageSize).offset((Math.max(page, 1) - 1) * pageSize);
-  const [{ n }] = await db.select({ n: count() }).from(notifications).where(and(eq(notifications.userId, user.id), sql`${notifications.readAt} is null`));
+  const [{ n }] = await db.select({ n: count() }).from(notifications).where(and(eq(notifications.userId, user.id), sql`${notifications.readAt} is null`, visible));
   const [{ total }] = await db.select({ total: count() }).from(notifications).where(where);
   return { items: rows, unread: Number(n), page: Math.max(page, 1), pageSize, total: Number(total) };
 }

@@ -3,7 +3,9 @@ import '../core/format.dart';
 import '../core/i18n.dart';
 import '../core/theme.dart';
 import '../data/models.dart';
+import '../features/jobs/job_stats.dart' show JobStats;
 import 'common.dart';
+import 'job_card_stats.dart';
 
 class JobCard extends StatelessWidget {
   const JobCard({super.key, required this.job, required this.lang, this.onTap, this.footer, this.highlight = false});
@@ -37,7 +39,7 @@ class JobCard extends StatelessWidget {
         if (job.vehicleType != null) ...[const SizedBox(height: 6), _row(Icons.local_shipping_outlined, '${t('vehicle.${job.vehicleType}')}${job.temperature != null ? ' · ${t('temp.${job.temperature}')}' : ''}')],
         const SizedBox(height: 6),
         _row(Icons.inventory_2_outlined, job.manifest ? t('ms.up_to_parcels', {'n': job.expectedUnits}) : '${job.expectedUnits} ${t(job.isDelivery ? 'unit.shipment' : 'unit.vehicle_day')}'),
-        if (_showCounters) ...[const SizedBox(height: 10), _counters(context)],
+        if (JobStats.applies(job)) ...[const SizedBox(height: 12), JobCardStats(job: job, lang: lang)],
         if (job.manifest && !job.allowPartial) ...[const SizedBox(height: 6), _row(Icons.groups_outlined, t('ms.all_or_nothing'), color: JR.gold)],
         if (job.finalUnits != null) ...[const SizedBox(height: 6), _row(Icons.fact_check_outlined, '${t('units.final')}: ${job.finalUnits}')],
         if (job.cancelReason != null) ...[const SizedBox(height: 6), _row(Icons.info_outline, t('job.cancel_reason', {'reason': job.cancelReason}))],
@@ -58,26 +60,6 @@ class JobCard extends StatelessWidget {
         if (footer != null) ...[const SizedBox(height: 14), footer!],
       ]),
     );
-  }
-
-  /// Compact counters for a per-parcel job under way: to deliver · delivered · not delivered · cash (same numbers as the stat cards on the job page).
-  bool get _showCounters {
-    if (!job.manifest || job.status == 'offered' || !job.isActive && job.status != 'completed') return false;
-    final s = job.stopsSummary;
-    return s.total > 0 && s.pending < s.total;
-  }
-
-  Widget _counters(BuildContext context) {
-    final t = context.tr;
-    final s = job.stopsSummary;
-    final cod = job.cod;
-    Widget chip(Key k, IconData icon, String text, Color color) => Row(key: k, mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 16, color: color), const SizedBox(width: 4), Flexible(child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)))]);
-    return Wrap(key: const Key('job-counters'), spacing: 14, runSpacing: 6, children: [
-      chip(const Key('counter-to-deliver'), Icons.local_shipping_outlined, t('fma.card_to_deliver', {'n': s.loaded}), JR.cyan),
-      chip(const Key('counter-delivered'), Icons.check_circle_outline, t('fma.card_delivered', {'n': s.delivered}), JR.accent),
-      if (s.notDelivered > 0) chip(const Key('counter-not-delivered'), Icons.cancel_outlined, t('fma.card_not_delivered', {'n': s.notDelivered}), JR.danger),
-      if (cod != null && cod.any) chip(const Key('counter-cash'), Icons.payments_outlined, t('fma.card_cash', {'collected': fmtMoney(cod.collectedCents, lang), 'total': fmtMoney(cod.collectedCents + cod.toCollectCents, lang)}), JR.gold),
-    ]);
   }
 
   Widget _row(IconData i, String text, {Color? color}) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(i, size: 18, color: color ?? JR.cyan), const SizedBox(width: 8), Expanded(child: Text(text, style: TextStyle(color: color ?? JR.muted)))]);

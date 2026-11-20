@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createHmac } from "node:crypto";
-import { otpLogin, staffLogin, gotoReady, DEMO } from "./helpers";
+import { otpLogin, staffLogin, gotoReady, uiSignIn, DEMO } from "./helpers";
 
 /** Minimal RFC 6238 so the test plays the role of the authenticator app. */
 function totp(b32: string, offset = 0) {
@@ -39,37 +39,43 @@ test("a staff member with a temporary password is forced to change it before any
   expect(made.status()).toBe(201);
 
   const ctx = await browser.newContext(); const p = await ctx.newPage();
-  await gotoReady(p, "/staff/login");
-  await p.getByLabel("Email").fill(email);
-  await p.getByLabel("Password").fill("Temp0rary!Pass1");
-  await p.getByRole("button", { name: "Sign in" }).click();
-  await expect(p).toHaveURL(/\/staff\/change-password/);
+  await uiSignIn(p, email, "Temp0rary!Pass1"); // the e-mail address works in the username box
+  await expect(p).toHaveURL(/\/account\/change-password/);
+  await expect(p.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
   // the API itself refuses everything else
   const blocked = await p.request.get("/api/v1/admin/stats");
   expect(blocked.status()).toBe(403);
   expect((await blocked.json()).error.code).toBe("PASSWORD_CHANGE_REQUIRED");
   // a direct visit to the console bounces back to the change screen
   await p.goto("/admin");
-  await expect(p).toHaveURL(/\/staff\/change-password/);
-  await p.getByLabel("Current password").fill("Temp0rary!Pass1");
-  await p.getByLabel(/^New password/).fill("Brand-New-Pass9");
-  await p.getByLabel("Confirm new password").fill("Different-Pass9");
+  await expect(p).toHaveURL(/\/account\/change-password/);
+  await p.getByTestId("cp-current").fill("Temp0rary!Pass1");
+  await p.getByTestId("cp-new").fill("Temp0rary!Pass1");
+  await expect(p.getByText("must be different from the current one")).toBeVisible();
+  await p.getByTestId("cp-new").fill("Brand-New-Pass9");
+  await p.getByTestId("cp-confirm").fill("Different-Pass9");
   await expect(p.getByText("The passwords do not match")).toBeVisible();
-  await p.getByLabel("Confirm new password").fill("Brand-New-Pass9");
-  await p.getByRole("button", { name: "Change password" }).click();
-  await expect(p).toHaveURL(/\/staff\/login/);
-  await p.getByLabel("Email").fill(email);
-  await p.getByLabel("Password").fill("Brand-New-Pass9");
-  await p.getByRole("button", { name: "Sign in" }).click();
-  await expect(p).toHaveURL(/\/admin$/);
+  await expect(p.getByTestId("cp-submit")).toBeDisabled();
+  await p.getByTestId("cp-confirm").fill("Brand-New-Pass9");
+  await p.getByTestId("cp-submit").click();
+  await expect(p).toHaveURL(/\/admin$/); // the session stays: no second sign-in needed
+  expect((await p.request.get("/api/v1/admin/stats")).status()).toBe(200);
   await ctx.close();
+  // the old password is gone, the new one works
+  const again = await browser.newContext(); const p2 = await again.newPage();
+  await uiSignIn(p2, email, "Temp0rary!Pass1");
+  await expect(p2.getByTestId("login-error")).toBeVisible();
+  await uiSignIn(p2, email, "Brand-New-Pass9");
+  await expect(p2).toHaveURL(/\/admin$/);
+  await again.close();
 });
 
-test("an expired or missing staff session lands on the STAFF sign-in, not the customer one", async ({ page }) => {
+test("an expired or missing session lands on the one sign-in (the old staff address redirects there)", async ({ page }) => {
   await staffLogin(page, ADMIN.email, ADMIN.password);
   await page.context().clearCookies();
   await page.goto("/admin/staff");
-  await expect(page).toHaveURL(/\/staff\/login/);
+  await expect(page).toHaveURL(/\/login/);
+  await expect(page.getByTestId("login-username")).toBeVisible();
 });
 
 test("finance is a group of separate pages — overview, settlements, withdrawals, ledger, invoices, cash on delivery, pricing — and no payout batches any more", async ({ page }) => {
@@ -77,7 +83,7 @@ test("finance is a group of separate pages — overview, settlements, withdrawal
   await gotoReady(page, "/admin/finance");
   await expect(page.getByRole("heading", { name: "Finance", exact: true })).toBeVisible();
   const nav = page.getByRole("navigation", { name: "Main navigation" });
-  for (const name of ["Overview", "Settlements", "Withdrawals", "Wallet ledger", "Invoices", "Cash on delivery", "Pricing"]) await expect(nav.getByRole("link", { name })).toBeVisible();
+  for (const href of ["/admin/finance", "/admin/finance/settlements", "/admin/finance/withdrawals", "/admin/finance/ledger", "/admin/finance/invoices", "/admin/finance/cod", "/admin/finance/pricing"]) await expect(nav.locator(`a[href="${href}"]`)).toBeVisible(); // (Overview also exists under Reports, so go by the link target)
   await expect(page.getByRole("tab")).toHaveCount(0); // no tab bar switching between functions any more
   await expect(page.getByText("Payout batches")).toHaveCount(0); // E18: payments are released automatically — no batches to run
   for (const [link, url, heading] of [["Settlements", /\/admin\/finance\/settlements$/, "Settlements"], ["Withdrawals", /\/admin\/finance\/withdrawals$/, "Withdrawals"], ["Wallet ledger", /\/admin\/finance\/ledger$/, "Wallet ledger"], ["Invoices", /\/admin\/finance\/invoices$/, "Invoices"]] as const) {
@@ -112,24 +118,24 @@ test("staff two-step verification: password alone is not enough; a wrong code is
   const secret = (await (await setupCtx.request.post("/api/v1/auth/mfa/setup", { headers: origin, data: {} })).json()).secret as string;
   const enabled = await setupCtx.request.post("/api/v1/auth/mfa/enable", { headers: origin, data: { code: totp(secret) } });
   expect(enabled.status()).toBe(200);
-  expect(((await enabled.json()).recoveryCodes as string[]).length).toBe(8);
+  const recovery = (await enabled.json()).recoveryCodes as string[];
+  expect(recovery.length).toBe(8);
   await setupCtx.close();
 
   // 2) a fresh browser: password step → code step
   const ctx = await browser.newContext(); const p = await ctx.newPage();
-  await gotoReady(p, "/staff/login");
-  await p.getByLabel("Email").fill(email);
-  await p.getByLabel("Password").fill(password);
-  await p.getByRole("button", { name: "Sign in" }).click();
+  await uiSignIn(p, email, password);
   await expect(p.getByText("Enter the code from your authenticator app")).toBeVisible();
   expect((await p.request.get("/api/v1/auth/me")).status()).toBe(401); // no session yet
   await p.getByLabel("Code or recovery code").fill("000000");
   await p.getByRole("button", { name: "Sign in" }).click();
   await expect(p.locator("form p[role=alert]")).toBeVisible(); // our error line (Next also renders an empty route-announcer alert)
-  await expect(p).toHaveURL(/\/staff\/login/);
+  await expect(p).toHaveURL(/\/login/);
   await p.getByLabel("Code or recovery code").fill(totp(secret, 1)); // the enrolment code's window is burned → next window
   await p.getByRole("button", { name: "Sign in" }).click();
   await expect(p).toHaveURL(/\/admin$/);
   expect((await p.request.get("/api/v1/auth/me")).status()).toBe(200);
+  // leave the shared demo account as it was (other specs sign in as support@ with the password alone): turn the second step off with a recovery code
+  expect((await p.request.post("/api/v1/auth/mfa/disable", { headers: origin, data: { password, code: recovery[0] } })).status()).toBe(200);
   await ctx.close();
 });

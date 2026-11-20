@@ -13,6 +13,7 @@ import { PartnerStatusBadge, labelable, printLabels, providerName, usePartnerCon
 import { partnerStatusText } from "./timeline";
 import { FIELD_ERR_KEY, SHIPMENT_STATUS_ORDER, codCentsOf, detailsMissing, fromServer, validateRow, type ManifestRow, type RType, type ShipmentItem, type ShipmentPage } from "./business-shipments-lib";
 import { DETAILS_EDITABLE } from "./business-shipments-complete";
+import { useB2bEnabled } from "./business-shipments-policy";
 import { MediaLightbox, MediaThumb, ShipmentPhotos, type LightboxTarget } from "./business-shipments-media";
 
 const PAGE_SIZE = 50;
@@ -55,7 +56,7 @@ function CopyBtn({ value, label }: { value: string; label: string }) {
 
 // ───────── Section on the request page ─────────
 export function ShipmentsSection({ requestId, requestStatus, onChanged, incomplete = 0, onCompleteDetails }: { requestId: string; requestStatus: string; onChanged: () => void; incomplete?: number; onCompleteDetails?: () => void }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = useI18n(); const b2b = useB2bEnabled();
   const [status, setStatus] = useUrlState("status"); const [qIn, setQIn] = useState(""); const [q, setQ] = useState(""); const [page, setPage] = useState(1);
   const [open, setOpen] = useState<string | null>(null); const [proof, setProof] = useState<ShipmentItem | null>(null);
   const [edit, setEdit] = useState<ShipmentItem | null>(null); const [cancel, setCancel] = useState<ShipmentItem | null>(null);
@@ -110,7 +111,7 @@ export function ShipmentsSection({ requestId, requestStatus, onChanged, incomple
               <tr key={s.id} data-testid="shipment-row" data-code={s.code} data-incomplete={detailsMissing(s) ? "1" : undefined} className="align-top">
                 <Td label="#" className="tabular-nums text-muted"><span className="inline-flex items-center gap-2">{printable(s) && <input type="checkbox" className="size-4 accent-[var(--jr-accent)]" aria-label={t("intg.pick_label", { code: s.code })} checked={picked.has(s.id)} onChange={(e) => toggle(s.id, e.target.checked)} />}{fmtNum(s.seq, locale)}</span></Td>
                 <Td label={t("bs.f_code")}><span className="inline-flex items-center gap-1"><span className="ltr-num font-medium" dir="ltr">{s.code}</span><CopyBtn value={s.code} label={t("bs.copy_code")} /></span>{s.externalRef && <span className="ltr-num block text-xs text-muted" dir="ltr">{s.externalRef}</span>}</Td>
-                <Td label={t("bs.recipient")}><p className="font-medium">{s.recipientName || "—"}</p><p className="ltr-num text-xs text-muted" dir="ltr">{s.recipientPhone || "—"}</p><div className="mt-1 flex flex-wrap items-center gap-1"><Badge>{t(`rtype.${s.recipientType}`)}</Badge>{detailsMissing(s) && <span data-testid="details-missing-badge"><DetailsMissingBadge /></span>}</div></Td>
+                <Td label={t("bs.recipient")}><p className="font-medium">{s.recipientName || "—"}</p><p className="ltr-num text-xs text-muted" dir="ltr">{s.recipientPhone || "—"}</p><div className="mt-1 flex flex-wrap items-center gap-1">{(b2b || s.recipientType === "business") && <Badge>{t(`rtype.${s.recipientType}`)}</Badge>}{detailsMissing(s) && <span data-testid="details-missing-badge"><DetailsMissingBadge /></span>}</div></Td>
                 <Td label={t("bs.f_address")} className="max-w-[240px] text-muted">{s.address || "—"}</Td>
                 <Td label={t("common.status")}><ShipBadge status={s.status} />{s.driverName && <p className="mt-1 text-xs text-muted">{s.driverName}</p>}<PartnerStatusBadge status={s.partnerStatus} at={s.partnerStatusAt} provider={partnerName(connOf(s.partnerId))} /></Td>
                 <Td label={t("bs.when")} className="whitespace-nowrap text-xs text-muted">{s.deliveredAt ? fmtDateTime(s.deliveredAt, locale) : s.failedAt ? fmtDateTime(s.failedAt, locale) : "—"}</Td>
@@ -161,7 +162,7 @@ export function ProofDialog({ item, onClose }: { item: Pick<ShipmentItem, "id" |
 interface Ev { id: string; type: string; actorName: string | null; actorRole: string; createdAt: string; payload?: { reason?: string; note?: string; providerLabel?: string; status?: string; kind?: string; mediaId?: string; signatureMediaId?: string; proofType?: string; codCents?: number } | null }
 
 function ShipmentDrawer({ id, requestStatus, conns, onPrint, onClose, onEdit, onCancel, onProof }: { id: string; requestStatus: string; conns: Connection[]; onPrint: (s: ShipmentItem) => void; onClose: () => void; onEdit: (s: ShipmentItem) => void; onCancel: (s: ShipmentItem) => void; onProof: (s: ShipmentItem) => void }) {
-  const { t, locale } = useI18n(); const reason = useReason();
+  const { t, locale } = useI18n(); const reason = useReason(); const b2b = useB2bEnabled();
   const { data, error, mutate } = useApi<{ shipment: ShipmentItem; events: Ev[] }>(`/shipments/${id}`, { refreshInterval: 15000 });
   const [light, setLight] = useState<LightboxTarget | null>(null);
   const s = data?.shipment;
@@ -176,7 +177,7 @@ function ShipmentDrawer({ id, requestStatus, conns, onPrint, onClose, onEdit, on
       <Button variant="ghost" onClick={onClose}>{t("common.close")}</Button></>}>
       {error ? <ErrorState error={error} retry={() => mutate()} /> : !s ? <PageLoading /> : (
         <>
-          <div className="flex flex-wrap items-center gap-2"><ShipBadge status={s.status} /><Badge>{t(`rtype.${s.recipientType}`)}</Badge>{detailsMissing(s) && <DetailsMissingBadge />}</div>
+          <div className="flex flex-wrap items-center gap-2"><ShipBadge status={s.status} />{(b2b || s.recipientType === "business") && <Badge>{t(`rtype.${s.recipientType}`)}</Badge>}{detailsMissing(s) && <DetailsMissingBadge />}</div>
           <dl className="divide-y divide-line">
             <KV label={t("bs.f_name")}>{s.recipientName || "—"}</KV>
             <KV label={t("bs.f_phone")}><span className="ltr-num" dir="ltr">{s.recipientPhone || "—"}</span></KV>
@@ -241,7 +242,7 @@ function ShipmentDrawer({ id, requestStatus, conns, onPrint, onClose, onEdit, on
 
 // ───────── Fix a typo before hand-over ─────────
 function EditParcelDialog({ item, onClose, onSaved }: { item: ShipmentItem; onClose: () => void; onSaved: () => void }) {
-  const { t } = useI18n(); const a = useAction();
+  const { t } = useI18n(); const a = useAction(); const b2b = useB2bEnabled();
   const [row, setRow] = useState<ManifestRow>(() => ({ ...fromServer(item as unknown as Record<string, unknown>), uid: item.id }));
   const [serverErr, setServerErr] = useState<Record<string, string>>({}); const [show, setShow] = useState(false);
   // A parcel booked "details later" may be saved partially (progress is kept); a complete one can no longer be blanked.
@@ -251,17 +252,19 @@ function EditParcelDialog({ item, onClose, onSaved }: { item: ShipmentItem; onCl
   const err = (f: keyof ManifestRow & string) => { const k = serverErr[f] ?? (client as Record<string, string>)[f]; return k ? t(k) : undefined; };
   const submit = () => {
     if (Object.keys(validateRow(row, { partial })).length) { setShow(true); return; }
-    a.run("edit", () => patch(`/shipments/${item.id}`, { recipientType: row.recipientType, recipientName: row.recipientName.trim() || null, recipientPhone: row.recipientPhone.trim() || null, address: row.address.trim() || null, contents: row.contents.trim() || null, notes: row.notes.trim() || null, externalRef: row.externalRef.trim() || null, ...(codCentsOf(row.cod) !== (item.codCents ?? 0) ? { codCents: codCentsOf(row.cod) } : {}) }),
+    a.run("edit", () => patch(`/shipments/${item.id}`, { ...(b2b ? { recipientType: row.recipientType } : {}), recipientName: row.recipientName.trim() || null, recipientPhone: row.recipientPhone.trim() || null, address: row.address.trim() || null, contents: row.contents.trim() || null, notes: row.notes.trim() || null, externalRef: row.externalRef.trim() || null, ...(codCentsOf(row.cod) !== (item.codCents ?? 0) ? { codCents: codCentsOf(row.cod) } : {}) }),
       { success: "bs.parcel_updated", onDone: onSaved, onError: (e) => { const fe = fieldErrors(e); setServerErr(Object.fromEntries(Object.keys(fe).filter((k) => k in FIELD_ERR_KEY).map((k) => [k === "codCents" ? "cod" : k, FIELD_ERR_KEY[k]]))); } });
   };
   const types: RType[] = ["consumer", "business"];
   return (
     <Modal open onClose={onClose} title={t("bs.edit_title", { code: item.code })} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button loading={a.is("edit")} data-testid="edit-parcel-save" onClick={submit}>{t("common.save")}</Button></>}>
       <Notice tone={partial ? "warn" : "info"}>{partial ? t("pb.edit_partial_note") : t("bs.edit_note")}</Notice>
-      <div role="radiogroup" aria-label={t("bs.recipient_type")} className="inline-flex overflow-hidden rounded-xl border border-line">
-        {types.map((k) => <button key={k} type="button" role="radio" aria-checked={row.recipientType === k} onClick={() => up({ recipientType: k })} className={cn("px-3 py-1.5 text-xs transition", row.recipientType === k ? "bg-accent font-semibold text-accent-ink" : "bg-bg2 text-muted hover:text-ink")}>{t(`rtype.${k}`)}</button>)}
-      </div>
-      <p className="text-xs text-muted">{t(`rtype.${row.recipientType}_hint`)}</p>
+      {b2b && <>
+        <div role="radiogroup" aria-label={t("bs.recipient_type")} className="inline-flex overflow-hidden rounded-xl border border-line">
+          {types.map((k) => <button key={k} type="button" role="radio" aria-checked={row.recipientType === k} onClick={() => up({ recipientType: k })} className={cn("px-3 py-1.5 text-xs transition", row.recipientType === k ? "bg-accent font-semibold text-accent-ink" : "bg-bg2 text-muted hover:text-ink")}>{t(`rtype.${k}`)}</button>)}
+        </div>
+        <p className="text-xs text-muted">{t(`rtype.${row.recipientType}_hint`)}</p>
+      </>}
       <div className="grid gap-3 sm:grid-cols-2">
         <Input label={t("bs.f_name")} data-testid="edit-name" value={row.recipientName} onChange={(e) => up({ recipientName: e.target.value })} error={err("recipientName")} maxLength={120} required={!partial} />
         <Input label={t("bs.f_phone")} data-testid="edit-phone" type="tel" ltr value={row.recipientPhone} onChange={(e) => up({ recipientPhone: e.target.value })} error={err("recipientPhone")} maxLength={20} required={!partial} />

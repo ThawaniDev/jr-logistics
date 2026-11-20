@@ -11,6 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:mcqs": "tsx scripts/seed-mcqs.ts",
+    "db:seed:history": "tsx scripts/seed-history.ts",
+    "db:backfill:auth": "tsx scripts/backfill-auth.ts",
     "db:migrate:test": "ENV_FILE=.env.test drizzle-kit migrate",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -13,6 +13,7 @@ import { AccountStatusButton } from "./admin-drivers-actions";
 import { ListEmpty, LoadingRows, RowLink, pagerFooter } from "./admin-offices-common";
 import { USER_ROLES, apiFilter, parseUserRole } from "./admin-offices-lib";
 import { WarehouseOpsDialog } from "./admin-warehouse";
+import { AddAccountButton } from "./admin-create-pages";
 
 const SIZE = 25;
 /** Where an account's own view lives (and who may open it): the entity views replaced the old "review" modal. */
@@ -20,6 +21,7 @@ function entityHref(u: { id: string; role: string }, me: Parameters<typeof hasAn
   if (u.role === "business" && hasAny(me, "users.view", "verification.manage", "offices.view")) return `/admin/companies/${u.id}`;
   if (u.role === "office" && hasAny(me, "users.view", "offices.view", "offices.manage")) return `/admin/offices/${u.id}`;
   if (u.role === "driver" && hasAny(me, "drivers.view", "users.view")) return `/admin/drivers/${u.id}`;
+  if (hasAny(me, "users.view")) return `/admin/users/${u.id}`; // staff and admin accounts have no entity view: the generic user page
   return null;
 }
 
@@ -42,7 +44,7 @@ export function UsersList() {
   const canEdit = hasPerm(me, "users.edit");
   return (
     <>
-      <PageHeader title={t("nav.users")} subtitle={t("rdq.users_sub")} icon={<Users className="size-5" />} />
+      <PageHeader title={t("nav.users")} subtitle={t("rdq.users_sub")} icon={<Users className="size-5" />} actions={<AddAccountButton kind="user" />} />
       <section aria-label={t("rdq.kpis")} className="mb-5">
         <StatGrid cols={4}>
           <Stat label={t("rdq.roles_business")} value={val("business")} loading={sl} icon={<Factory className="size-5" />} href="/admin/users?role=business" tone="accent" hint={info("business")} />

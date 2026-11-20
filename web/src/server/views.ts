@@ -20,6 +20,7 @@ export async function driverJobView(o: Offer, r: Request) {
   const [p] = await db.select({ officeId: driverProfiles.officeId }).from(driverProfiles).where(eq(driverProfiles.userId, o.driverId));
   const earningHidden = !!(o.officeId ?? p?.officeId);
   const cfg = await getSettings();
+  const routing = cfg.routingEnabled; // J2: off = no route planning / approval / lock / reorder; the driver works any of his own stops in any order
   const { offerExpiryMin } = cfg;
   const expiresAt = o.status === "offered" ? new Date(o.createdAt.getTime() + offerExpiryMin * 60_000) : null; // after this the offer lapses on the next housekeeping tick
   const ops = await effectiveOps(r.businessId, db, cfg);
@@ -33,14 +34,16 @@ export async function driverJobView(o: Offer, r: Request) {
   if (manifest) {
     const rows = await db.select().from(shipments).where(eq(shipments.offerId, o.id)).orderBy(asc(shipments.stopOrder), asc(shipments.seq));
     summary = (await offerShipmentStats(db, [o.id])).get(o.id) ?? summary;
-    route = routeView(o, rows, { canReorder: cfg.driverCanReorderRoute });
+    route = routing ? routeView(o, rows, { canReorder: cfg.driverCanReorderRoute }) : null; // J2: no route data at all while routing is off
     cod = {
       toCollectCents: rows.filter((s) => ["pending", "loaded"].includes(s.status)).reduce((a, s) => a + s.codCents, 0),
       collectedCents: rows.reduce((a, s) => a + (s.codCollectedCents ?? 0), 0), parcels: rows.filter((s) => s.codCents > 0).length,
     };
     if (mine) {
-      const cur = o.routeApprovedAt ? rows.find((s) => s.status === "loaded") ?? null : null;
-      stops = rows.map((s) => driverStopView(s, { currentId: cur?.id ?? null, stopWaitMin: cfg.stopWaitMin, routeApproved: !!o.routeApprovedAt, remaining: summary.loaded, needsOtp: ops.requireDeliveryOtp, needsSignature: ops.requireSignature }));
+      // Routing on: the stops unlock when the driver approves the route. Routing off: they unlock when loading is confirmed (also for a job that was mid-flow when the switch flipped).
+      const started = !!o.routeApprovedAt || (!routing && o.loadedAckByDriver === true);
+      const cur = started ? rows.find((s) => s.status === "loaded") ?? null : null;
+      stops = rows.map((s) => driverStopView(s, { currentId: cur?.id ?? null, stopWaitMin: cfg.stopWaitMin, routeApproved: !!o.routeApprovedAt, remaining: summary.loaded, needsOtp: ops.requireDeliveryOtp, needsSignature: ops.requireSignature, routing, started }));
     }
   }
   const pin = await pickupPinOf(r, db);
@@ -57,16 +60,16 @@ export async function driverJobView(o: Offer, r: Request) {
     manifest, stops, route, stopsSummary: manifest ? summary : null, routeApprovedAt: o.routeApprovedAt, allowPartial: r.allowPartial,
     ops, arrival: { geofence: cfg.arrivalGeofenceEnabled, radiusM: cfg.arrivalRadiusM, warehouse: pin },
     loading: manifest ? loading : null,
-    policy: { canReorderRoute: cfg.driverCanReorderRoute, rescheduleEvidenceText: cfg.rescheduleEvidenceText, rescheduleEvidencePhoto: cfg.rescheduleEvidencePhoto, stopWaitMin: cfg.stopWaitMin, failStrict: cfg.stopFailStrictRules },
+    policy: { routingEnabled: routing, b2bShipmentsEnabled: cfg.b2bShipmentsEnabled, canReorderRoute: routing && cfg.driverCanReorderRoute, rescheduleEvidenceText: cfg.rescheduleEvidenceText, rescheduleEvidencePhoto: cfg.rescheduleEvidencePhoto, stopWaitMin: cfg.stopWaitMin, failStrict: cfg.stopFailStrictRules },
     cod: manifest ? cod : null,
     loadedUnits: o.loadedUnits, loadedAckByDriver: o.loadedAckByDriver, deliveredUnits: o.deliveredUnits, finalUnits: o.finalUnits,
     acceptedAt: o.acceptedAt, arrivedAt: o.arrivedAt, cancelReason: o.cancelReason,
-    actions: driverActions(o, r, { manifest, remaining: summary.loaded, loadingMode: loading.mode, scanned: loading.scanned }),
+    actions: driverActions(o, r, { manifest, remaining: summary.loaded, loadingMode: loading.mode, scanned: loading.scanned, routing }),
   };
 }
 
 /** Server-driven next actions so every client (web, Flutter) renders the same flow. */
-export function driverActions(o: Offer, r: Request, ctx: { manifest?: boolean; remaining?: number; loadingMode?: "driver_scan" | "warehouse"; scanned?: number } = {}): string[] {
+export function driverActions(o: Offer, r: Request, ctx: { manifest?: boolean; remaining?: number; loadingMode?: "driver_scan" | "warehouse"; scanned?: number; routing?: boolean } = {}): string[] {
   switch (o.status) {
     case "offered": return ["accept", "reject"];
     case "accepted": return ["checkin", "cancel"];
@@ -80,7 +83,7 @@ export function driverActions(o: Offer, r: Request, ctx: { manifest?: boolean; r
         }
         if (o.loadedAckByDriver == null) return ["ack_loading", "dispute_loading", "report_no_work"];
         if (o.loadedAckByDriver === false) return ["report_no_work"]; // waits for the warehouse to re-record
-        if (!o.routeApprovedAt) return ["approve_route", "report_no_work"];
+        if (!o.routeApprovedAt && ctx.routing !== false) return ["approve_route", "report_no_work"]; // routing off: no approval step — loading confirmed = straight to the stops
         return (ctx.remaining ?? 0) > 0 ? ["work_stops", "end_route"] : ["report_delivered"];
       }
       if (r.service === "delivery_driver" && o.loadedUnits != null && o.loadedAckByDriver == null) return ["ack_loading", "dispute_loading", "report_no_work"];
