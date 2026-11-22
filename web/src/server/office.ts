@@ -7,7 +7,7 @@ import { normalizePhone } from "@/lib/phone";
 import { OFFER_BUSY } from "./catalog";
 import { notify } from "./notify";
 import { audit } from "./audit";
-import { readyOfficeIds, evaluateCandidates, earningFor } from "./matching";
+import { readyOfficeIds, evaluateCandidatesMany, earningFor } from "./matching";
 import { requirePerm, can } from "./auth/permissions";
 import { ensureAccount } from "./wallet";
 import { hit } from "./auth/ratelimit";
@@ -122,9 +122,10 @@ export async function officeOpportunities(officeId: string) {
       or(isNull(requests.preferredOfficeId), eq(requests.preferredOfficeId, officeId))))
     .orderBy(requests.startsAt).limit(100);
   const out = [];
+  const evals = await evaluateCandidatesMany(db, open.map((o) => o.r), { onlyOfficeId: officeId }); // one evaluation for the whole list, not one per open request
   for (const { r, biz, bizName } of open) {
     const snap = r.pricingSnapshot as { providerCostCents: number; expectedUnits: number } | null;
-    const all = await evaluateCandidates(db, r, { onlyOfficeId: officeId });
+    const all = evals.get(r.id) ?? [];
     out.push({
       id: r.id, ref: r.ref, service: r.service, quantity: r.quantity, slotsFilled: r.slotsFilled, vehicleType: r.vehicleType, temperature: r.temperature,
       pickupCity: r.pickupCity, deliveryCity: r.deliveryCity, startsAt: r.startsAt, durationDays: r.durationDays, preferred: r.preferredOfficeId === officeId,
@@ -194,7 +195,7 @@ export async function officeReport(officeId: string, from?: Date, to?: Date) {
   const range = [eq(offers.officeId, officeId), ...(from ? [gte(offers.createdAt, from)] : []), ...(to ? [lte(offers.createdAt, to)] : [])];
   const byStatus = await db.select({ status: offers.status, n: sql<number>`count(*)::int`, units: sql<number>`coalesce(sum(${offers.finalUnits}),0)::int` }).from(offers).where(and(...range)).groupBy(offers.status);
   const count = (...st: string[]) => byStatus.filter((r) => st.includes(r.status)).reduce((a, r) => a + r.n, 0);
-  const money = await db.select({ status: settlements.status, n: sql<number>`count(*)::int`, cents: sql<number>`coalesce(sum(${settlements.providerCents}),0)::int` }).from(settlements)
+  const money = await db.select({ status: settlements.status, n: sql<number>`count(*)::int`, cents: sql<number>`coalesce(sum(${settlements.providerCents}),0)::float8` }).from(settlements)
     .where(and(eq(settlements.officeId, officeId), ...(from ? [gte(settlements.createdAt, from)] : []), ...(to ? [lte(settlements.createdAt, to)] : []))).groupBy(settlements.status);
   const sum = (...st: string[]) => money.filter((r) => st.includes(r.status)).reduce((a, r) => a + r.cents, 0);
   const completed = count("completed");
@@ -211,9 +212,9 @@ export async function officeReport(officeId: string, from?: Date, to?: Date) {
 export async function officeDashboard(office: User) {
   const drivers = await officeDrivers(office.id);
   const [{ n: activeJobs }] = await db.select({ n: sql<number>`count(*)::int` }).from(offers).where(and(eq(offers.officeId, office.id), inArray(offers.status, OFFER_BUSY)));
-  const [paid] = await db.select({ s: sql<number>`coalesce(sum(${settlements.providerCents}),0)::int` }).from(settlements).where(and(eq(settlements.officeId, office.id), eq(settlements.status, "paid")));
+  const [paid] = await db.select({ s: sql<number>`coalesce(sum(${settlements.providerCents}),0)::float8` }).from(settlements).where(and(eq(settlements.officeId, office.id), eq(settlements.status, "paid")));
   const acct = await ensureAccount(office.id);
-  const [pend] = await db.select({ s: sql<number>`coalesce(sum(${settlements.providerCents}),0)::int` }).from(settlements).where(and(eq(settlements.officeId, office.id), inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"])));
+  const [pend] = await db.select({ s: sql<number>`coalesce(sum(${settlements.providerCents}),0)::float8` }).from(settlements).where(and(eq(settlements.officeId, office.id), inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"])));
   return {
     readiness: await officeReadiness(office.id),
     drivers: { total: drivers.length, available: drivers.filter((d) => d.availability === "available" && d.verificationStatus === "verified" && !d.onJob).length, onJob: drivers.filter((d) => d.onJob).length },

@@ -68,7 +68,7 @@ export function PermissionPicker({ groups, value, onChange, readOnly, grantable,
                           {p.sensitive && <span title={t("rj.sensitive_hint")}><Badge tone="warn"><AlertTriangle className="size-3" aria-hidden />{t("rj.sensitive")}</Badge></span>}
                         </span>
                         <span className="mt-0.5 block text-xs text-muted">{desc(p.key)}</span>
-                        <span className="mt-0.5 block text-[11px] text-muted/80"><span className="ltr-num" dir="ltr">{p.key}</span>{p.requires.length > 0 && <> · {t("rj.requires", { list: names(p.requires) })}</>}</span>
+                        <span className="mt-0.5 block text-[11px] text-muted/80 light:text-muted"><span className="ltr-num" dir="ltr">{p.key}</span>{p.requires.length > 0 && <> · {t("rj.requires", { list: names(p.requires) })}</>}</span>
                       </span>
                     </label>
                   </li>);

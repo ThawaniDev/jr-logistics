@@ -115,7 +115,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     if (ref.read(catalogProvider).hasError) ref.invalidate(catalogProvider);
     final cat = await ref.read(catalogProvider.future).timeout(const Duration(seconds: 6)).catchError((_) => <String, dynamic>{});
     if (!mounted) return;
-    final p = (cat['policy'] as Map?) ?? const {};
+    final p = mapOf(cat['policy']) ?? const <String, dynamic>{};
     final reason = await showModalBottomSheet<String>(context: context, useRootNavigator: true, isScrollControlled: true, builder: (c) => ReasonSheet(title: c.tr('act.cancel_job'), cta: c.tr('act.cancel_job'), danger: true, warning: p['cancelPolicyEnabled'] == true ? '${c.tr('job.cancel_policy_title')}: ${c.tr('job.cancel_policy', {'warn': p['cancelWarnAt'], 'days': p['cancelWindowDays'], 'suspend': p['cancelSuspendAt'], 'sd': p['cancelSuspendDays']})}' : null));
     if (reason != null) {
       final ok = await _run(() async { await ref.read(apiProvider).cancel(widget.offerId, reason); }, success: 'job.cancelled_ok', verify: (f) => f.status == 'cancelled' || !f.can('cancel'));
@@ -182,17 +182,17 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           final pLat = _d(j.pickup?['lat']), pLng = _d(j.pickup?['lng']), pAddr = j.pickup?['address'];
           final pickupUri = !const ['accepted', 'arrived'].contains(j.status) ? null : pLat != null && pLng != null ? Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$pLat,$pLng') : (pAddr is String && pAddr.isNotEmpty ? Uri.https('www.google.com', '/maps/search/', {'api': '1', 'query': pAddr}) : null);
           return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [
-            Row(children: [Expanded(child: Text(t('svc.${j.service}'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))), StatusPill(j.status)]),
+            Row(children: [Expanded(child: Text(t.val('svc', j.service), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))), StatusPill(j.status)]),
             if (step >= 0) Padding(padding: const EdgeInsets.only(top: 12, bottom: 4), child: Row(children: [for (var i = 0; i < _flow.length; i++) Expanded(child: Container(height: 5, margin: const EdgeInsetsDirectional.only(end: 4), decoration: BoxDecoration(color: i <= step ? JR.accent : JR.line, borderRadius: BorderRadius.circular(4))))])),
             const SizedBox(height: 12),
             // ── stat cards: shipments · to deliver · delivered · not delivered · cash ──
             if (JobStatCards.visible(j)) ...[JobStatCards(job: j, lang: lang), const SizedBox(height: 12)],
             // ── one clear next step ──
             SectionCard(border: JR.accent, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(t('job.next_step').toUpperCase(), style: const TextStyle(color: JR.accent, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
+              Text(t('job.next_step').toUpperCase(), style: TextStyle(color: JR.accent, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
               const SizedBox(height: 6),
               Text(hint, key: const Key('hint'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.35)),
-              if (j.can('accept')) ...[const SizedBox(height: 14), Text(t('job.locked_until_accept'), style: const TextStyle(color: JR.muted, fontSize: 13))],
+              if (j.can('accept')) ...[const SizedBox(height: 14), Text(t('job.locked_until_accept'), style: TextStyle(color: JR.muted, fontSize: 13))],
               if (j.can('checkin')) ...[const SizedBox(height: 14), ArrivalSection(job: j, run: _run, busy: _busy)],
               if (j.can('ack_loading')) ...[const SizedBox(height: 14), FilledButton.icon(key: const Key('ack'), onPressed: _busy ? null : () => _run(() => ref.read(apiProvider).ackLoading(widget.offerId, true), verify: (f) => !f.can('ack_loading')), icon: busyIcon(_busy, Icons.inventory_2_outlined), label: Text(t('act.ack_loading', {'n': j.handedOverCount})))],
               if (j.can('dispute_loading')) ...[const SizedBox(height: 10), OutlinedButton(key: const Key('dispute'), onPressed: _busy ? null : _disputeLoading, child: Text(t('act.dispute_loading')))],
@@ -207,15 +207,15 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
             if (j.manifest && !ShipmentsView.applies(j)) ManifestPanel(job: j),
             // ── recipient & contact ──
             if (j.recipient != null) SectionCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(t('job.recipient'), style: const TextStyle(color: JR.muted, fontSize: 12)),
+              Text(t('job.recipient'), style: TextStyle(color: JR.muted, fontSize: 12)),
               const SizedBox(height: 6),
               Row(children: [Expanded(child: Text('${j.recipient!['name'] ?? ''}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700))), IconButton.filledTonal(key: const Key('recipient-call'), tooltip: t('m.call'), iconSize: 28, constraints: const BoxConstraints(minWidth: 52, minHeight: 52), onPressed: () => _callRecipient('${j.recipient!['phone']}'), icon: const Icon(Icons.call))]),
-              Text('${j.recipient!['phone']}', textDirection: TextDirection.ltr, style: const TextStyle(color: JR.muted)),
+              Text('${j.recipient!['phone']}', textDirection: TextDirection.ltr, style: TextStyle(color: JR.muted)),
               const SizedBox(height: 12),
               // Icon above label so translations never truncate ("On my way" / "في الطريق" / "راستے میں").
-              Row(children: [for (final (i, k) in ['contact', 'arriving', 'issue'].indexed) Expanded(child: Padding(padding: EdgeInsetsDirectional.only(end: i < 2 ? 8 : 0), child: OutlinedButton(key: Key('wa-$k'), style: OutlinedButton.styleFrom(minimumSize: const Size(0, 68), padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8)), onPressed: () => _whatsapp(k), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.chat, size: 20, color: JR.accent), const SizedBox(height: 4), Text(t('wa.$k'), textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 12.5, height: 1.2))]))))]),
+              Row(children: [for (final (i, k) in ['contact', 'arriving', 'issue'].indexed) Expanded(child: Padding(padding: EdgeInsetsDirectional.only(end: i < 2 ? 8 : 0), child: OutlinedButton(key: Key('wa-$k'), style: OutlinedButton.styleFrom(minimumSize: const Size(0, 68), padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8)), onPressed: () => _whatsapp(k), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.chat, size: 20, color: JR.accent), const SizedBox(height: 4), Text(t('wa.$k'), textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 12.5, height: 1.2))]))))]),
               const SizedBox(height: 8),
-              Text(t('job.wa_note'), style: const TextStyle(color: JR.muted, fontSize: 11.5, height: 1.4)),
+              Text(t('job.wa_note'), style: TextStyle(color: JR.muted, fontSize: 11.5, height: 1.4)),
               TextButton.icon(onPressed: _cantReach, icon: const Icon(Icons.phone_disabled, size: 18), label: Text(t('job.cant_reach'))),
             ])),
             if (j.recipient != null) const SizedBox(height: 12),
@@ -223,7 +223,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
             SectionCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(t('job.locations'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
               const SizedBox(height: 10),
-              if (j.pickup == null && j.delivery == null && !j.manifest) Text(t(j.status == 'offered' ? 'job.locked_until_accept' : 'job.details_hidden'), style: const TextStyle(color: JR.muted)) else ...[
+              if (j.pickup == null && j.delivery == null && !j.manifest) Text(t(j.status == 'offered' ? 'job.locked_until_accept' : 'job.details_hidden'), style: TextStyle(color: JR.muted)) else ...[
                 _addr(t('wizard.pickup_address'), j.pickup?['address'] as String?),
                 if (pickupUri != null) ...[const SizedBox(height: 8), OutlinedButton.icon(key: const Key('pickup-maps'), onPressed: () => _openMaps(pickupUri), icon: const Icon(Icons.navigation_outlined), label: Text(t('um.navigate_pickup')))],
                 const SizedBox(height: 8),
@@ -235,11 +235,11 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
             const SizedBox(height: 12),
             SectionCard(child: Column(children: [
               _kv(t('req.starts'), fmtDateTime(j.startsAt, lang)),
-              if (j.vehicleType != null) _kv(t('wizard.vehicle'), '${t('vehicle.${j.vehicleType}')}${j.temperature != null ? ' · ${t('temp.${j.temperature}')}' : ''}'),
+              if (j.vehicleType != null) _kv(t('wizard.vehicle'), '${t.val('vehicle', j.vehicleType)}${j.temperature != null ? ' · ${t.val('temp', j.temperature)}' : ''}'),
               _kv(t(j.isDelivery ? 'units.exp' : 'wizard.days'), '${j.expectedUnits}'),
               if (j.isDelivery) _kv(t(j.manifest ? 'ms.handed_over' : 'units.loaded'), '${j.loadedUnits ?? '—'}'),
               if (j.isDelivery) _kv(t('units.delivered'), '${j.deliveredUnits ?? (j.manifest && j.routeApproved ? j.stopsSummary.delivered : null) ?? '—'}'),
-              if (j.manifest && !j.allowPartial) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('ms.all_or_nothing'), style: const TextStyle(color: JR.gold, fontSize: 12.5, height: 1.4))),
+              if (j.manifest && !j.allowPartial) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('ms.all_or_nothing'), style: TextStyle(color: JR.gold, fontSize: 12.5, height: 1.4))),
               if (j.finalUnits != null) _kv(t('units.final'), '${j.finalUnits}'),
               if (j.expectedEarningCents != null && !j.earningHidden) _kv(t('job.expected_earning'), fmtMoney(j.expectedEarningCents, lang), color: JR.accent),
               if (j.contents != null) _kv(t('wizard.contents'), j.contents!),
@@ -251,8 +251,8 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
             if (j.status == 'completed' && _rated != 'already') ...[RatingCard(done: _rated == 'done', busy: _busy, onSubmit: _rate), const SizedBox(height: 12)],
             if (j.status == 'completed' && _rated == 'already') ...[Banner2(text: t('job.rated_already')), const SizedBox(height: 12)],
             if (_noWorkSent) ...[Banner2(text: t('job.no_work_already')), const SizedBox(height: 10)],
-            if (j.can('cancel')) OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: const BorderSide(color: JR.danger)), onPressed: _busy ? null : _cancelSheet, icon: const Icon(Icons.close), label: Text(t('act.cancel_job'))),
-            if (j.can('report_no_work') && !_noWorkSent) ...[const SizedBox(height: 10), OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: JR.gold, side: const BorderSide(color: JR.gold)), onPressed: _busy ? null : _problem, icon: const Icon(Icons.warning_amber), label: Text(t('act.report_problem')))],
+            if (j.can('cancel')) OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: BorderSide(color: JR.danger)), onPressed: _busy ? null : _cancelSheet, icon: const Icon(Icons.close), label: Text(t('act.cancel_job'))),
+            if (j.can('report_no_work') && !_noWorkSent) ...[const SizedBox(height: 10), OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: JR.gold, side: BorderSide(color: JR.gold)), onPressed: _busy ? null : _problem, icon: const Icon(Icons.warning_amber), label: Text(t('act.report_problem')))],
             if (j.can('accept')) ...[const SizedBox(height: 10), Row(children: [Expanded(flex: 2, child: FilledButton(onPressed: () => context.go('/offers'), child: Text(t('act.accept'))))])],
             const SizedBox(height: 24),
           ]);
@@ -270,7 +270,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         onSelected: (v) { if (v == 'info') { Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => JobDetailScreen(offerId: widget.offerId, details: true))); } else if (v == 'end') { endRouteFlow(context, ref, widget.offerId); } },
         itemBuilder: (c) => [
           PopupMenuItem(key: const Key('job-info'), value: 'info', child: Text(c.tr('drs.job_details'))),
-          if (j.can('end_route')) PopupMenuItem(key: const Key('end-route'), value: 'end', child: Text(c.tr('ms.end_route'), style: const TextStyle(color: JR.danger))),
+          if (j.can('end_route')) PopupMenuItem(key: const Key('end-route'), value: 'end', child: Text(c.tr('ms.end_route'), style: TextStyle(color: JR.danger))),
         ],
       );
 
@@ -290,11 +290,12 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
       if (j.loading.isScan) return t('fma.hint_planning'); // scanning is done and the route is being prepared: never "waiting for the warehouse to record the loading"
       return t('ms.hint_wait_handover');
     }
-    return t(j.loadingDisputed ? 'job.hint_attendance_disputed' : 'job.hint_${j.status}${j.awaitingLoadingAck ? '_ack' : ''}');
+    final hint = j.loadingDisputed ? 'job.hint_attendance_disputed' : 'job.hint_${j.status}${j.awaitingLoadingAck ? '_ack' : ''}';
+    return t.knows(hint) ? t(hint) : t.val('jobstatus', j.status); // a status of a newer server: its name, never a raw key
   }
 
-  Widget _addr(String label, String? v) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(color: JR.muted, fontSize: 12)), Text(v ?? '—', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))]);
+  Widget _addr(String label, String? v) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: TextStyle(color: JR.muted, fontSize: 12)), Text(v ?? '—', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))]);
   /// Label left, value right. The label may take at most ~55% of the row and wraps beyond that, so a long label ("Handed over to you") at a large
   /// text size on a narrow phone can never push the row wider than the card; short labels keep their natural width and the value gets the rest.
-  Widget _kv(String k, String v, {Color? color}) => Padding(padding: const EdgeInsets.symmetric(vertical: 7), child: LayoutBuilder(builder: (context, c) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.start, children: [ConstrainedBox(constraints: BoxConstraints(maxWidth: c.maxWidth * 0.55), child: Text(k, style: const TextStyle(color: JR.muted))), const SizedBox(width: 16), Flexible(child: Text(v, textAlign: TextAlign.end, textDirection: TextDirection.ltr, style: TextStyle(fontWeight: FontWeight.w700, color: color)))])));
+  Widget _kv(String k, String v, {Color? color}) => Padding(padding: const EdgeInsets.symmetric(vertical: 7), child: LayoutBuilder(builder: (context, c) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.start, children: [ConstrainedBox(constraints: BoxConstraints(maxWidth: c.maxWidth * 0.55), child: Text(k, style: TextStyle(color: JR.muted))), const SizedBox(width: 16), Flexible(child: Text(v, textAlign: TextAlign.end, textDirection: TextDirection.ltr, style: TextStyle(fontWeight: FontWeight.w700, color: color)))])));
 }

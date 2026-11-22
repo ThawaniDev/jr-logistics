@@ -39,7 +39,7 @@ class RouteMapButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => OutlinedButton.icon(
         key: const Key('route-map-button'), onPressed: () => context.push('/job/$offerId/map'),
-        icon: const Icon(Icons.map_outlined, color: JR.cyan), label: Text(context.tr('fmb.map_btn'), textAlign: TextAlign.center),
+        icon: Icon(Icons.map_outlined, color: JR.cyan), label: Text(context.tr('fmb.map_btn'), textAlign: TextAlign.center),
       );
 }
 
@@ -156,7 +156,7 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
         key: const Key('route-map'), mapController: _map,
         options: MapOptions(
           initialCenter: fit == null ? _defaultCenter : _ll(m.fitPoints.first), initialZoom: 12, initialCameraFit: fit,
-          minZoom: 3, maxZoom: 19, backgroundColor: const Color(0xFFE5E3DF),
+          minZoom: 3, maxZoom: 19, backgroundColor: JR.mapBg,
           interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
           onMapReady: () { if (!_ready) { _ready = true; } },
           onPositionChanged: (_, hasGesture) { if (hasGesture) _userMoved = true; },
@@ -164,11 +164,11 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
         children: [
           TileLayer(urlTemplate: mapTileUrl, userAgentPackageName: mapUserAgentPackage, tileProvider: tiles),
           PolylineLayer(polylines: [
-            for (final l in m.lines) Polyline(points: [for (final p in l.points) _ll(p)], strokeWidth: 5, color: l.color, borderStrokeWidth: 1.5, borderColor: const Color(0xCC0B132B), pattern: l.dashed ? StrokePattern.dashed(segments: const [10, 8]) : const StrokePattern.solid()),
+            for (final l in m.lines) Polyline(points: [for (final p in l.points) _ll(p)], strokeWidth: 5, color: l.color, borderStrokeWidth: 1.5, borderColor: JR.mapCasing, pattern: l.dashed ? StrokePattern.dashed(segments: const [10, 8]) : const StrokePattern.solid()),
           ]),
           MarkerLayer(markers: [
-            if (m.origin != null) Marker(point: _ll(m.origin!), width: 32, height: 32, rotate: true, child: Semantics(label: t('fmb.map_origin'), child: Container(key: const Key('map-origin'), decoration: BoxDecoration(color: JR.bg, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.warehouse_outlined, size: 16, color: JR.accent)))),
-            if (_me != null) Marker(point: _ll(_me!), width: 28, height: 28, rotate: true, child: Semantics(label: t('fmb.map_you'), child: Container(key: const Key('map-me'), decoration: BoxDecoration(color: const Color(0xFF2563EB), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3), boxShadow: const [BoxShadow(color: Color(0x662563EB), blurRadius: 8, spreadRadius: 3)])))),
+            if (m.origin != null) Marker(point: _ll(m.origin!), width: 32, height: 32, rotate: true, child: Semantics(label: t('fmb.map_origin'), child: Container(key: const Key('map-origin'), decoration: BoxDecoration(color: JR.mapPin, shape: BoxShape.circle, border: Border.all(color: JR.mapRing, width: 2)), child: Icon(Icons.warehouse_outlined, size: 16, color: JR.mapAccent)))),
+            if (_me != null) Marker(point: _ll(_me!), width: 28, height: 28, rotate: true, child: Semantics(label: t('fmb.map_you'), child: Container(key: const Key('map-me'), decoration: BoxDecoration(color: JR.mapYou, shape: BoxShape.circle, border: Border.all(color: JR.mapRing, width: 3), boxShadow: [BoxShadow(color: JR.mapYouGlow, blurRadius: 8, spreadRadius: 3)])))),
             for (final s in order) Marker(
               point: _ll(s.point!), width: 48, height: 48, rotate: true,
               child: GestureDetector(
@@ -181,18 +181,18 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
       ),
       PositionedDirectional(start: 8, bottom: 6, child: GestureDetector(
         key: const Key('map-attribution'), onTap: () => ref.read(linkOpenerProvider).open(_osmCopyright),
-        child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(6)), child: Text(t('fmb.map_osm'), textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 10.5, color: Color(0xFF1F2937)))),
+        child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: JR.mapAttrBg, borderRadius: BorderRadius.circular(6)), child: Text(t('fmb.map_osm'), textDirection: TextDirection.ltr, style: TextStyle(fontSize: 10.5, color: JR.mapAttrText))),
       )),
       PositionedDirectional(end: 10, top: 10, child: Column(children: [
         _MapButton(key: const Key('map-locate'), icon: Icons.my_location, tooltip: t('fmb.map_locate'), busy: _locating, onPressed: _locate),
         const SizedBox(height: 8),
         _MapButton(key: const Key('map-fit'), icon: Icons.zoom_out_map, tooltip: t('fmb.map_fit'), onPressed: () => _fit(m)),
       ])),
-      if (geo.isLoading) const Positioned(left: 0, right: 0, top: 0, child: LinearProgressIndicator(key: Key('map-geo-loading'), minHeight: 3, color: JR.accent, backgroundColor: Colors.transparent)),
+      if (geo.isLoading) Positioned(left: 0, right: 0, top: 0, child: LinearProgressIndicator(key: Key('map-geo-loading'), minHeight: 3, color: JR.accent, backgroundColor: Colors.transparent)),
       if (geo.hasError && !geo.isLoading) Positioned(left: 8, right: 64, top: 8, child: Material(
         key: const Key('map-geo-error'), color: JR.bg.withValues(alpha: 0.92), borderRadius: BorderRadius.circular(10),
         child: Padding(padding: const EdgeInsetsDirectional.fromSTEB(10, 4, 4, 4), child: Row(children: [
-          const Icon(Icons.sync_problem_outlined, size: 18, color: JR.gold), const SizedBox(width: 8),
+          Icon(Icons.sync_problem_outlined, size: 18, color: JR.gold), const SizedBox(width: 8),
           Expanded(child: Text(t('fmb.map_geo_failed'), style: const TextStyle(fontSize: 12.5, height: 1.25))),
           TextButton(style: TextButton.styleFrom(minimumSize: const Size(56, 40), padding: const EdgeInsets.symmetric(horizontal: 8)), onPressed: () => ref.invalidate(routeGeometryProvider(widget.offerId)), child: Text(t('common.retry'))),
         ])),
@@ -209,8 +209,8 @@ class _MapButton extends StatelessWidget {
   final bool busy;
   @override
   Widget build(BuildContext context) => Material(
-        color: JR.bg.withValues(alpha: 0.92), shape: const CircleBorder(side: BorderSide(color: JR.line)), elevation: 2,
-        child: IconButton(tooltip: tooltip, onPressed: busy ? null : onPressed, constraints: const BoxConstraints(minWidth: 48, minHeight: 48), icon: busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accent)) : Icon(icon, color: JR.accent)),
+        color: JR.bg.withValues(alpha: 0.92), shape: CircleBorder(side: BorderSide(color: JR.line)), elevation: 2,
+        child: IconButton(tooltip: tooltip, onPressed: busy ? null : onPressed, constraints: const BoxConstraints(minWidth: 48, minHeight: 48), icon: busy ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accent)) : Icon(icon, color: JR.accent)),
       );
 }
 
@@ -227,9 +227,9 @@ class StopDot extends StatelessWidget {
     final d = big ? size + 8 : size;
     return Container(
       width: d, height: d, alignment: Alignment.center,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: Border.all(color: big ? Colors.white : JR.bg, width: big ? 3 : 2), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: big ? 8 : 4)]),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: Border.all(color: big ? JR.mapRing : JR.ink, width: big ? 3 : 2), boxShadow: [BoxShadow(color: JR.mapShadow, blurRadius: big ? 8 : 4)]),
       // Letters are Latin even in Arabic/Urdu UIs; fixed size so a large system font cannot push them out of the circle.
-      child: Text(label, textDirection: TextDirection.ltr, textScaler: TextScaler.noScaling, style: TextStyle(color: JR.accentInk, fontWeight: FontWeight.w800, fontSize: label.length > 2 ? 11 : 15, height: 1.1)),
+      child: Text(label, textDirection: TextDirection.ltr, textScaler: TextScaler.noScaling, style: TextStyle(color: JR.ink, fontWeight: FontWeight.w800, fontSize: label.length > 2 ? 11 : 15, height: 1.1)),
     );
   }
 }
@@ -264,10 +264,10 @@ class _StopList extends ConsumerWidget {
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (noMap) Padding(padding: const EdgeInsets.only(bottom: 10), child: Banner2(key: const Key('map-empty'), tone: Tone.warn, text: t('fmb.map_no_coords'))),
             Row(children: [
-              const Icon(Icons.alt_route, size: 20, color: JR.cyan), const SizedBox(width: 8),
+              Icon(Icons.alt_route, size: 20, color: JR.cyan), const SizedBox(width: 8),
               Expanded(child: Text(summary, key: const Key('map-summary'), style: const TextStyle(fontWeight: FontWeight.w800, height: 1.3))),
             ]),
-            if (model.allEstimates) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('fmb.map_estimate'), key: const Key('map-estimate'), style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35))),
+            if (model.allEstimates) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('fmb.map_estimate'), key: const Key('map-estimate'), style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35))),
           ]);
         }
         final s = model.stops[i - 1];
@@ -301,9 +301,9 @@ class _StopRow extends StatelessWidget {
               Flexible(child: Text(s.code.isEmpty ? t('um.parcel_n', {'n': s.seq}) : s.code, textDirection: TextDirection.ltr, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800))),
               if (s.current) ...[const SizedBox(width: 8), Flexible(child: Pill(t('fmb.map_current'), tone: Tone.success))],
             ]),
-            if (address.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
+            if (address.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
             if (!stop.plotted) Padding(padding: const EdgeInsets.only(top: 4), child: Align(alignment: AlignmentDirectional.centerStart, child: Pill(t('rm.no_location'), key: Key('map-unlocated-${s.id}'), tone: Tone.warn)))
-            else if (leg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(leg, key: Key('map-leg-${s.id}'), style: const TextStyle(color: JR.cyan, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3))),
+            else if (leg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(leg, key: Key('map-leg-${s.id}'), style: TextStyle(color: JR.cyan, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3))),
           ])),
           const SizedBox(width: 6),
           IconButton.filled(
@@ -368,7 +368,7 @@ class _StopSheetState extends ConsumerState<StopSheet> {
     final cod = stopCodCents(stop);
     final address = [stop.address, if (stop.city != null && stop.city!.isNotEmpty) cityLabel(context, stop.city)].where((e) => e.isNotEmpty).join(' · ');
     final leg = _legText(t, ms);
-    Widget quick(Key k, IconData i, String label, VoidCallback f, {Color? color}) => Expanded(child: Material(key: k, color: JR.bg2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: JR.line)), child: InkWell(
+    Widget quick(Key k, IconData i, String label, VoidCallback f, {Color? color}) => Expanded(child: Material(key: k, color: JR.bg2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: JR.line)), child: InkWell(
           customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), onTap: _busy ? null : f,
           child: Padding(padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(i, color: color ?? JR.cyan), const SizedBox(height: 4), Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.2))])),
         )));
@@ -386,7 +386,7 @@ class _StopSheetState extends ConsumerState<StopSheet> {
           Text(stop.code.isEmpty ? t('um.parcel_n', {'n': stop.seq}) : stop.code, key: const Key('sheet-code'), textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Wrap(spacing: 6, runSpacing: 6, children: [
-            Pill(t.has('shipstatus.${stop.status}') ? t('shipstatus.${stop.status}') : stop.status, key: const Key('sheet-status'), tone: Tone.neutral),
+            Pill(t.has('shipstatus.${stop.status}') ? t.val('shipstatus', stop.status) : stop.status, key: const Key('sheet-status'), tone: Tone.neutral),
             if (stop.current) Pill(t('fmb.map_current'), tone: Tone.success),
             if (stop.arrived) Pill(t('fmb.map_arrived'), key: const Key('sheet-arrived'), tone: Tone.info),
             if (!stop.located) Pill(t('rm.no_location'), tone: Tone.warn),
@@ -401,10 +401,10 @@ class _StopSheetState extends ConsumerState<StopSheet> {
         key: const Key('sheet-cod'), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(color: JR.gold.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10), border: Border.all(color: JR.gold.withValues(alpha: 0.4))),
         child: Row(children: [
-          const Icon(Icons.payments_outlined, color: JR.gold, size: 20), const SizedBox(width: 8),
+          Icon(Icons.payments_outlined, color: JR.gold, size: 20), const SizedBox(width: 8),
           Expanded(child: Text(t('fmb.map_cash_due'), style: const TextStyle(fontWeight: FontWeight.w600))),
           const SizedBox(width: 8),
-          Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(cod, lang), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.gold, fontWeight: FontWeight.w800, fontSize: 17)))),
+          Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(cod, lang), textDirection: TextDirection.ltr, style: TextStyle(color: JR.gold, fontWeight: FontWeight.w800, fontSize: 17)))),
         ]),
       )),
       if (stop.contents != null && stop.contents!.isNotEmpty) _info(Icons.inventory_2_outlined, '${t('fmb.map_contents')}: ${stop.contents}', key: const Key('sheet-contents')),
@@ -413,7 +413,7 @@ class _StopSheetState extends ConsumerState<StopSheet> {
       if (quickTiles.isNotEmpty) ...[const SizedBox(height: 14), IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final (i, w) in quickTiles.indexed) ...[if (i > 0) const SizedBox(width: 8), w]]))],
       if (allow.arrive) ...[const SizedBox(height: 14), FilledButton.icon(key: const Key('sheet-arrive'), onPressed: _busy ? null : () => _run((a, j, s) => a.arrive(context, ref, j, s)), icon: busyIcon(_busy, Icons.my_location), label: Text(t('act.checkin')))],
       if (allow.deliver) ...[const SizedBox(height: 14), FilledButton.icon(key: const Key('sheet-deliver'), onPressed: _busy ? null : () => _run((a, j, s) => a.deliver(context, ref, j, s)), icon: busyIcon(_busy, Icons.check), label: Text(t('fmb.map_deliver')))],
-      if (allow.cantDeliver) ...[const SizedBox(height: 10), OutlinedButton.icon(key: const Key('sheet-cant'), style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: const BorderSide(color: JR.danger), minimumSize: const Size.fromHeight(50)), onPressed: _busy ? null : () => _run((a, j, s) => a.cantDeliver(context, ref, j, s)), icon: const Icon(Icons.report_gmailerrorred), label: Text(t('ms.cant_deliver')))],
+      if (allow.cantDeliver) ...[const SizedBox(height: 10), OutlinedButton.icon(key: const Key('sheet-cant'), style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: BorderSide(color: JR.danger), minimumSize: const Size.fromHeight(50)), onPressed: _busy ? null : () => _run((a, j, s) => a.cantDeliver(context, ref, j, s)), icon: const Icon(Icons.report_gmailerrorred), label: Text(t('ms.cant_deliver')))],
       if (allow.postpone) ...[const SizedBox(height: 8), OutlinedButton.icon(key: const Key('sheet-postpone'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)), onPressed: _busy ? null : () => _run((a, j, s) => a.postpone(context, ref, j, s)), icon: const Icon(Icons.schedule), label: Text(t('ms.postpone')))],
       if (allow.makeNext) ...[const SizedBox(height: 10), OutlinedButton.icon(key: const Key('sheet-make-next'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)), onPressed: _busy ? null : () => _run((a, j, s) => a.makeNext(context, ref, j, s)), icon: const Icon(Icons.vertical_align_top), label: Text(t('fmb.map_make_next'), textAlign: TextAlign.center))],
     ])));

@@ -12,8 +12,9 @@ services:
     ports: ["3000:3000"]
     environment:
       DATABASE_URL: postgres://jr:jr_dev_password@db:5432/jr_logistics
+      # The app refuses to start with a missing/short/placeholder AUTH_SECRET or CRON_SECRET (16+ random characters; `openssl rand -hex 32`).
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (32+ random chars)}
-      CRON_SECRET: ${CRON_SECRET:?set CRON_SECRET}
+      CRON_SECRET: ${CRON_SECRET:?set CRON_SECRET (16+ random chars)}
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@jrlogistics.local}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?set SUPER_ADMIN_PASSWORD}
       APP_URL: ${APP_URL:-http://localhost:3000}
@@ -21,6 +22,9 @@ services:
       INTERNAL_SCHEDULER: "true"
       # Number of reverse proxies in front of the app (the client IP is read from the right of X-Forwarded-For). "none" if exposed directly.
       TRUSTED_PROXY: ${TRUSTED_PROXY:-1}
+      # Encrypts warehouse-system credentials at rest (REQUIRED for the integrations feature; changing it makes stored keys unreadable).
+      INTEGRATIONS_SECRET: ${INTEGRATIONS_SECRET:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       STORAGE_DRIVER: local
       UPLOAD_DIR: /data/uploads
       # Uncomment ONLY for a demo/staging stack (exposes OTP codes and demo accounts):

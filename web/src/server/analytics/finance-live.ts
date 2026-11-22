@@ -10,6 +10,11 @@ import { riyadhDay } from "./time";
 const read = (r: Row | undefined, m: Record<string, Metric>): Record<string, Pair> => Object.fromEntries(Object.keys(m).map((k) => [k, twinRead(r, k)]));
 
 /**
+ * A reserve released because the request was CANCELLED: the application writes the key `cancel-release:<request id>`; the demo-history seeder prefixes everything it writes with `hist:`
+ * (so `--reset` can find it) — both are the same event. The other release kinds (`expire-release`, `partial-release`, `allornothing-release`, payouts) are not cancellations.
+ */
+export const CANCEL_KEY = sql`(ledger_entries.idempotency_key like 'cancel-%' or ledger_entries.idempotency_key like 'hist:cancel-%')`;
+/**
  * Wallet movements of the period: top-ups, manual adjustments (credit / debit, user wallets only) and the money returned to businesses when a request ended without being fully
  * used — cancellations apart from expiry, partial release and completion. Top-ups and adjustments belong to a wallet, so only the company filter narrows them; refunds follow the request.
  */
@@ -22,11 +27,15 @@ export async function ledgerFacts(f: ResolvedFilters) {
     topup_n: (w) => sql`count(*) filter (where ${kind("topup")} and ${owner} and ${w("ledger_entries.created_at")})::int`,
     adj_in: (w) => sql`coalesce(sum(${delta}) filter (where ${kind("adjustment")} and wa.kind = 'user' and ${delta} > 0 and ${owner} and ${w("ledger_entries.created_at")}), 0)::float8`,
     adj_out: (w) => sql`coalesce(-sum(${delta}) filter (where ${kind("adjustment")} and wa.kind = 'user' and ${delta} < 0 and ${owner} and ${w("ledger_entries.created_at")}), 0)::float8`,
-    cancel: (w) => sql`coalesce(sum(${delta}) filter (where ${kind("release_reserve")} and ledger_entries.settlement_id is null and (ledger_entries.idempotency_key like 'cancel-%') and ${scope(f, "requests")} and ${w("ledger_entries.created_at")}), 0)::float8`,
-    cancel_n: (w) => sql`count(*) filter (where ${kind("release_reserve")} and ledger_entries.settlement_id is null and (ledger_entries.idempotency_key like 'cancel-%') and ${scope(f, "requests")} and ${w("ledger_entries.created_at")})::int`,
+    cancel: (w) => sql`coalesce(sum(${delta}) filter (where ${kind("release_reserve")} and ledger_entries.settlement_id is null and ${CANCEL_KEY} and ${scope(f, "requests")} and ${w("ledger_entries.created_at")}), 0)::float8`,
+    cancel_n: (w) => sql`count(*) filter (where ${kind("release_reserve")} and ledger_entries.settlement_id is null and ${CANCEL_KEY} and ${scope(f, "requests")} and ${w("ledger_entries.created_at")})::int`,
+    // Driverless rentals have no settlement and no provider cost: fulfilling one moves the whole VAT-inclusive charge to the PLATFORM wallet as a `platform_fee` entry on a request whose
+    // service is car_without_driver (classified by the request's service and the ledger kind, never by key text). Not part of Billed / Platform revenue (those are settlement based).
+    rental: (w) => sql`coalesce(sum(${delta}) filter (where ${kind("platform_fee")} and wa.kind = 'platform' and requests.service = 'car_without_driver' and ${scope(f, "requests")} and ${w("ledger_entries.created_at")}), 0)::float8`,
+    rental_n: (w) => sql`count(*) filter (where ${kind("platform_fee")} and wa.kind = 'platform' and requests.service = 'car_without_driver' and ${scope(f, "requests")} and ${w("ledger_entries.created_at")})::int`,
   };
   const [r] = await rows<Row>(sql`select ${twinSelect(f, m)} from ledger_entries join wallet_accounts wa on wa.id = ledger_entries.account_id left join requests on requests.id = ledger_entries.request_id
-    where ledger_entries.kind in ('topup','adjustment','release_reserve') and ${anyWindow(f, "ledger_entries.created_at")}`);
+    where ledger_entries.kind in ('topup','adjustment','release_reserve','platform_fee') and ${anyWindow(f, "ledger_entries.created_at")}`);
   return read(r, m);
 }
 export type LedgerFacts = Awaited<ReturnType<typeof ledgerFacts>>;

@@ -263,7 +263,7 @@ describe("CSV export", () => {
     const { admin, alpha } = await world();
     const viewer = await mkStaff(["reports.view"]), exporter = await mkStaff(["reports.view", "reports.export"]);
     expect((await get(viewer, "/admin/analytics/overview/table/requests?format=csv")).status).toBe(403);
-    const r = await get(exporter, "/admin/analytics/overview/table/requests?format=csv&pageSize=1");
+    const r = await get(exporter, "/admin/analytics/overview/table/requests?format=csv&headers=keys&pageSize=1");
     expect(r.status).toBe(200); expect(r.headers.get("content-type")).toContain("text/csv"); expect(r.headers.get("content-disposition")).toContain("overview-requests.csv");
     expect(r.text.startsWith("﻿")).toBe(true);
     const lines = r.text.slice(1).split("\n");

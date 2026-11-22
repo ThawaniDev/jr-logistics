@@ -107,7 +107,7 @@ export function simulateRequest(ctx: Ctx, plan: RequestPlan, rng: Rng): void {
             const a = opsActor();
             R.ev(tM, "driver_assigned", a, { offer: O, neu: "offered", payload: { source: "manual", reason: "No driver accepted in time" } });
             R.on(tM, () => ctx.sink.add("auditLogs", { id: ctx.ids.next("audit"), actorId: a.id, actorRole: a.role, action: "request.manual_assign", entity: "request", entityId: plan.id, diff: { driverId: cand.id, reason: "No driver accepted in time" } as never, ip: null, correlationId: null, createdAt: new Date(tM) }));
-            R.notify(tM, cand.id, "offer_new", { requestId: plan.id, ref: plan.ref, offerId: O.id });
+            R.notify(tM, cand.id, "offer_new", { requestId: plan.id, ref: plan.ref, offerId: O.id, ...(plan.service === "delivery_driver" ? { parcels: plan.perDriver } : {}), pickupCity: plan.pickupCity, deliveryCity: plan.deliveryCity, earningCents: O.officeId ? null : plan.rule.providerCostCents * (plan.service === "delivery_driver" ? plan.perDriver ?? 1 : plan.durationDays) });
           }
           if (rng.chance(0.88)) { const tA = tM + (manual ? rng.int(2, 25) * MIN : 20_000); if (tA < deadline && tA < plan.startsAt) register(O, tA, 1); else O.tl.at(tM + 120 * MIN, { status: "expired" }); }
           else { O.tl.at(tM + rng.int(2, 30) * MIN, { status: "rejected" }); }

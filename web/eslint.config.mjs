@@ -5,7 +5,7 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", ".next-e2e/**", ".next-live/**", "out/**", "build/**", "next-env.d.ts", "drizzle/**", "playwright-report/**", "test-results/**", "coverage/**"]),
+  globalIgnores([".next*/**", "out/**", "build/**", "next-env.d.ts", "drizzle/**", "playwright-report/**", "test-results/**", "coverage/**"]),
   {
     // API responses reach UI components and tests as untyped JSON by design (the Flutter app consumes the same contract);
     // the domain layer in src/server/*.ts stays strictly typed.

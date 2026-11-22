@@ -59,7 +59,7 @@ class ShipmentCard extends StatelessWidget {
     final dim = s.resolved;
     final date = shipDate(s.createdAt, lang);
     final cod = s.codCents;
-    const labelStyle = TextStyle(color: JR.muted, fontSize: 13.5, height: 1.3);
+    final labelStyle = TextStyle(color: JR.muted, fontSize: 13.5, height: 1.3);
     const val = TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3);
     // "Label: value" as ONE text: it flows and wraps like a sentence (long names and addresses never overflow, any language, any text size).
     Widget line(String label, String value, {Key? key, int maxLines = 1}) => Padding(padding: const EdgeInsets.only(top: 4), child: Text.rich(
@@ -71,7 +71,7 @@ class ShipmentCard extends StatelessWidget {
       if (s.status == 'loaded' && s.arrived) Pill(t('fmb.map_arrived'), tone: Tone.info),
     ];
     // Tags on the start side, the date with its clock on the end side (alone, it still sits at the end); at a large text size they stack and the date is cut, never the card.
-    final dateRow = date.isEmpty ? null : Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.schedule, size: 15, color: JR.muted), const SizedBox(width: 4), Flexible(child: Text(date, key: Key('ship-date-$_id'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JR.muted, fontSize: 12.5)))]);
+    final dateRow = date.isEmpty ? null : Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.schedule, size: 15, color: JR.muted), const SizedBox(width: 4), Flexible(child: Text(date, key: Key('ship-date-$_id'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: JR.muted, fontSize: 12.5)))]);
     final Widget footer = pills.isEmpty
         ? (dateRow == null ? const SizedBox.shrink() : Align(alignment: AlignmentDirectional.centerEnd, child: dateRow))
         : Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 4, children: [Wrap(spacing: 6, runSpacing: 4, children: pills), ?dateRow]);
@@ -80,7 +80,7 @@ class ShipmentCard extends StatelessWidget {
       decoration: BoxDecoration(color: JR.card, borderRadius: BorderRadius.circular(JR.radius), border: Border.all(color: isNext ? JR.accent : JR.line, width: isNext ? 1.5 : 1)),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Column(children: [
-          Container(width: 44, height: 44, decoration: BoxDecoration(color: JR.bg2, borderRadius: BorderRadius.circular(12), border: Border.all(color: JR.line)), child: const Icon(Icons.inventory_2_outlined, color: JR.cyan, size: 24)),
+          Container(width: 44, height: 44, decoration: BoxDecoration(color: JR.bg2, borderRadius: BorderRadius.circular(12), border: Border.all(color: JR.line)), child: Icon(Icons.inventory_2_outlined, color: JR.cyan, size: 24)),
           const SizedBox(height: 10),
           RoundAction(key: Key('ship-call-$_id'), icon: Icons.call, tooltip: '${t('m.call')} ${s.recipientName ?? ''}'.trim(), color: JR.cyan, onTap: onCall),
           const SizedBox(height: 8),
@@ -102,7 +102,7 @@ class ShipmentCard extends StatelessWidget {
             Text('${t('drs.l_cod')}:', style: labelStyle),
             // The cash to collect, highlighted; scales down instead of overflowing when the amount is long.
             Container(key: Key('ship-cod-$_id'), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: cod > 0 ? BoxDecoration(color: JR.gold.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(8), border: Border.all(color: JR.gold.withValues(alpha: 0.5))) : null,
-                child: FittedBox(fit: BoxFit.scaleDown, child: Text(fmtMoney(cod, lang), textDirection: TextDirection.ltr, style: cod > 0 ? const TextStyle(color: JR.gold, fontSize: 14.5, fontWeight: FontWeight.w800, height: 1.25) : const TextStyle(color: JR.muted, fontSize: 14, height: 1.3)))),
+                child: FittedBox(fit: BoxFit.scaleDown, child: Text(fmtMoney(cod, lang), textDirection: TextDirection.ltr, style: cod > 0 ? TextStyle(color: JR.gold, fontSize: 14.5, fontWeight: FontWeight.w800, height: 1.25) : TextStyle(color: JR.muted, fontSize: 14, height: 1.3)))),
           ])),
           Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: 16, runSpacing: 2, children: [
             Text.rich(TextSpan(children: [TextSpan(text: '${t('drs.l_payment')}: ', style: labelStyle), TextSpan(text: t(s.paymentMode == 'cod' ? 'drs.pay_cod' : 'drs.pay_prepaid'), style: val)]), key: Key('ship-payment-$_id')),

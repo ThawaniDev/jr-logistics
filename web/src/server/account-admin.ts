@@ -20,7 +20,7 @@ import { can, requirePerm } from "./auth/permissions";
 import { hit } from "./auth/ratelimit";
 import { activeSmsProvider } from "./auth/otp";
 import { generatePassword, hashPassword, passwordProblem } from "./auth/password";
-import { normalizeUsername, uniqueUsername, usernameFromPhone, usernameProblem, usernameTaken } from "./auth/username";
+import { maskPhoneUsername, normalizeUsername, uniqueUsername, usernameFromPhone, usernameProblem, usernameTaken } from "./auth/username";
 import { revokeAllSessions } from "./auth/session";
 import { setWarehouseLocation } from "./warehouse";
 import { profileOf } from "./accounts";
@@ -104,7 +104,7 @@ export async function viewAccount(staff: User, u: User) {
   const sens = can(staff, "drivers.sensitive");
   const hide = ["nationalId", "iban", "bankName", ...(u.role === "business" ? [] : ["taxNumber"])]; // a company's VAT number is not personal or payout data
   const profile = raw && isAccountKind(u.role) && !sens ? Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, hide.includes(k) ? null : v])) : raw;
-  return { user: { id: u.id, role: u.role, name: u.name, username: u.username, phone: sens ? u.phone : maskPhone(u.phone), email: u.email, city: u.city, language: u.language, status: u.status, source: u.source, createdBy: u.createdBy, createdAt: u.createdAt }, profile };
+  return { user: { id: u.id, role: u.role, name: u.name, username: sens ? u.username : maskPhoneUsername(u.username), phone: sens ? u.phone : maskPhone(u.phone), email: u.email, city: u.city, language: u.language, status: u.status, source: u.source, createdBy: u.createdBy, createdAt: u.createdAt }, profile };
 }
 
 export async function createAccount(staff: User, input: CreateInput, meta?: Meta) {
@@ -205,7 +205,7 @@ export async function accountForEdit(staff: User, id: string) {
   const fields: Record<string, unknown> = { name: u.name, email: u.email, city: u.city, language: u.language, ...Object.fromEntries(Object.entries(flat.fields).map(([k, v]) => [k, hidden.has(k) ? null : v])) };
   let office: { id: string; name: string } | null = null;
   if (kind === "driver" && flat.officeId) { const [o] = await db.select({ name: officeProfiles.officeName }).from(officeProfiles).where(eq(officeProfiles.userId, flat.officeId)); office = { id: flat.officeId, name: o?.name ?? "—" }; }
-  return { id: u.id, kind, username: u.username, status: u.status, source: u.source, createdAt: u.createdAt, fields, phone: sens ? u.phone : null, phoneMasked: maskPhone(u.phone), sensitiveAllowed: sens, verificationStatus: flat.verification, office };
+  return { id: u.id, kind, username: sens ? u.username : maskPhoneUsername(u.username), status: u.status, source: u.source, createdAt: u.createdAt, fields, phone: sens ? u.phone : null, phoneMasked: maskPhone(u.phone), sensitiveAllowed: sens, verificationStatus: flat.verification, office };
 }
 async function flatProfile(u: User): Promise<{ fields: Record<string, unknown>; verification: string; officeId?: string | null }> {
   if (u.role === "business") {

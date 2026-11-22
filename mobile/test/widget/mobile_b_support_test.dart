@@ -363,7 +363,8 @@ void main() {
       ex.errorOnNext = ApiException('NETWORK', 'x');
       await t.tap(find.byKey(const Key('reply-send')));
       await settleB(t);
-      expect(find.text('No internet connection. Check your signal and try again.'), findsOneWidget);
+      // a lost answer may mean the reply arrived: the text says so (and the thread was re-read) instead of inviting a blind retry that would post it twice
+      expect(find.text("No connection. We couldn't confirm that it went through. Check your signal and look at the list before trying again."), findsOneWidget);
       expect(t.widget<TextField>(find.byKey(const Key('reply-body'))).controller!.text, 'Hello there');
     });
 

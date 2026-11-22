@@ -14,12 +14,16 @@ import 'data/token_store.dart';
 Duration? appRetry(int retryCount, Object error) => error is ApiException && error.isTransient && retryCount < 1 ? const Duration(seconds: 1) : null;
 
 final tokenStoreProvider = Provider<TokenStore>((_) => SecureTokenStore());
+/// Written to shared_preferences on the first launch of an install. iOS keeps keychain items when the app is deleted but wipes its preferences, so a missing
+/// marker means "fresh install": a session token left over from an earlier install is dropped instead of signing the next owner of the phone in.
+const installMarkerKey = 'install_marker';
 final prefsProvider = Provider<SharedPreferences>((_) => throw UnimplementedError('override in main'));
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient(
       baseUrl: AppConfig.baseUrl,
       tokens: ref.watch(tokenStoreProvider),
       onUnauthorized: () => ref.read(authProvider.notifier).expire(),
+      onPasswordChange: () => ref.read(authProvider.notifier).requirePasswordChange(),
       onConnectivity: (ok) => ref.read(onlineProvider.notifier).set(ok),
     ));
 final apiProvider = Provider<DriverApi>((ref) => DriverApi(ref.watch(apiClientProvider)));
@@ -63,6 +67,12 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
   @override
   Future<AuthState> build() async {
     final store = ref.read(tokenStoreProvider);
+    final prefs = ref.read(prefsProvider);
+    if (prefs.getString(installMarkerKey) == null) {
+      await store.clear();
+      await prefs.setString(installMarkerKey, '1');
+      return const AuthState();
+    }
     if (await store.read() == null) return const AuthState();
     try {
       final me = await ref.read(apiProvider).me();
@@ -86,8 +96,12 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
   }
 
   Future<void> signOut() async {
-    // Best effort with a short leash: a driver with no signal must still be able to sign out immediately.
-    await ref.read(apiProvider).logout().timeout(const Duration(seconds: 4), onTimeout: () {});
+    // Best effort with short leashes: a driver with no signal must still be able to sign out at once.
+    final api = ref.read(apiProvider);
+    // A driver who signs out is no longer reachable on this phone: take him offline and drop his last location first (decision D2), while the session is still valid.
+    // (A session the server already ended — the 401 path, see [expire] — cannot do this: there is no token left to ask with.)
+    await api.goOffline().timeout(const Duration(seconds: 3), onTimeout: () {});
+    await api.logout().timeout(const Duration(seconds: 4), onTimeout: () {});
     await ref.read(tokenStoreProvider).clear();
     state = const AsyncData(AuthState());
   }
@@ -98,7 +112,17 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     state = AsyncData(AuthState(user: {...?cur?.user, ...user}));
   }
 
+  /// The server wants a new password before it answers anything else (`403 PASSWORD_CHANGE_REQUIRED`): the router then shows "choose a new password".
+  void requirePasswordChange() {
+    final cur = state.value;
+    if (cur == null || !cur.signedIn || cur.user?['mustChangePassword'] == true) return;
+    updateUser({'mustChangePassword': true});
+  }
+
   void expire() {
+    // Only a signed-in session can expire: a straggler request that answers 401 after the driver signed out on purpose must not turn the sign-in
+    // screen into "your session expired".
+    if (state.value?.signedIn != true) return;
     ref.read(tokenStoreProvider).clear();
     state = const AsyncData(AuthState(expired: true));
   }
@@ -110,7 +134,40 @@ final authProvider = AsyncNotifierProvider<AuthNotifier, AuthState>(AuthNotifier
 final overviewProvider = FutureProvider.autoDispose<Overview>((ref) => ref.watch(apiProvider).overview());
 final offersProvider = FutureProvider.autoDispose<List<Job>>((ref) => ref.watch(apiProvider).offers());
 final activeJobsProvider = FutureProvider.autoDispose<List<Job>>((ref) => ref.watch(apiProvider).jobs(active: true));
-final historyJobsProvider = FutureProvider.autoDispose<List<Job>>((ref) => ref.watch(apiProvider).jobs(active: false));
+/// The driver's finished jobs, newest first. The server pages at 100; the first page loads with the screen and [HistoryJobs.loadMore] appends the next ones.
+final historyJobsProvider = AsyncNotifierProvider.autoDispose<HistoryJobs, List<Job>>(HistoryJobs.new);
+
+class HistoryJobs extends AsyncNotifier<List<Job>> {
+  int _total = 0, _pageSize = 0, _page = 1;
+  /// The server answered an empty page: nothing is left, whatever the total said (jobs that moved between pages can leave it off by a few).
+  bool _done = false;
+  /// There are older jobs on the server than the ones loaded.
+  bool get hasMore {
+    if (_done) return false;
+    final n = state.value?.length ?? 0;
+    return _total > 0 ? n < _total : (_pageSize > 0 && n >= _pageSize * _page);
+  }
+  int get total => _total;
+
+  @override
+  Future<List<Job>> build() async {
+    final p = await ref.watch(apiProvider).jobsPage(active: false);
+    _total = p.total; _pageSize = p.pageSize; _page = 1; _done = false;
+    return p.items;
+  }
+
+  /// Appends the next page (jobs already shown are skipped, so a new job arriving meanwhile never duplicates a row). Throws like any API call.
+  Future<void> loadMore() async {
+    final cur = state.value;
+    if (cur == null || !hasMore) return;
+    final p = await ref.read(apiProvider).jobsPage(active: false, page: _page + 1);
+    final seen = {for (final j in cur) j.offerId};
+    _page += 1;
+    _total = p.total > 0 ? p.total : _total;
+    if (p.items.isEmpty) { _done = true; state = AsyncData([...cur]); return; } // rebuilds the list, so the "Load more" row goes
+    state = AsyncData([...cur, for (final j in p.items) if (!seen.contains(j.offerId)) j]);
+  }
+}
 final opportunitiesProvider = FutureProvider.autoDispose<List<Json>>((ref) => ref.watch(apiProvider).opportunities());
 final jobProvider = FutureProvider.autoDispose.family<Job, String>((ref, id) => ref.watch(apiProvider).job(id));
 final profileProvider = FutureProvider.autoDispose<Json>((ref) => ref.watch(apiProvider).profile());

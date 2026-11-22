@@ -2,6 +2,7 @@ import { getPool } from "@/db";
 import { processWebhookQueue } from "./integrations";
 import { pollPartners, processPartnerOutbox, prunePartnerData } from "./partners/service";
 import { runMaintenance } from "./maintenance";
+import { logError, logInfo } from "@/lib/log";
 
 /** Arbitrary constant: the Postgres advisory-lock key that means "someone is running the housekeeping tick". */
 const LOCK_KEY = 7_788_002;
@@ -19,7 +20,7 @@ export async function runSchedulerTick(): Promise<{ ran: boolean }> {
     try {
       await processWebhookQueue(50);
       await processPartnerOutbox(50);
-      await pollPartners().catch((e) => console.error("[scheduler] partner poll failed:", e instanceof Error ? e.message : e));
+      await pollPartners().catch((e) => logError(e, { correlationId: "scheduler:partner-poll" }));
       if (new Date().getUTCMinutes() === 7) await prunePartnerData().catch(() => undefined); // hourly is plenty
       await runMaintenance();
       return { ran: true };
@@ -46,9 +47,9 @@ export function startScheduler() {
     if (busy) return; // a slow tick must not stack
     busy = true;
     try { await runSchedulerTick(); }
-    catch (e) { console.error("[scheduler] tick failed:", e instanceof Error ? e.message : e); }
+    catch (e) { logError(e, { correlationId: "scheduler:tick" }); } // scrubbed: a database error message carries the failing statement WITH its bound parameters
     finally { busy = false; }
   }, every);
   timer.unref(); // never keep the process alive just for the timer
-  console.log(`[scheduler] housekeeping every ${every / 1000}s`);
+  logInfo("scheduler started", { everySec: every / 1000 });
 }

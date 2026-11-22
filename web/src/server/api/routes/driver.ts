@@ -8,9 +8,9 @@ import { err } from "@/lib/errors";
 import { OFFER_BUSY } from "@/server/catalog";
 import * as jobs from "@/server/jobs";
 import * as stops from "@/server/stops";
-import { currentStopOf, isManifestJob } from "@/server/shipments";
+import { currentStopOf, manifestFacts } from "@/server/shipments";
 import { driverJobView } from "@/server/views";
-import { evaluateCandidates, backfillOffersForDriver, activeJobs } from "@/server/matching";
+import { evaluateCandidatesMany, backfillOffersForDriver, activeJobs } from "@/server/matching";
 import { getSettings } from "@/server/settings";
 import { driverCash, driverCashOutstanding } from "@/server/cod";
 import { scanLoad, unscanLoad, finishLoading } from "@/server/loading";
@@ -44,7 +44,7 @@ defineRoutes([
     const act = (await getSettings()).driverSingleActiveJob ? activeJob : null; // E11: offers are hidden while a job is active
     const newOffers = await db.select({ n: sql<number>`count(*)::int` }).from(offers).where(and(eq(offers.driverId, user.id), eq(offers.status, "offered"), act ? sql`false` : undefined));
     const cash = await driverCashOutstanding(user.id);
-    const [pending] = pol.managedByOffice ? [{ s: 0 }] : await db.select({ s: sql<number>`coalesce(sum(${settlements.providerCents}),0)::int` }).from(settlements).where(and(eq(settlements.driverId, user.id), sql`${settlements.officeId} is null`, inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"])));
+    const [pending] = pol.managedByOffice ? [{ s: 0 }] : await db.select({ s: sql<number>`coalesce(sum(${settlements.providerCents}),0)::float8` }).from(settlements).where(and(eq(settlements.driverId, user.id), sql`${settlements.officeId} is null`, inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"])));
     return {
       availability: p?.availability, verificationStatus: p?.verificationStatus, suspendedUntil: p?.suspendedUntil, officeLinked: p?.officeLinkStatus === "linked", jobsCompleted: p?.jobsCompleted ?? 0,
       rating: p?.ratingCount ? Math.round((p.ratingSum / p.ratingCount) * 10) / 10 : null, activeJobs: active[0].n, newOffers: newOffers[0].n, activeJob, cash,
@@ -97,13 +97,16 @@ defineRoutes([
       p?.vehicle ? sql`(${requests.vehicleType} is null or ${requests.vehicleType} = ${p.vehicle})` : undefined,
     )).orderBy(requests.startsAt).limit(200);
     const out = [];
-    for (const r of open) {
-      // During an office's exclusive window only that office's own drivers may take the request.
-      if (r.preferredOfficeId && r.officeWindowEndsAt && r.officeWindowEndsAt > new Date() && r.preferredOfficeId !== p?.o) continue;
-      const [c] = await evaluateCandidates(db, r, { driverIds: [user.id] });
+    // During an office's exclusive window only that office's own drivers may take the request.
+    const visible = open.filter((r) => !(r.preferredOfficeId && r.officeWindowEndsAt && r.officeWindowEndsAt > new Date() && r.preferredOfficeId !== p?.o));
+    // One evaluation for the whole list (a fixed number of statements) instead of one per open request.
+    const evals = await evaluateCandidatesMany(db, visible, { driverIds: [user.id] });
+    const facts = await manifestFacts(db, visible.map((r) => r.id));
+    for (const r of visible) {
+      const [c] = evals.get(r.id) ?? [];
       if (!c || c.reasons.length) continue;
       const snap = r.pricingSnapshot as { providerCostCents: number; expectedUnits: number } | null;
-      out.push({ requestId: r.id, ref: r.ref, service: r.service, vehicleType: r.vehicleType, pickupCity: r.pickupCity, deliveryCity: r.deliveryCity, startsAt: r.startsAt, durationDays: r.durationDays, expectedUnits: snap?.expectedUnits ?? null, expectedEarningCents: p?.o || !snap ? null : snap.providerCostCents * snap.expectedUnits, openSlots: r.quantity - r.slotsFilled, allowPartial: r.allowPartial, manifest: await isManifestJob(db, r.id) });
+      out.push({ requestId: r.id, ref: r.ref, service: r.service, vehicleType: r.vehicleType, pickupCity: r.pickupCity, deliveryCity: r.deliveryCity, startsAt: r.startsAt, durationDays: r.durationDays, expectedUnits: snap?.expectedUnits ?? null, expectedEarningCents: p?.o || !snap ? null : snap.providerCostCents * snap.expectedUnits, openSlots: r.quantity - r.slotsFilled, allowPartial: r.allowPartial, manifest: facts.get(r.id)?.manifest ?? false });
     }
     return { items: out, hidden: false, activeJob: null };
   } },

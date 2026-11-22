@@ -2,7 +2,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Plug } from "lucide-react";
-import { Breadcrumbs, Button, EmptyState, ErrorState, PageLoading } from "@/components/ui";
+import { Breadcrumbs, Button, EmptyState, ErrorState, PageLoading, NoAccess } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
 import { ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/provider";
@@ -29,7 +29,7 @@ export function AdminConnectionShell({ children }: { children: ReactNode }) {
   const conn = useApi<Connection>(allowed ? connApi(scope, id) : null, { shouldRetryOnError: false, refreshInterval: 60000 });
   const prov = useApi<{ items: Provider[] }>(allowed ? "/integrations/providers" : null);
   const [fresh, setFresh] = useState<FreshView | null>(null);
-  if (!allowed) return <ErrorState error={new ApiError("FORBIDDEN", "Forbidden", 403)} />;
+  if (!allowed) return <NoAccess />;
   const gone = conn.error instanceof ApiError && (conn.error.code === "NOT_FOUND" || conn.error.code === "VALIDATION");
   if (gone) return <><Breadcrumbs items={[{ label: t("nav.integrations"), href: scope.routeBase }]} /><EmptyState icon={<Plug className="size-9" aria-hidden />} title={t("intg.not_found")} action={<Button onClick={() => router.push(scope.routeBase)}>{t("intg.back_list")}</Button>} /></>;
   if (conn.error && !conn.data) return <ErrorState error={conn.error} retry={() => conn.mutate()} />;

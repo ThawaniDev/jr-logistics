@@ -22,9 +22,9 @@ class JobCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(t('svc.${job.service}'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            Text(t.val('svc', job.service), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
-            Text('${job.ref}${job.business != null ? ' · ${job.business}' : ''}', textDirection: TextDirection.ltr, style: const TextStyle(color: JR.muted, fontSize: 12)),
+            Text('${job.ref}${job.business != null ? ' · ${job.business}' : ''}', textDirection: TextDirection.ltr, style: TextStyle(color: JR.muted, fontSize: 12)),
           ])),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             StatusPill(job.status),
@@ -36,24 +36,24 @@ class JobCard extends StatelessWidget {
         const SizedBox(height: 6),
         _row(Icons.route_outlined, '${cityLabel(context, job.pickupCity)} → ${cityLabel(context, job.deliveryCity)}'),
         if (job.manifest) ...[const SizedBox(height: 6), _row(Icons.pin_drop_outlined, job.status == 'offered' ? t('ms.up_to_in_city', {'n': job.expectedUnits, 'city': cityLabel(context, job.deliveryCity)}) : t('ms.stops_in_city', {'n': job.stops.isEmpty ? job.expectedUnits : job.stops.length, 'city': cityLabel(context, job.deliveryCity)}))],
-        if (job.vehicleType != null) ...[const SizedBox(height: 6), _row(Icons.local_shipping_outlined, '${t('vehicle.${job.vehicleType}')}${job.temperature != null ? ' · ${t('temp.${job.temperature}')}' : ''}')],
+        if (job.vehicleType != null) ...[const SizedBox(height: 6), _row(Icons.local_shipping_outlined, '${t.val('vehicle', job.vehicleType)}${job.temperature != null ? ' · ${t.val('temp', job.temperature)}' : ''}')],
         const SizedBox(height: 6),
         _row(Icons.inventory_2_outlined, job.manifest ? t('ms.up_to_parcels', {'n': job.expectedUnits}) : '${job.expectedUnits} ${t(job.isDelivery ? 'unit.shipment' : 'unit.vehicle_day')}'),
         if (JobStats.applies(job)) ...[const SizedBox(height: 12), JobCardStats(job: job, lang: lang)],
         if (job.manifest && !job.allowPartial) ...[const SizedBox(height: 6), _row(Icons.groups_outlined, t('ms.all_or_nothing'), color: JR.gold)],
         if (job.finalUnits != null) ...[const SizedBox(height: 6), _row(Icons.fact_check_outlined, '${t('units.final')}: ${job.finalUnits}')],
         if (job.cancelReason != null) ...[const SizedBox(height: 6), _row(Icons.info_outline, t('job.cancel_reason', {'reason': job.cancelReason}))],
-        if (job.earningHidden) ...[const SizedBox(height: 10), Text(t('job.paid_by_office'), style: const TextStyle(color: JR.muted, fontSize: 12))]
+        if (job.earningHidden) ...[const SizedBox(height: 10), Text(t('job.paid_by_office'), style: TextStyle(color: JR.muted, fontSize: 12))]
         else if (job.expectedEarningCents != null) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(color: JR.accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Flexible(child: Text(t('job.expected_earning'), overflow: TextOverflow.ellipsis, style: const TextStyle(color: JR.muted, fontSize: 13))),
+              Flexible(child: Text(t('job.expected_earning'), overflow: TextOverflow.ellipsis, style: TextStyle(color: JR.muted, fontSize: 13))),
               const SizedBox(width: 8),
               // Scales down instead of overflowing when the amount is long and the text size is large.
-              Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(job.expectedEarningCents, lang), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w800, fontSize: 16)))),
+              Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(job.expectedEarningCents, lang), textDirection: TextDirection.ltr, style: TextStyle(color: JR.accent, fontWeight: FontWeight.w800, fontSize: 16)))),
             ]),
           ),
         ],

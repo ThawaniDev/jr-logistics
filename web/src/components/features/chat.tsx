@@ -36,7 +36,7 @@ export function JobChat({ offerId, closed }: { offerId: string; closed?: boolean
       </div>
       {!closed && (
         <form className="flex gap-2 border-t border-line p-3" onSubmit={(e) => { e.preventDefault(); send(); }}>
-          <input value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} placeholder={t("chat.placeholder")} aria-label={t("chat.placeholder")} className="h-10 flex-1 rounded-xl border border-line bg-bg2 px-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25" />
+          <input value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} placeholder={t("chat.placeholder")} aria-label={t("chat.placeholder")} className="h-10 flex-1 rounded-xl border border-line-strong bg-bg2 px-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25" />
           <Button type="submit" loading={busy} disabled={!text.trim()} aria-label={t("chat.send")}><Send className="size-4 rtl:-scale-x-100" /></Button>
         </form>
       )}

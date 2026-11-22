@@ -33,7 +33,7 @@ class SupportScreen extends ConsumerWidget {
         return ListView.separated(
           physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.fromLTRB(16, 16, 16, 96), itemCount: list.length + 1, separatorBuilder: (_, _) => const SizedBox(height: 10),
           itemBuilder: (_, i) {
-            if (i == 0) return Text(t('fmb.support_sub'), style: const TextStyle(color: JR.muted, height: 1.4));
+            if (i == 0) return Text(t('fmb.support_sub'), style: TextStyle(color: JR.muted, height: 1.4));
             final x = list[i - 1];
             return _TicketCard(ticket: x, lang: lang, unread: unread.contains(x.ref), onTap: () => context.push('/support/${x.id}').then((_) { ref.invalidate(ticketsProvider); ref.invalidate(unreadNotificationsProvider); }));
           },
@@ -55,8 +55,8 @@ class _TicketCard extends StatelessWidget {
     final x = ticket;
     return SectionCard(key: Key('ticket-${x.id}'), border: unread ? JR.accent : null, onTap: onTap, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        if (unread) Padding(padding: const EdgeInsetsDirectional.only(end: 8), child: Semantics(label: t('fmb.unread'), child: Container(key: Key('ticket-unread-${x.id}'), width: 10, height: 10, decoration: const BoxDecoration(color: JR.accent, shape: BoxShape.circle)))),
-        Expanded(child: Text(x.ref, textDirection: TextDirection.ltr, style: const TextStyle(color: JR.muted, fontSize: 12.5, fontWeight: FontWeight.w700))),
+        if (unread) Padding(padding: const EdgeInsetsDirectional.only(end: 8), child: Semantics(label: t('fmb.unread'), child: Container(key: Key('ticket-unread-${x.id}'), width: 10, height: 10, decoration: BoxDecoration(color: JR.accent, shape: BoxShape.circle)))),
+        Expanded(child: Text(x.ref, textDirection: TextDirection.ltr, style: TextStyle(color: JR.muted, fontSize: 12.5, fontWeight: FontWeight.w700))),
         const SizedBox(width: 8),
         Flexible(child: Pill(ticketStatusLabel(t, x.status), key: Key('ticket-status-${x.id}'), tone: ticketStatusTone(x.status))),
       ]),
@@ -65,9 +65,9 @@ class _TicketCard extends StatelessWidget {
       const SizedBox(height: 8),
       Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
         if (x.urgent) Pill(t('support.urgent'), key: Key('ticket-urgent-${x.id}'), tone: Tone.danger),
-        Text(ticketCategoryLabel(t, x.category), style: const TextStyle(color: JR.muted, fontSize: 12.5)),
-        Text('·', style: const TextStyle(color: JR.muted, fontSize: 12.5)),
-        Text(fmtDateTime(x.updatedAt ?? x.createdAt, lang), style: const TextStyle(color: JR.muted, fontSize: 12.5)),
+        Text(ticketCategoryLabel(t, x.category), style: TextStyle(color: JR.muted, fontSize: 12.5)),
+        Text('·', style: TextStyle(color: JR.muted, fontSize: 12.5)),
+        Text(fmtDateTime(x.updatedAt ?? x.createdAt, lang), style: TextStyle(color: JR.muted, fontSize: 12.5)),
       ]),
     ]));
   }

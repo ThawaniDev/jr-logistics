@@ -27,7 +27,7 @@ function AdjustInner({ open, onClose, onDone, account }: AdjustProps) {
   const submit = () => a.run("adj", () => post("/admin/finance/adjustments", { userId, amountCents: dir === "credit" ? cents : -cents, reason: reason.trim(), idempotencyKey: key }),
     { success: "common.saved", onDone: () => { onDone(); onClose(); }, onError: (e) => setErr(errText(e, t)) });
   return (
-    <Modal open={open} onClose={onClose} title={t("adm.adjust_title")} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button data-testid="fin-adjust-submit" loading={a.is("adj")} disabled={!valid} onClick={submit}>{t("common.confirm")}</Button></>}>
+    <Modal busy={a.is("adj")} open={open} onClose={onClose} title={t("adm.adjust_title")} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button data-testid="fin-adjust-submit" loading={a.is("adj")} disabled={!valid} onClick={submit}>{t("common.confirm")}</Button></>}>
       <Notice tone="warn">{t("adm.adjust_note")}</Notice>
       {canSearch || account ? (
         <div className="space-y-2">

@@ -24,6 +24,8 @@ export async function isHistoryPresent(x: Exec): Promise<{ present: boolean; use
 
 export async function resetHistory(x: Exec): Promise<Counts> {
   const removed: Counts = {};
+  // the ledger is append-only (migration 0024); removing generated postings is the one sanctioned exception, for this transaction only
+  await x.execute(sql`select set_config('jr.ledger_maintenance', 'on', true)`);
   const del = async (label: string, q: ReturnType<typeof sql>) => { const r = await x.execute(q); removed[label] = (removed[label] ?? 0) + (r.rowCount ?? 0); };
 
   // 1. counters of the accounts that survive (the demo accounts) go back first, while the generated rows that produced them still exist

@@ -37,10 +37,10 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
   Future<void> _submit() async {
     if (_sending || !_valid || _att.uploading || _att.hasFailed) return;
     setState(() => _sending = true);
-    final created = await guarded(context, () => ref.read(extraApiProvider).createTicket(category: _category!, subject: _subject.text.trim(), body: _body.text.trim(), offerId: _offerId, attachmentIds: _att.ids));
+    final created = await guarded(context, () => ref.read(extraApiProvider).createTicket(category: _category!, subject: _subject.text.trim(), body: _body.text.trim(), offerId: _offerId, attachmentIds: _att.ids), maybeApplied: true);
     if (!mounted) return;
     setState(() => _sending = false);
-    if (created == null) return;
+    if (created == null) { ref.invalidate(ticketsProvider); return; } // after a lost answer the list shows whether the ticket was opened
     ref.invalidate(ticketsProvider);
     toast(context, context.tr('fmb.ticket_created'));
     // Replace this form by the new ticket, so "back" returns to the list.
@@ -59,7 +59,7 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(t('support.new_ticket'))),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        Text(t('fmb.ticket_new_hint'), style: const TextStyle(color: JR.muted, height: 1.4)),
+        Text(t('fmb.ticket_new_hint'), style: TextStyle(color: JR.muted, height: 1.4)),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           key: const Key('ticket-category'), initialValue: _category, isExpanded: true, decoration: InputDecoration(labelText: t('support.category')),
@@ -90,8 +90,8 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
           final busy = _att.uploading;
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             FilledButton.icon(key: const Key('ticket-submit'), onPressed: _valid && !busy && !_att.hasFailed && !_sending ? _submit : null, icon: busyIcon(_sending, Icons.send), label: Text(t('common.submit'))),
-            if (busy) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t('um.uploading'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted, fontSize: 13))),
-            if (_att.hasFailed && !busy) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t('fmb.att_failed'), key: const Key('att-failed-note'), textAlign: TextAlign.center, style: const TextStyle(color: JR.danger, fontSize: 13, height: 1.3))),
+            if (busy) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t('um.uploading'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted, fontSize: 13))),
+            if (_att.hasFailed && !busy) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t('fmb.att_failed'), key: const Key('att-failed-note'), textAlign: TextAlign.center, style: TextStyle(color: JR.danger, fontSize: 13, height: 1.3))),
           ]);
         }),
       ]),

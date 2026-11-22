@@ -21,7 +21,7 @@ const facts = (): FinanceFacts => ({
   settle: { billed: P(100_000, 80_000), vat: P(13_043, 10_435), provider: P(70_000, 56_000), margin: P(30_000, 24_000), office: P(40_000, 30_000), direct: P(30_000, 26_000), refund: P(2_000, 1_000), n: P(20, 16), orders: P(18, 14) } as never,
   parcels: P(150, 110), latency: { avg: P(7200, 9000), p50: P(3600), p90: P(20_000), paid_n: P(18) } as never, pipeline: { unpaid: 6, held: 2 },
   wd: { req_n: P(5, 4), req_c: P(50_000, 40_000), paid_n: P(3, 2), paid_c: P(30_000, 20_000), rej_n: P(1, 1), rej_c: P(5_000, 3_000), avg: P(86_400, 100_000), p50: P(80_000), p90: P(200_000), pending: { n: 2, cents: 15_000, oldestSecs: 4 * 86_400 } } as never,
-  ledger: { topup: P(200_000, 150_000), topup_n: P(9, 7), adj_in: P(5_000, 0), adj_out: P(2_000, 1_000), cancel: P(8_000, 6_000), cancel_n: P(2, 1) } as never, invoices: { n: P(18, 14), sub: P(80_000), vat: P(10_000), total: P(90_000, 70_000) } as never,
+  ledger: { topup: P(200_000, 150_000), topup_n: P(9, 7), adj_in: P(5_000, 0), adj_out: P(2_000, 1_000), cancel: P(8_000, 6_000), cancel_n: P(2, 1), rental: P(5_000, 0), rental_n: P(1, 0) } as never, invoices: { n: P(18, 14), sub: P(80_000), vat: P(10_000), total: P(90_000, 70_000) } as never,
   closing: { liability: P(500_000, 400_000), escrow: P(60_000, 50_000), cash: P(20_000, null) }, credit: { used: 40_000, limit: 100_000 }, companies: COMPANIES,
 });
 const by = (ks: ReturnType<typeof financeKpis>, key: string) => ks.find((k) => k.key === key)!;

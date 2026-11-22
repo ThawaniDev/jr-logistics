@@ -165,7 +165,7 @@ describe("GET /admin/analytics/companies", () => {
     expect((await get(admin, "/admin/analytics/companies/table/leaderboard?sort=password")).status).toBe(422);
     expect((await get(admin, `/admin/analytics/companies/table/leaderboard?company=${alpha.id}`)).json.total).toBe(1);
     expect((await get(await mkStaff(["reports.view"]), "/admin/analytics/companies/table/leaderboard?format=csv")).status).toBe(403);
-    const csv = await get(await mkStaff(["reports.view", "reports.export"]), "/admin/analytics/companies/table/leaderboard?format=csv");
+    const csv = await get(await mkStaff(["reports.view", "reports.export"]), "/admin/analytics/companies/table/leaderboard?format=csv&headers=keys");
     expect(csv.status).toBe(200); expect(csv.text.startsWith("﻿name,")).toBe(true); expect(csv.text.slice(1).split("\n")).toHaveLength(1 + 2); expect(csv.headers.get("content-disposition")).toContain("companies-leaderboard.csv");
     expect(csv.text.split("\n")[0]).not.toContain("gmvCents"); // reports.export alone does not unlock money
   });

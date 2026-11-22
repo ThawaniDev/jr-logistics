@@ -24,8 +24,8 @@ export async function offerCodMap(x: Exec, offerIds: string[]): Promise<Map<stri
   const out = new Map<string, CodFigures>();
   if (!offerIds.length) return out;
   for (const id of offerIds) out.set(id, { collectedCents: 0, receivedCents: 0, outstandingCents: 0 });
-  const col = await x.select({ o: shipments.offerId, n: sql<number>`coalesce(sum(${shipments.codCollectedCents}),0)::int` }).from(shipments).where(and(inArray(shipments.offerId, offerIds), eq(shipments.status, "delivered"))).groupBy(shipments.offerId);
-  const rec = await x.select({ o: codRemittances.offerId, n: sql<number>`coalesce(sum(${codRemittances.amountCents}),0)::int` }).from(codRemittances).where(inArray(codRemittances.offerId, offerIds)).groupBy(codRemittances.offerId);
+  const col = await x.select({ o: shipments.offerId, n: sql<number>`coalesce(sum(${shipments.codCollectedCents}),0)::float8` }).from(shipments).where(and(inArray(shipments.offerId, offerIds), eq(shipments.status, "delivered"))).groupBy(shipments.offerId);
+  const rec = await x.select({ o: codRemittances.offerId, n: sql<number>`coalesce(sum(${codRemittances.amountCents}),0)::float8` }).from(codRemittances).where(inArray(codRemittances.offerId, offerIds)).groupBy(codRemittances.offerId);
   for (const c of col) if (c.o) out.get(c.o)!.collectedCents = c.n;
   for (const r of rec) out.get(r.o)!.receivedCents = r.n;
   for (const f of out.values()) f.outstandingCents = Math.max(0, f.collectedCents - f.receivedCents);

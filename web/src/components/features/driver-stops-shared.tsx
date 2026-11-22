@@ -110,7 +110,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   }, [open]);
   return (
     <dialog ref={ref} onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }} aria-label={title}
-      className="m-0 mt-auto max-h-[92dvh] w-full max-w-none overflow-y-auto rounded-t-3xl border border-line bg-card p-0 text-ink backdrop:bg-black/75 sm:m-auto sm:max-w-lg sm:rounded-3xl">
+      className="m-0 mt-auto max-h-[92dvh] w-full max-w-none overflow-y-auto rounded-t-3xl border border-line bg-card p-0 text-ink backdrop:bg-scrim-strong sm:m-auto sm:max-w-lg sm:rounded-3xl">
       {open && (
         <div>
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-card px-5 py-4"><h2 className="text-lg font-bold">{title}</h2><button type="button" onClick={onClose} className="rounded-lg p-2 text-muted hover:text-ink" aria-label={t("common.close")}><X className="size-5" /></button></div>
@@ -127,4 +127,4 @@ export function ActionBar({ children }: { children: ReactNode }) {
 }
 
 /** Same look as the ui-kit inputs, but big enough for a phone held in one hand in direct sun. */
-export const fieldCls = "w-full rounded-xl border-2 border-line bg-bg2 px-3 text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none disabled:opacity-60 aria-[invalid=true]:border-danger";
+export const fieldCls = "w-full rounded-xl border-2 border-line-strong bg-bg2 px-3 text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none disabled:opacity-60 aria-[invalid=true]:border-danger";

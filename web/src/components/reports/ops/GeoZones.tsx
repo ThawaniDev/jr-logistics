@@ -16,7 +16,7 @@ const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tile.openstree
 
 /** Delivery-point density: the grid on the map, the busiest zones as a list, the coverage of coordinates, and the full zone table with CSV. */
 export function GeoZones({ data, retry, qs, cityName }: { data: GeographyData; retry: () => void; qs: string; cityName?: (key: string) => string | undefined }) {
-  const { t, locale } = useI18n();
+  const { t, locale, dir } = useI18n();
   const [selected, setSelected] = useState<string | null>(null);
   const zones = data.zones;
   const mapZones: MapZone[] = useMemo(() => (zones ?? []).map((z) => ({
@@ -60,7 +60,7 @@ export function GeoZones({ data, retry, qs, cityName }: { data: GeographyData; r
               </div>
             )}
             <div className="mt-3 flex items-center gap-2 text-[11px] text-muted" aria-hidden>
-              <span>{t("rpf.hm_less")}</span><span className="h-2 w-24 rounded-full" style={{ background: "linear-gradient(to right, color-mix(in srgb, var(--jr-accent) 14%, transparent), var(--jr-accent))" }} /><span>{t("rpf.hm_more")}</span>
+              <span>{t("rpf.hm_less")}</span><span className="h-2 w-24 rounded-full" style={{ background: `linear-gradient(to ${dir === "rtl" ? "left" : "right"}, color-mix(in srgb, var(--jr-accent) 14%, transparent), var(--jr-accent))` }} /><span>{t("rpf.hm_more")}</span>
               <span className="ms-auto inline-flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm border-2 border-danger" />{t("rpo.map_hot")}</span>
             </div>
           </Section>

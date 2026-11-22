@@ -11,7 +11,7 @@ const mine = [...walk("src/components/features").filter((f) => /\/office-[^/]+\.
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
 
 describe("office portal strings (rdo.*)", () => {
-  const keys = Object.keys(en).filter((k) => k.startsWith("rdo."));
+  const keys = Object.keys(en).filter((k) => k.startsWith("rdo.") && !k.endsWith("__one")); // `__one` = English singular twin, none in ar/ur by design
   it("has a real Arabic and Urdu text with the same placeholders for every key", () => {
     expect(keys.length).toBeGreaterThan(100);
     for (const k of keys) {

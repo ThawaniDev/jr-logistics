@@ -10,18 +10,26 @@ import { SERVICES, VEHICLE_TYPES, TICKET_CATEGORIES, COMPLAINT_CATEGORIES, CUSTO
 
 const walk = (d: string): string[] => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(p) ? [p] : []; });
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
+/** `<key>__one` = English singular twin used by translate() when n is 1; ar/ur have none on purpose (number-neutral wording). */
+const isOne = (k: string) => k.endsWith("__one");
 
 describe("i18n parity (ar / en / ur)", () => {
   it("all three dictionaries have identical key sets", () => {
-    const e = Object.keys(en).sort();
+    const e = Object.keys(en).sort().filter((k) => !isOne(k));
     expect(Object.keys(ar).sort().filter((k) => !(k in en))).toEqual([]);
     expect(Object.keys(ur).sort().filter((k) => !(k in en))).toEqual([]);
     expect(e.filter((k) => !(k in ar))).toEqual([]);
     expect(e.filter((k) => !(k in ur))).toEqual([]);
+    expect(Object.keys(ar).concat(Object.keys(ur)).filter(isOne), "singular twins are English only").toEqual([]);
   });
   it("no empty values and placeholders match across languages", () => {
     for (const [k, v] of Object.entries(en)) {
       expect(v.trim(), `en ${k}`).not.toBe("");
+      if (isOne(k)) { // the singular twin needs a base key and may only use the base key's placeholders
+        const base = k.slice(0, -5); expect(base in en, `${k} has a base key`).toBe(true);
+        const baseVars = new Set(placeholders(en[base]).split(",")); for (const p of placeholders(v).split(",").filter(Boolean)) expect(baseVars.has(p), `${k} uses {${p}}`).toBe(true);
+        continue;
+      }
       expect(ar[k]?.trim(), `ar ${k}`).toBeTruthy();
       expect(ur[k]?.trim(), `ur ${k}`).toBeTruthy();
       expect(placeholders(ar[k]), `ar placeholders ${k}`).toBe(placeholders(v));
@@ -76,6 +84,27 @@ describe("i18n parity (ar / en / ur)", () => {
     expect(translate({}, { a: "EN" }, "a")).toBe("EN");
     expect(translate({}, {}, "missing.key")).toBe("missing.key");
   });
+  it("translate() fills placeholders in one pass: a value that contains braces is not substituted again", () => {
+    expect(translate({ a: "{name} has {n} parcels" }, {}, "a", { name: "Acme {n}", n: 5 })).toBe("Acme {n} has 5 parcels");
+    expect(translate({ a: "{a} and {b}" }, {}, "a", { a: "{b}", b: "x" })).toBe("{b} and x");
+    expect(translate({ a: "Hi {name} {missing}" }, {}, "a", { name: "Sara" }), "a placeholder without a value stays visible").toBe("Hi Sara {missing}");
+  });
+  it("translate() uses the singular twin (<key>__one) for n = 1 when the active dictionary has one", () => {
+    const d = { p: "{n} parcels", p__one: "{n} parcel" };
+    expect(translate(d, {}, "p", { n: 1 })).toBe("1 parcel");
+    expect(translate(d, {}, "p", { n: "1" }), "formatted numbers arrive as strings").toBe("1 parcel");
+    expect(translate(d, {}, "p", { n: 2 })).toBe("2 parcels");
+    expect(translate(d, {}, "p", { n: 0 })).toBe("0 parcels");
+    expect(translate(d, {}, "p", { n: "1,000" })).toBe("1,000 parcels");
+    expect(translate({ p: "{n} طرد" }, d, "p", { n: 1 }), "Arabic has no twin: the English one must not leak in").toBe("1 طرد");
+    expect(translate(d, {}, "p"), "no vars: plain text").toBe("{n} parcels");
+    expect(translate(en, en, "ops.open_slots", { n: 1 })).toBe("1 slot open");
+    expect(translate(en, en, "ops.open_slots", { n: 3 })).toBe("3 slots open");
+    expect(translate(ar, en, "ops.open_slots", { n: 1 })).toBe(ar["ops.open_slots"].replace("{n}", "1"));
+  });
+  it("the no-access copy exists in all three languages", () => {
+    for (const k of ["err.no_access_title", "err.no_access_hint", "err.no_access_home"]) { expect(en[k]).toBeTruthy(); expect(ar[k]).not.toBe(en[k]); expect(ur[k]).not.toBe(en[k]); }
+  });
   it("Arabic and Urdu are actually translated (not English copies) for UI-critical keys", () => {
     for (const k of ["nav.dashboard", "auth.login", "act.accept", "wizard.publish", "status.completed", "err.INSUFFICIENT_FUNDS"]) {
       expect(ar[k]).not.toBe(en[k]); expect(ur[k]).not.toBe(en[k]);
@@ -84,7 +113,7 @@ describe("i18n parity (ar / en / ur)", () => {
   it("Flutter assets are in sync with the web dictionaries (run `npm run i18n:export` if this fails)", () => {
     for (const [name, d] of Object.entries({ en, ar, ur })) {
       const exported = JSON.parse(readFileSync(path.resolve(__dirname, `../../../mobile/assets/i18n/${name}.json`), "utf8"));
-      expect(exported, name).toEqual(d);
+      expect(exported, name).toEqual(Object.fromEntries(Object.entries(d).filter(([k]) => !k.endsWith("__one")))); // the app has no plural engine (see scripts/export-i18n.ts)
     }
   });
 });

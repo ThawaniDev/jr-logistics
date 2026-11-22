@@ -6,6 +6,7 @@ import { mutate } from "swr";
 import { useApi } from "@/components/ui/data";
 import { Button, EmptyState, ErrorState, PageHeader, PageLoading, Pagination, Segmented, Toolbar } from "@/components/ui";
 import { notifHref } from "@/lib/notif-link";
+import { notificationText } from "@/lib/notif-text";
 import { useUser } from "@/components/layout/auth-context";
 import { post } from "@/lib/api";
 import { fmtDate, fmtTime, isoToRiyadhLocal } from "@/lib/format";
@@ -50,7 +51,7 @@ export function NotificationsPage() {
     const g = groups[groups.length - 1];
     if (g && g.label === label) g.items.push(n); else groups.push({ label, items: [n] });
   }
-  const text = (n: any) => { const v = t(`notif.${n.type}`, flat(n.data)); return v.startsWith("notif.") ? t("ubz.notif_generic") : v; };
+  const text = (n: any) => notificationText(t, n); // never shows a raw {placeholder}: missing params fall back to the short / cut / generic text
 
   return (
     <>
@@ -94,4 +95,3 @@ export function NotificationsPage() {
     </>
   );
 }
-function flat(d: Record<string, unknown> | null) { return Object.fromEntries(Object.entries(d ?? {}).map(([k, v]) => [k, typeof v === "object" ? "" : String(v)])); }

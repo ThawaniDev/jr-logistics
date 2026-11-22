@@ -71,6 +71,10 @@ export async function adjustWallet(staff: User, i: { userId: string; amountCents
       await post(tx, { accountId: plat.id, kind: "adjustment", available: credit ? -amt : amt, idempotencyKey: `${k}:platform`, actorId: staff.id, note: i.reason });
       await audit(staff, "wallet.adjust", "user", u.id, { amountCents: i.amountCents, reason: i.reason }, tx);
       await notify(u.id, "wallet_adjusted", { amountCents: i.amountCents }, tx);
+    } else {
+      // A replay is fine; the same key for ANOTHER account or amount is a client mistake that used to be swallowed as "already applied" (the correction never happened).
+      const [prior] = await tx.select({ accountId: ledgerEntries.accountId, delta: ledgerEntries.availableDeltaCents }).from(ledgerEntries).where(eq(ledgerEntries.idempotencyKey, `${k}:user`));
+      if (prior && (prior.accountId !== acct.id || prior.delta !== i.amountCents)) throw err("CONFLICT", "This idempotency key was already used for a different adjustment", { field: "idempotencyKey" });
     }
     return { applied: a.applied };
   });

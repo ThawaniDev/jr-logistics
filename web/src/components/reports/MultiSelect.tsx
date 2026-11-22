@@ -59,7 +59,7 @@ export function MultiSelect({ label, icon, options, kind, selected: selectedProp
           {searchable && (
             <div className="relative border-b border-line p-2">
               <Search className="pointer-events-none absolute start-4 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-              <input ref={search} type="text" autoComplete="off" aria-label={t("rpf.f_search")} placeholder={t("rpf.f_search")} value={q} onChange={(e) => setQ(e.target.value)} className="h-9 w-full rounded-lg border border-line bg-bg2 ps-8 pe-2 text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none" />
+              <input ref={search} type="text" autoComplete="off" aria-label={t("rpf.f_search")} placeholder={t("rpf.f_search")} value={q} onChange={(e) => setQ(e.target.value)} className="h-9 w-full rounded-lg border border-line-strong bg-bg2 ps-8 pe-2 text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none" />
             </div>
           )}
           <ul className="max-h-64 overflow-y-auto py-1" role="group" aria-label={label}>

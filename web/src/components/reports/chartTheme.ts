@@ -7,7 +7,7 @@ import { addDays } from "@/server/analytics/time";
 /**
  * Chart look + number formatting for every report. Colours come ONLY from the design tokens: `chartVars` defines `--rpf-c1…c8` on the element that wraps charts
  * (ReportShell and every chart frame apply it), the four brand tokens first and four hue-rotated variants of them after (same lightness and chroma as the token,
- * so they stay readable on the dark card). Neighbouring series differ in hue AND lightness, and every chart also has a table view, so colour is never the only channel.
+ * so they stay readable on the card in both themes: tests/unit/theme-contrast.test.ts checks every series colour for ≥ 3:1 against the card in dark and in light). Neighbouring series differ in hue AND lightness, and every chart also has a table view, so colour is never the only channel.
  */
 export const chartVars = {
   "--rpf-c1": "var(--jr-accent)",

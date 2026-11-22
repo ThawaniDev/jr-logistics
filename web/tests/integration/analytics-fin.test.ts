@@ -138,7 +138,7 @@ describe("GET /admin/analytics/deliveries", () => {
     expect((await t("returns-open")).total).toBe(0); // the warehouse received them all back
     expect((await get(admin, "/admin/analytics/deliveries/table/nope")).status).toBe(404);
     expect((await get(viewer, "/admin/analytics/deliveries/table/parcels?format=csv")).status).toBe(403);
-    const csv = await get(exporter, "/admin/analytics/deliveries/table/parcels?format=csv");
+    const csv = await get(exporter, "/admin/analytics/deliveries/table/parcels?format=csv&headers=keys");
     expect(csv.status).toBe(200); expect(csv.headers.get("content-disposition")).toContain("deliveries-parcels.csv");
     expect(csv.text.startsWith("﻿code,")).toBe(true); expect(csv.text.slice(1).split("\n")).toHaveLength(1 + ps.length);
   });
@@ -312,7 +312,7 @@ describe("GET /admin/analytics/finance", () => {
       expect((await get(await mkStaff(["finance.view"]), `/admin/analytics/finance/table/${name}`)).status, name).toBe(403);
     }
     const exporter = await mkStaff(["reports.view", "finance.view", "reports.export"]);
-    const csv = await get(exporter, "/admin/analytics/finance/table/companies?format=csv");
+    const csv = await get(exporter, "/admin/analytics/finance/table/companies?format=csv&headers=keys");
     expect(csv.status).toBe(200); expect(csv.text.startsWith("﻿company,")).toBe(true); expect(csv.text.slice(1).split("\n")).toHaveLength(2);
     expect((await get(exporter, "/admin/analytics/finance/table/companies?sort=password")).status).toBe(422);
   });

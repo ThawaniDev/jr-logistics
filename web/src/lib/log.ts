@@ -5,9 +5,19 @@
  */
 const MAX_MSG = 300;
 
-function scrub(message: string): string {
-  const cut = message.split(/\r?\n(?:params|values):/i)[0];
-  return cut.replace(/(password|secret|token|api[_-]?key|authorization)(["']?\s*[:=]\s*)\S+/gi, "$1$2[redacted]").slice(0, MAX_MSG);
+/** Things that must never reach a log even when they appear inside an error message (an HTTP client or a driver may echo what it was given). */
+const SECRET_SHAPES: Array<[RegExp, string]> = [
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi, "$1 [redacted]"], // an Authorization header value
+  [/\bjrk_[A-Za-z0-9_-]+/g, "jrk_[redacted]"],                           // a company API key
+  [/(\/integrations\/hooks\/[^/\s]+\/)[^/\s?#]+/g, "$1[redacted]"],      // the secret token of an inbound webhook URL (the router redacts the same segment in the path it logs)
+  [/\bSA\d{2}[A-Z0-9]{18,22}\b/g, "[iban]"],
+  [/(?:\+|00)?966\s?5\d{8}\b|\b05\d{8}\b/g, "[phone]"],
+];
+
+export function scrub(message: string): string {
+  let out = message.split(/\r?\n(?:params|values):/i)[0];
+  for (const [re, to] of SECRET_SHAPES) out = out.replace(re, to);
+  return out.replace(/(password|secret|token|api[_-]?key|authorization)(["']?\s*[:=]\s*)\S+/gi, "$1$2[redacted]").slice(0, MAX_MSG);
 }
 
 export interface ErrorLogCtx { correlationId: string; method?: string; path?: string; userId?: string | null }

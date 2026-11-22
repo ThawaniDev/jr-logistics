@@ -1,3 +1,4 @@
+import { maskPhoneUsername } from "@/lib/username";
 import { err } from "@/lib/errors";
 import { isYmd, riyadhDay } from "./analytics/time";
 import { presetRange, windowOf } from "./analytics/periods";
@@ -63,7 +64,7 @@ export function shapeRow(rec: Record<string, unknown>, sensitive: boolean): FdRo
     row[col.key] = col.kind === "money" ? numOrNull(v) : col.kind === "int" ? (numOrNull(v) ?? 0) : col.kind === "date" ? iso(v) : v == null ? null : String(v);
   }
   if (viaOffice) for (const k of WALLET_KEYS) row[k] = null;
-  if (!sensitive) row.phone = maskPhone(row.phone as string | null);
+  if (!sensitive) { row.phone = maskPhone(row.phone as string | null); row.username = maskPhoneUsername(row.username as string | null) ?? null; } // a username that is the phone number is the phone number
   return row;
 }
 

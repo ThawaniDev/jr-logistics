@@ -54,6 +54,7 @@ export async function listOffices(staff: User, f: { q?: string; state?: string; 
   requirePerm(staff, ...OFFICE_VIEW);
   const pageSize = clampSize(f.pageSize, 25, 100), page = Math.max(f.page ?? 1, 1);
   const c = f.q?.trim() ? contains(f.q) : null;
+  const sensitive = can(staff, "drivers.sensitive");
   const where = and(
     eq(users.role, "office"),
     f.state === "verified" ? eq(officeProfiles.verificationStatus, "verified") : undefined,
@@ -62,7 +63,7 @@ export async function listOffices(staff: User, f: { q?: string; state?: string; 
     f.state === "suspended" ? suspendedOffice : undefined,
     f.agreement === "pending" ? sql`${latestAgreement(users.id)} = 'pending_acceptance'` : undefined,
     f.agreement === "none" ? sql`not exists (select 1 from office_agreements a where a.office_id = ${users.id})` : undefined,
-    c ? or(ilike(users.name, c), ilike(users.phone, c), ilike(users.email, c), ilike(officeProfiles.officeName, c), ilike(officeProfiles.crNumber, c)) : undefined,
+    c ? or(ilike(users.name, c), sensitive ? ilike(users.phone, c) : undefined, ilike(users.email, c), ilike(officeProfiles.officeName, c), ilike(officeProfiles.crNumber, c)) : undefined, // without drivers.sensitive the search must not match the (masked) phone
   );
   const money = hasAnyPerm(staff, OFFICE_MONEY);
   const [rows, [{ total }]] = await Promise.all([
@@ -81,7 +82,7 @@ export async function listOffices(staff: User, f: { q?: string; state?: string; 
   return {
     page, pageSize, total: Number(total),
     items: rows.map((r) => ({
-      id: r.id, officeName: r.officeName, contact: r.contact, phone: r.phone, email: r.email, city: r.profileCity ?? r.userCity, crNumber: r.crNumber, status: r.status, verificationStatus: r.verificationStatus, createdAt: r.createdAt,
+      id: r.id, officeName: r.officeName, contact: r.contact, phone: sensitive ? r.phone : maskPhone(r.phone), email: r.email, city: r.profileCity ?? r.userCity, crNumber: r.crNumber, status: r.status, verificationStatus: r.verificationStatus, createdAt: r.createdAt,
       drivers: asNum(r.drivers), availableDrivers: asNum(r.availableDrivers), activeJobs: asNum(r.activeJobs), pendingPayoutCents: money ? asNum(r.pendingPayoutCents) : null,
       agreementStatus: r.agreementStatus, agreementExpiresAt: r.agreementExpiresAt ? new Date(r.agreementExpiresAt) : null,
     })),

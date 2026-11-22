@@ -48,7 +48,7 @@ function Opportunities() {
           ))}
         </div>
       )}
-      <Modal open={!!sel} onClose={() => setSel(null)} title={t("opp.terms_title")} footer={<><Button variant="ghost" onClick={() => setSel(null)}>{t("common.cancel")}</Button><Button disabled={!terms} loading={a.is("go")} onClick={go}>{t("act.accept_job")}</Button></>}>
+      <Modal busy={a.is("go")} open={!!sel} onClose={() => setSel(null)} title={t("opp.terms_title")} footer={<><Button variant="ghost" onClick={() => setSel(null)}>{t("common.cancel")}</Button><Button disabled={!terms} loading={a.is("go")} onClick={go}>{t("act.accept_job")}</Button></>}>
         <div className="max-h-40 overflow-y-auto rounded-xl bg-bg2 p-3 text-xs leading-relaxed text-muted">{cat?.terms?.driver || t("opp.terms_default")}</div>
         <Checkbox checked={terms} onChange={(e) => setTerms(e.target.checked)} label={t("opp.terms_accept")} />
       </Modal>

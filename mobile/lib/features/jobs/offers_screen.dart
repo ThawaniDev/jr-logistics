@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/format.dart';
 import '../../core/i18n.dart';
+import '../../data/api_client.dart' show mapOf, strOf;
 import '../../core/theme.dart';
 import '../../data/models_extra.dart';
 import '../../providers.dart';
@@ -44,12 +45,12 @@ class OffersScreen extends ConsumerWidget {
               : ListView.separated(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), itemCount: list.length, separatorBuilder: (_, _) => const SizedBox(height: 12), itemBuilder: (_, i) {
                   final o = list[i];
                   return SectionCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [Expanded(child: Text(t('svc.${o['service']}'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17))), Pill(t('opp.open_slots', {'n': o['openSlots'] ?? 0}), tone: Tone.info)]),
+                    Row(children: [Expanded(child: Text(t.val('svc', o['service']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17))), Pill(t('opp.open_slots', {'n': o['openSlots'] ?? 0}), tone: Tone.info)]),
                     const SizedBox(height: 8),
-                    Text('${fmtDateTime('${o['startsAt'] ?? ''}', lang)}\n${cityLabel(context, '${o['pickupCity'] ?? ''}')} → ${cityLabel(context, '${o['deliveryCity'] ?? ''}')}', style: const TextStyle(color: JR.muted, height: 1.5)),
+                    Text('${fmtDateTime('${o['startsAt'] ?? ''}', lang)}\n${cityLabel(context, '${o['pickupCity'] ?? ''}')} → ${cityLabel(context, '${o['deliveryCity'] ?? ''}')}', style: TextStyle(color: JR.muted, height: 1.5)),
                     if (o['service'] == 'delivery_driver' && o['expectedUnits'] != null) ...[const SizedBox(height: 6), Text(t('ms.up_to_in_city', {'n': o['expectedUnits'], 'city': cityLabel(context, '${o['deliveryCity'] ?? ''}')}), key: Key('opp-parcels-${o['requestId']}'), style: const TextStyle(fontWeight: FontWeight.w600))],
-                    if (o['allowPartial'] == false) ...[const SizedBox(height: 6), Text(t('ms.all_or_nothing'), key: Key('opp-all-or-nothing-${o['requestId']}'), style: const TextStyle(color: JR.gold, fontSize: 13, height: 1.4))],
-                    if (o['expectedEarningCents'] != null && !hideMoney && o['earningHidden'] != true) ...[const SizedBox(height: 10), Text(fmtMoney((o['expectedEarningCents'] as num).toInt(), lang), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w800, fontSize: 17))],
+                    if (o['allowPartial'] == false) ...[const SizedBox(height: 6), Text(t('ms.all_or_nothing'), key: Key('opp-all-or-nothing-${o['requestId']}'), style: TextStyle(color: JR.gold, fontSize: 13, height: 1.4))],
+                    if (o['expectedEarningCents'] is num && !hideMoney && o['earningHidden'] != true) ...[const SizedBox(height: 10), Text(fmtMoney((o['expectedEarningCents'] as num).toInt(), lang), textDirection: TextDirection.ltr, style: TextStyle(color: JR.accent, fontWeight: FontWeight.w800, fontSize: 17))],
                     const SizedBox(height: 12),
                     FilledButton(key: Key('apply-${o['requestId']}'), onPressed: () => acceptWithTerms(context, ref, () => ref.read(apiProvider).apply('${o['requestId']}'), null), child: Text(t('act.apply'))),
                   ]));
@@ -83,12 +84,12 @@ Future<void> _decline(BuildContext context, WidgetRef ref, String offerId) async
   if (_actionRunning) return;
   final sure = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
     title: Text(d.tr('um.decline_title')), content: Text(d.tr('um.decline_body')),
-    actions: [TextButton(style: TextButton.styleFrom(minimumSize: const Size(88, 48)), onPressed: () => Navigator.pop(d, false), child: Text(d.tr('common.cancel'))), FilledButton(key: const Key('decline-confirm'), style: FilledButton.styleFrom(minimumSize: const Size(110, 48), backgroundColor: JR.danger, foregroundColor: JR.bg), onPressed: () => Navigator.pop(d, true), child: Text(d.tr('act.decline')))],
+    actions: [TextButton(style: TextButton.styleFrom(minimumSize: const Size(88, 48)), onPressed: () => Navigator.pop(d, false), child: Text(d.tr('common.cancel'))), FilledButton(key: const Key('decline-confirm'), style: FilledButton.styleFrom(minimumSize: const Size(110, 48), backgroundColor: JR.danger, foregroundColor: JR.dangerInk), onPressed: () => Navigator.pop(d, true), child: Text(d.tr('act.decline')))],
   ));
   if (sure != true || !context.mounted) return;
   _actionRunning = true;
   try {
-    await guarded(context, () async { await ref.read(apiProvider).reject(offerId); return true; }, success: 'driver.declined_ok');
+    await guarded(context, () async { await ref.read(apiProvider).reject(offerId); return true; }, success: 'driver.declined_ok', maybeApplied: true);
     refreshAll(ref);
   } finally { _actionRunning = false; }
 }
@@ -109,21 +110,21 @@ Future<void> _acceptWithTerms(BuildContext context, WidgetRef ref, Future<Map<St
   if (ref.read(catalogProvider).hasError) ref.invalidate(catalogProvider); // a failed first load must not stick for the whole session
   final cat = await ref.read(catalogProvider.future).timeout(const Duration(seconds: 6)).catchError((_) => <String, dynamic>{});
   if (!context.mounted) return;
-  final terms = (cat['terms'] as Map?)?['driver'] as String? ?? '';
+  final terms = strOf(mapOf(cat['terms'])?['driver']) ?? '';
   var agreed = false;
   final ok = await showModalBottomSheet<bool>(context: context, useRootNavigator: true, isScrollControlled: true, builder: (c) => StatefulBuilder(builder: (c, set) => SafeArea(child: Padding(
     padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(c.tr('opp.terms_title'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
       const SizedBox(height: 12),
-      Container(constraints: const BoxConstraints(maxHeight: 140), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: JR.bg2, borderRadius: BorderRadius.circular(12)), child: SingleChildScrollView(child: Text(terms.isEmpty ? c.tr('opp.terms_default') : terms, style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.5)))),
+      Container(constraints: const BoxConstraints(maxHeight: 140), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: JR.bg2, borderRadius: BorderRadius.circular(12)), child: SingleChildScrollView(child: Text(terms.isEmpty ? c.tr('opp.terms_default') : terms, style: TextStyle(color: JR.muted, fontSize: 13, height: 1.5)))),
       CheckboxListTile(key: const Key('terms-check'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, activeColor: JR.accent, checkColor: JR.accentInk, value: agreed, onChanged: (v) => set(() => agreed = v ?? false), title: Text(c.tr('opp.terms_accept'), style: const TextStyle(fontSize: 14))),
       const SizedBox(height: 8),
       FilledButton(key: const Key('confirm-accept'), onPressed: agreed ? () => Navigator.pop(c, true) : null, child: Text(c.tr('act.accept_job'))),
     ]),
   ))));
   if (ok != true || !context.mounted) return;
-  final r = await guarded(context, action, success: 'driver.accepted_ok');
+  final r = await guarded(context, action, success: 'driver.accepted_ok', maybeApplied: true);
   refreshAll(ref);
   if (r != null && context.mounted) { final id = offerId ?? r['id']; if (id != null) context.push('/job/$id'); }
 }

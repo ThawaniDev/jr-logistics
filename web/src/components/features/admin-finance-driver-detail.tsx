@@ -51,7 +51,7 @@ export function FinanceDriverDetail({ id }: { id: string }) {
             {hasAny(me, "drivers.view") && <Link href={`/admin/drivers/${id}`} className="jr-tap inline-flex h-9 items-center rounded-xl border border-line bg-bg2 px-3 text-sm hover:bg-card" data-testid="fdd-open-driver">{t("fdr.open_driver")}</Link>}
             <span title={hasPerm(me, "reports.export") ? undefined : t("fr.export_needs_perm")} className="inline-flex">
               <button type="button" disabled={!hasPerm(me, "reports.export") || !!dl.busy} onClick={() => dl.run("full", fullHref, "finance-driver-statement.xlsx")} data-testid="fdd-download-full"
-                className="jr-tap inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-xl bg-accent px-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+                className="jr-tap inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-xl bg-accent px-3 text-sm font-semibold text-accent-ink transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
                 {preparing ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}{preparing ? t("fdr.dl_preparing") : t("fdr.dl_full")}
               </button>
             </span></>} />

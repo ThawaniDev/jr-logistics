@@ -49,6 +49,7 @@ test("a staff member with a temporary password is forced to change it before any
   // a direct visit to the console bounces back to the change screen
   await p.goto("/admin");
   await expect(p).toHaveURL(/\/account\/change-password/);
+  await p.waitForSelector('html[data-hydrated="true"]'); // typing before React has hydrated is lost: on a cold server (this spec alone) the hint never appeared
   await p.getByTestId("cp-current").fill("Temp0rary!Pass1");
   await p.getByTestId("cp-new").fill("Temp0rary!Pass1");
   await expect(p.getByText("must be different from the current one")).toBeVisible();

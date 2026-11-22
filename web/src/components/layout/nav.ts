@@ -1,6 +1,6 @@
 import { LayoutDashboard, FilePlus2, ListChecks, Wallet, Bell, LifeBuoy, KeyRound, UserCog, Truck, Briefcase, FileText, Users, Building2, Factory, ShieldCheck, Settings, ScrollText, Map, Coins, Tag, Handshake, ClipboardList, Gavel, UserRoundCog, Banknote, Radar, Star, Ban, BookOpen, Plug, Receipt, ArrowDownToLine, BookText, PieChart, Activity, PackageCheck, CircleDollarSign, Headset, MapPinned, Database, TrendingUp, Gauge } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Inbox } from "lucide-react";
+import { Inbox, PackageSearch } from "lucide-react";
 
 /** `badge` names a live counter the shell fills in (see `BADGES` in shell.tsx); items without one never show a number. */
 export type BadgeId = "notifications" | "verification" | "cases" | "complaints" | "withdrawals" | "settlements" | "requests_action" | "incoming_orders";
@@ -95,6 +95,7 @@ export const NAV: Record<string, NavGroup[]> = {
     { id: "orders", key: "nav.group_orders", items: [
       { href: "/admin/requests", key: "nav.requests", icon: ListChecks, perm: "requests.view" },
       { href: "/admin/cancellations", key: "nav.cancellations", icon: Ban, perm: ["requests.view", "reports.view"] },
+      { href: "/admin/parcels", key: "dv1.search_title", icon: PackageSearch, perm: "requests.view" }, // parcel search: a support person looks a parcel up by code / reference / recipient
     ] },
     { id: "partners", key: "nav.group_partners", items: [
       { href: "/admin/companies", key: "nav.companies", icon: Factory, perm: ["users.view", "verification.manage", "offices.view"] },
@@ -139,7 +140,7 @@ export const NAV: Record<string, NavGroup[]> = {
       { href: "/admin/staff", key: "nav.staff", icon: UserRoundCog, perm: ["staff.view", "staff.manage"] },
       { href: "/admin/settings", key: "nav.settings", icon: Settings, perm: ["settings.view", "settings.edit"] },
       { href: "/admin/audit", key: "nav.audit", icon: ScrollText, perm: "audit.view" },
-      { href: "/scenarios", key: "nav.scenarios", icon: BookOpen },
+      { href: "/scenarios", key: "nav.scenarios", icon: BookOpen, perm: ["settings.view", "settings.edit"] },
       { href: "/admin/notifications", key: "nav.notifications", icon: Bell, badge: "notifications" },
     ] },
   ],

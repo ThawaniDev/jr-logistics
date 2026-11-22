@@ -5,7 +5,7 @@ Test locations: **V** = `web/tests/**` (Vitest, real Postgres) · **E** = `web/e
 
 | SRS | Status | Implementation | Evidence |
 |---|---|---|---|
-| AUTH-001 auth by role | ✅ | `server/auth/*`, `routes/common.ts` | V api.test *auth*; E flows (OTP + staff login); L registration/logout; S sign-in. Provider: demo only — production refuses (`DEPENDENCY_UNAVAILABLE`). |
+| AUTH-001 auth by role | ✅ | `server/auth/*`, `routes/common.ts` | V api.test *auth*; E flows (username + password sign-in, J1); L registration/logout; S sign-in. Provider: demo only — production refuses (`DEPENDENCY_UNAVAILABLE`). |
 | AUTH-002 server-side authz | ✅ | `api/router.ts` auth spec + `can()` | V *authorization* (401/403/404 tenant isolation, per-permission); E route guards |
 | AUTH-003 abuse protection, revocation | ✅ | `ratelimit.ts` (atomic, DB-backed), OTP attempts/burn, staff lockout, revocable sessions, no staff-phone enumeration | V *auth*, requirements *enumeration*; L logout revokes |
 | AUTH-004 versioned consent | ✅ | `terms_consents` at register / publish / accept | V requirements *AUTH-004* |

@@ -10,24 +10,28 @@ import { useT, useI18n } from "@/i18n/provider";
 import { LOCALES, LOCALE_LABEL, type Locale } from "@/i18n/core";
 import { fetcher, post } from "@/lib/api";
 import { fmtMoney } from "@/lib/format";
-import { Modal } from "@/components/ui";
+import { CHROME_KEYS } from "@/lib/chrome-keys";
+import { Modal, NoAccess } from "@/components/ui";
 import { useUser, hasPerm } from "./auth-context";
 import { activeItem, flatNav, visibleNav, type BadgeId, type NavGroup } from "./nav";
+import { blockedNavItem } from "./route-guard";
+import { useDocumentTitle } from "./use-document-title";
 import { relabelWalletNav } from "@/components/features/driver-nav-labels";
+import { ThemeMenu, ThemeSegmented } from "@/components/theme/theme-menu";
 
-export function LanguageSwitcher({ compact }: { compact?: boolean }) {
+export function LanguageSwitcher({ compact, fill, className, testId = "lang-switch" }: { compact?: boolean; /** stretch to the width of its container (the phone drawer) */ fill?: boolean; className?: string; testId?: string }) {
   const { locale, setLocale, t } = useI18n();
   return (
-    <div className="relative inline-flex items-center">
-      <Globe className="pointer-events-none absolute start-2.5 size-3.5 text-muted/70" aria-hidden />
+    <div className={cn("relative inline-flex items-center", fill && "flex w-full", className)}>
+      <Globe className="pointer-events-none absolute start-2.5 size-3.5 text-muted/70 light:text-muted" aria-hidden />
       <select
         aria-label={t("a11y.language")}
-        data-testid="lang-switch"
+        data-testid={testId}
         value={locale}
         onChange={(e) => setLocale(e.target.value as Locale)}
         className={cn(
-          "cursor-pointer rounded-xl border border-line/80 bg-card/70 backdrop-blur-sm text-ink transition hover:border-accent/60 focus:border-accent focus:outline-none",
-          compact ? "h-8.5 ps-8 pe-3 text-xs" : "h-10 ps-9 pe-4 text-sm"
+          "cursor-pointer rounded-xl border border-line/80 light:border-line-strong bg-card/70 backdrop-blur-sm text-ink transition hover:border-accent/60 focus:border-accent focus:outline-none",
+          compact ? "h-8.5 ps-8 pe-3 text-xs" : "h-10 ps-9 pe-4 text-sm", fill && "w-full"
         )}
       >
         {LOCALES.map((l) => (
@@ -70,12 +74,12 @@ function useNavPrefs(role: string) {
 function useBadges(user: ReturnType<typeof useUser>): Partial<Record<BadgeId, number>> {
   const backoffice = user.role === "admin" || user.role === "staff";
   const canStats = backoffice && ["requests.view", "finance.view", "users.view", "reports.view"].some((p) => hasPerm(user, p));
-  const { data: n } = useSWR("/notifications?unread=1", fetcher, { refreshInterval: 30_000, revalidateOnFocus: true });
-  const { data: stats } = useSWR(canStats ? "/admin/stats" : null, fetcher, { refreshInterval: 60_000, shouldRetryOnError: false });
+  const { data: n } = useSWR(CHROME_KEYS.notifications, fetcher, { refreshInterval: 30_000, revalidateOnFocus: true });
+  const { data: stats } = useSWR(canStats ? CHROME_KEYS.stats : null, fetcher, { refreshInterval: 60_000, shouldRetryOnError: false });
   // Businesses see how many things wait for them on the Orders entry (a driver arrived and the warehouse has to confirm it).
-  const { data: ov } = useSWR(user.role === "business" ? "/business/overview" : null, fetcher, { refreshInterval: 60_000 });
+  const { data: ov } = useSWR(user.role === "business" ? CHROME_KEYS.overview : null, fetcher, { refreshInterval: 60_000 });
   // Orders sent by connected warehouse systems that are still waiting to be put on a JR delivery order (Integrations → Incoming orders).
-  const { data: io } = useSWR(user.role === "business" ? "/integrations/orders?state=open&pageSize=1" : null, fetcher, { refreshInterval: 60_000, shouldRetryOnError: false });
+  const { data: io } = useSWR(user.role === "business" ? CHROME_KEYS.incomingOrders : null, fetcher, { refreshInterval: 60_000, shouldRetryOnError: false });
   const pv = stats?.pendingVerification;
   return {
     notifications: n?.unread ?? 0,
@@ -89,7 +93,7 @@ function useBadges(user: ReturnType<typeof useUser>): Partial<Record<BadgeId, nu
   };
 }
 
-function SidebarNav({ groups, path, badges, rail, closed, onToggleGroup, onNavigate }: { groups: NavGroup[]; path: string; badges: Partial<Record<BadgeId, number>>; rail?: boolean; closed: string[]; onToggleGroup: (id: string) => void; onNavigate?: () => void }) {
+function SidebarNav({ scope, groups, path, badges, rail, closed, onToggleGroup, onNavigate }: { scope: "desktop" | "drawer"; groups: NavGroup[]; path: string; badges: Partial<Record<BadgeId, number>>; rail?: boolean; closed: string[]; onToggleGroup: (id: string) => void; onNavigate?: () => void }) {
   const t = useT();
   const current = activeItem(groups, path);
   return (
@@ -97,11 +101,11 @@ function SidebarNav({ groups, path, badges, rail, closed, onToggleGroup, onNavig
       {groups.map((g, gi) => {
         const hasActive = g.items.some((i) => i === current);
         const open = !g.key || rail || hasActive || !closed.includes(g.id);
-        const panel = `nav-group-${g.id}`;
+        const panel = `${scope}-nav-group-${g.id}`; // the sidebar is rendered twice (desktop + drawer): ids must differ
         return (
           <div key={g.id} className={cn(rail && gi > 0 && "border-t border-line/70 pt-2")}>
             {g.key && !rail && (
-              <button type="button" onClick={() => !hasActive && onToggleGroup(g.id)} aria-expanded={open} aria-controls={panel} disabled={hasActive} aria-label={t("nav.toggle_group", { group: t(g.key) })} className="group mt-2 flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted/80 transition hover:text-ink disabled:cursor-default disabled:hover:text-muted/80">
+              <button type="button" onClick={() => !hasActive && onToggleGroup(g.id)} aria-expanded={open} aria-controls={panel} disabled={hasActive} aria-label={t("nav.toggle_group", { group: t(g.key) })} className="group mt-2 flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted/80 light:text-muted transition hover:text-ink disabled:cursor-default disabled:hover:text-muted/80">
                 <span>{t(g.key)}</span>
                 <ChevronDown className={cn("size-3.5 transition-transform", !open && "-rotate-90 rtl:rotate-90", hasActive && "opacity-30")} aria-hidden />
               </button>
@@ -119,7 +123,7 @@ function SidebarNav({ groups, path, badges, rail, closed, onToggleGroup, onNavig
                         <span className={cn("truncate", rail && "sr-only")}>{t(i.key)}</span>
                         {n > 0 && (rail
                           ? <span aria-hidden className={cn("absolute end-1.5 top-1.5 size-2 rounded-full", attention ? "bg-gold" : "bg-accent")} />
-                          : <span className={cn("ms-auto min-w-5 rounded-full px-1.5 text-center text-[11px] font-bold tabular-nums", attention ? "bg-gold/15 text-gold" : "bg-accent text-accent-ink")}>{n > 99 ? "99+" : n}</span>)}
+                          : <span className={cn("ms-auto min-w-5 rounded-full px-1.5 text-center text-[11px] font-bold tabular-nums", attention ? "bg-gold/15 light:bg-card text-gold" : "bg-accent text-accent-ink")}>{n > 99 ? "99+" : n}</span>)}
                         {n > 0 && rail && <span className="sr-only">{n}</span>}
                       </Link>
                     </li>
@@ -154,7 +158,7 @@ function JumpDialog({ open, onClose, groups, onGo }: { open: boolean; onClose: (
     <Modal open={open} onClose={() => { setQ(""); setSel(0); onClose(); }} title={t("nav.jump_title")}>
       <div className="relative">
         <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-        <input ref={input} type="text" role="combobox" aria-expanded="true" aria-controls="jump-list" aria-activedescendant={hits[idx] ? `jump-${idx}` : undefined} aria-label={t("nav.search_pages")} data-testid="jump-input" placeholder={t("nav.search_pages")} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKey} className="h-11 w-full rounded-xl border border-line bg-bg2 ps-9 pe-3 text-sm placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25" />
+        <input ref={input} type="text" role="combobox" aria-expanded="true" aria-controls="jump-list" aria-activedescendant={hits[idx] ? `jump-${idx}` : undefined} aria-label={t("nav.search_pages")} data-testid="jump-input" placeholder={t("nav.search_pages")} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKey} className="h-11 w-full rounded-xl border border-line-strong bg-bg2 ps-9 pe-3 text-sm placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25" />
       </div>
       <ul id="jump-list" role="listbox" aria-label={t("nav.jump_title")} className="-mx-2 max-h-72 overflow-y-auto">
         {hits.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("nav.jump_empty")}</li>}
@@ -169,6 +173,17 @@ function JumpDialog({ open, onClose, groups, onGo }: { open: boolean; onClose: (
         ))}
       </ul>
     </Modal>
+  );
+}
+
+/** Phones: the top bar keeps only menu · logo · wallet · bell (a long balance plus two more controls would not fit), so language and theme live in the drawer. */
+function DrawerPrefs() {
+  const t = useT();
+  return (
+    <div className="space-y-3 border-t border-line px-3 py-3" data-testid="drawer-prefs">
+      <LanguageSwitcher fill testId="lang-switch-drawer" />
+      <div><p id="drawer-theme-label" className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{t("theme.label")}</p><ThemeSegmented labelledBy="drawer-theme-label" testIdPrefix="theme-drawer" className="flex w-full" /></div>
+    </div>
   );
 }
 
@@ -198,22 +213,23 @@ export function Shell({ children }: { children: ReactNode }) {
   const [jump, setJump] = useState(false);
   const { prefs, save } = useNavPrefs(user.role);
   const showWallet = ["business", "driver", "office"].includes(user.role);
-  const { data: w } = useSWR(showWallet ? "/wallet" : null, fetcher, { refreshInterval: 60_000 });
+  const { data: w } = useSWR(showWallet ? CHROME_KEYS.wallet : null, fetcher, { refreshInterval: 60_000 });
   const managed = w?.managedByOffice === true; // J4: an office driver has no wallet balance to show (his sidebar entry is "Wallet & cash")
   const groups = useMemo(() => relabelWalletNav(visibleNav(user.role, (p) => hasPerm(user, p)), managed), [user, managed]);
   const badges = useBadges(user);
   const base = user.role === "admin" || user.role === "staff" ? "/admin" : `/${user.role}`;
 
+  const blocked = blockedNavItem(user.role, (p) => hasPerm(user, p), path); // an area of the menu this role does not include: the page is not mounted
   const current = activeItem(groups, path);
   const currentGroup = current ? groups.find((g) => g.items.includes(current)) : undefined;
-  const title = current ? t(current.key) : "";
+  const title = current ? t(current.key) : blocked ? t(blocked.key) : "";
   const onSubPage = !!current && path !== current.href;
   const menuBtn = useRef<HTMLButtonElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
   const rail = prefs.collapsed;
   const toggleGroup = (id: string) => save({ ...prefs, closed: prefs.closed.includes(id) ? prefs.closed.filter((x) => x !== id) : [...prefs.closed, id] });
   // Page title in the tab (route changes are otherwise silent for screen readers and the history list).
-  useEffect(() => { if (title) document.title = `${title} · JR Logistics`; }, [title, path]);
+  useDocumentTitle(title);
   // ⌘K / Ctrl+K opens the page switcher from anywhere.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setJump(true); } };
@@ -235,7 +251,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const jumpBtn = (compact?: boolean) => (
     <button type="button" onClick={() => setJump(true)} data-testid="jump-open" aria-label={t("nav.search_pages")} title={compact ? t("nav.search_pages") : undefined} className={cn("flex items-center gap-2 rounded-xl border border-line bg-bg/60 text-sm text-muted transition hover:border-accent/50 hover:text-ink", compact ? "mx-auto size-10 justify-center" : "mx-3 mt-3 h-10 w-[calc(100%-1.5rem)] px-3")}>
       <Search className="size-4 shrink-0" aria-hidden />
-      {!compact && <><span className="truncate">{t("nav.search_pages")}</span><kbd dir="ltr" className="ms-auto hidden rounded-md border border-line px-1.5 text-[11px] text-muted/80 lg:block">⌘K</kbd></>}
+      {!compact && <><span className="truncate">{t("nav.search_pages")}</span><kbd dir="ltr" className="ms-auto hidden rounded-md border border-line px-1.5 text-[11px] text-muted/80 light:text-muted lg:block">⌘K</kbd></>}
     </button>
   );
 
@@ -247,16 +263,17 @@ export function Shell({ children }: { children: ReactNode }) {
           {!rail && <button type="button" onClick={() => save({ ...prefs, collapsed: true })} aria-label={t("nav.collapse_menu")} title={t("nav.collapse_menu")} data-testid="nav-collapse" className="jr-tap flex size-8 items-center justify-center rounded-lg text-muted hover:bg-card hover:text-ink"><PanelLeftClose className="size-[18px] rtl:rotate-180" aria-hidden /></button>}
         </div>
         {jumpBtn(rail)}
-        <SidebarNav groups={groups} path={path} badges={badges} rail={rail} closed={prefs.closed} onToggleGroup={toggleGroup} />
+        <SidebarNav scope="desktop" groups={groups} path={path} badges={badges} rail={rail} closed={prefs.closed} onToggleGroup={toggleGroup} />
         {rail && <button type="button" onClick={() => save({ ...prefs, collapsed: false })} aria-label={t("nav.expand_menu")} title={t("nav.expand_menu")} data-testid="nav-expand" className="jr-tap mx-auto mb-2 flex size-9 items-center justify-center rounded-lg text-muted hover:bg-card hover:text-ink"><PanelLeftOpen className="size-[18px] rtl:rotate-180" aria-hidden /></button>}
         <UserCard rail={rail} onLogout={logout} />
       </aside>
 
-      {open && <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setOpen(false)} aria-hidden />}
+      {open && <div className="fixed inset-0 z-40 bg-scrim lg:hidden" onClick={() => setOpen(false)} aria-hidden />}
       <aside className={cn("fixed inset-y-0 start-0 z-50 flex w-72 max-w-[85vw] flex-col bg-bg2 transition-transform lg:hidden", open ? "translate-x-0" : "ltr:-translate-x-full rtl:translate-x-full")} aria-hidden={!open} inert={!open}>
         <div className="flex h-16 items-center justify-between border-b border-line px-5"><Logo /><button ref={closeBtn} type="button" onClick={() => setOpen(false)} aria-label={t("a11y.close_menu")} className="jr-tap flex items-center justify-center rounded-lg p-1 text-muted hover:text-ink"><X className="size-5" /></button></div>
         {jumpBtn()}
-        <SidebarNav groups={groups} path={path} badges={badges} closed={prefs.closed} onToggleGroup={toggleGroup} onNavigate={() => setOpen(false)} />
+        <SidebarNav scope="drawer" groups={groups} path={path} badges={badges} closed={prefs.closed} onToggleGroup={toggleGroup} onNavigate={() => setOpen(false)} />
+        <DrawerPrefs />
         <UserCard mobile onLogout={logout} />
       </aside>
 
@@ -267,14 +284,15 @@ export function Shell({ children }: { children: ReactNode }) {
           {current && onSubPage && <Link href={current.href} className="flex min-w-0 items-center gap-1.5 rounded-lg py-1 text-sm text-muted hover:text-ink lg:hidden"><ArrowLeft className="size-4 shrink-0 rtl:rotate-180" aria-hidden /><span className="truncate">{title}</span></Link>}
           {current && <span className={cn("hidden min-w-0 items-center gap-2 truncate text-sm lg:flex")}>{currentGroup?.key && <><span className="text-muted">{t(currentGroup.key)}</span><span className="text-muted/50" aria-hidden>/</span></>}{onSubPage ? <Link href={current.href} className="truncate text-muted hover:text-ink">{title}</Link> : <span className="truncate font-semibold">{title}</span>}</span>}
           <div className="ms-auto flex items-center gap-2 sm:gap-3">
-            {showWallet && w && !managed && <Link href={`${base}/wallet`} aria-label={`${t(user.role === "business" ? "nav.wallet" : "nav.earnings")}: ${fmtMoney(w.availableCents, locale)}`} className={cn("flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-semibold", w.availableCents < 0 ? "border-danger/40 bg-danger/10 text-danger" : "border-gold/40 bg-gold/10 text-gold")}><Wallet className="size-4" aria-hidden /><span className="ltr-num tabular-nums">{fmtMoney(w.availableCents, locale)}</span></Link>}
-            <LanguageSwitcher compact />
+            {showWallet && w && !managed && <Link href={`${base}/wallet`} aria-label={`${t(user.role === "business" ? "nav.wallet" : "nav.earnings")}: ${fmtMoney(w.availableCents, locale)}`} className={cn("flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-semibold max-sm:px-2 max-sm:text-xs", w.availableCents < 0 ? "border-danger/40 bg-danger/10 text-danger" : "border-gold/40 bg-gold/10 text-gold")}><Wallet className="size-4" aria-hidden /><span className="ltr-num tabular-nums">{fmtMoney(w.availableCents, locale)}</span></Link>}
+            <LanguageSwitcher compact className="max-md:hidden" />
+            <ThemeMenu className="max-md:hidden" />
             <Link href={`${base}/notifications`} className="jr-tap relative flex items-center justify-center rounded-xl border border-line p-2 text-muted hover:text-ink" aria-label={(badges.notifications ?? 0) > 0 ? `${t("nav.notifications")} (${badges.notifications})` : t("nav.notifications")}>
               <Bell className="size-[18px]" aria-hidden />{(badges.notifications ?? 0) > 0 && <span aria-hidden className="absolute -end-1 -top-1 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-ink">{(badges.notifications ?? 0) > 9 ? "9+" : badges.notifications}</span>}
             </Link>
           </div>
         </header>
-        <main id="main" className="mx-auto max-w-7xl p-4 sm:p-6">{children}</main>
+        <main id="main" className="mx-auto max-w-7xl p-4 sm:p-6">{blocked ? <NoAccess title={t(blocked.key)} /> : children}</main>
       </div>
       <JumpDialog open={jump} onClose={() => setJump(false)} groups={groups} onGo={(href) => router.push(href)} />
     </div>

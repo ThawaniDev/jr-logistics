@@ -121,7 +121,7 @@ export function runWave(R: Life, t: number, open: number, o: { replacement: bool
     const O = newOffer(R, c.d, c.created, { source: o.source ?? (o.replacement ? "replacement" : "system"), replacement: o.replacement, replacesId: o.replacesId });
     created.push(O);
     const earning = O.officeId ? null : R.plan.rule.providerCostCents * (R.plan.service === "delivery_driver" ? R.plan.perDriver ?? 1 : R.plan.durationDays);
-    R.notify(c.created, c.d.id, o.replacement ? "offer_replacement" : "offer_new", { requestId: R.plan.id, ref: R.plan.ref, offerId: O.id, parcels: R.plan.service === "delivery_driver" ? R.plan.perDriver : R.plan.durationDays, pickupCity: R.plan.pickupCity, deliveryCity: R.plan.deliveryCity, earningCents: earning });
+    R.notify(c.created, c.d.id, o.replacement ? "offer_replacement" : "offer_new", { requestId: R.plan.id, ref: R.plan.ref, offerId: O.id, ...(R.plan.service === "delivery_driver" ? { parcels: R.plan.perDriver } : {}), pickupCity: R.plan.pickupCity, deliveryCity: R.plan.deliveryCity, earningCents: earning });
     if (winnersC.includes(c)) { winners.push({ offer: O, at: c.tResp }); continue; }
     if (c.kind === "reject" && c.tResp <= o.deadline && (fillT == null || c.tResp <= fillT) && c.tResp < c.created + exp) {
       O.tl.at(c.tResp, { status: "rejected" });

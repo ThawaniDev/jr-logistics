@@ -27,11 +27,11 @@ class ShipmentsHeader extends StatelessWidget {
     Widget tile(String k, String label, int v, {Color? color}) => StatTile(tileKey: k, label: label, value: '$v', color: color, dense: true);
     return Padding(padding: const EdgeInsets.fromLTRB(16, 10, 16, 10), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: Text(t('svc.${job.service}'), key: const Key('drs-service'), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, height: 1.25))),
+        Expanded(child: Text(t.val('svc', job.service), key: const Key('drs-service'), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, height: 1.25))),
         const SizedBox(width: 8),
         Flexible(child: StatusPill(job.status)),
       ]),
-      Text(route, key: const Key('drs-route-line'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.3)),
+      Text(route, key: const Key('drs-route-line'), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.3)),
       const SizedBox(height: 10),
       LayoutBuilder(builder: (context, c) {
         const gap = 8.0;
@@ -50,20 +50,20 @@ class ShipmentsHeader extends StatelessWidget {
         key: const Key('stat-cash'), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(color: JR.gold.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: JR.gold.withValues(alpha: 0.45))),
         child: Row(children: [
-          const Icon(Icons.payments_outlined, color: JR.gold, size: 20), const SizedBox(width: 8),
+          Icon(Icons.payments_outlined, color: JR.gold, size: 20), const SizedBox(width: 8),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(t('fma.stat_cash'), style: const TextStyle(fontSize: 12.5, color: JR.muted, height: 1.2)),
-            Text(t('fma.stat_cash_collected', {'amount': fmtMoney(cod.collectedCents, lang), 'n': cod.parcels}), style: const TextStyle(fontSize: 11.5, color: JR.muted, height: 1.25)),
+            Text(t('fma.stat_cash'), style: TextStyle(fontSize: 12.5, color: JR.muted, height: 1.2)),
+            Text(t('fma.stat_cash_collected', {'amount': fmtMoney(cod.collectedCents, lang), 'n': cod.parcels}), style: TextStyle(fontSize: 11.5, color: JR.muted, height: 1.25)),
           ])),
           const SizedBox(width: 8),
-          Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(cod.toCollectCents, lang), key: const Key('stat-cash-value'), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.gold, fontSize: 19, fontWeight: FontWeight.w800)))),
+          Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(cod.toCollectCents, lang), key: const Key('stat-cash-value'), textDirection: TextDirection.ltr, style: TextStyle(color: JR.gold, fontSize: 19, fontWeight: FontWeight.w800)))),
         ]),
       )),
       const SizedBox(height: 10),
       Text(t('drs.progress', {'done': done, 'total': total}), key: const Key('progress-text'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
       const SizedBox(height: 6),
       ClipRRect(borderRadius: BorderRadius.circular(6), child: LinearProgressIndicator(key: const Key('progress-bar'), semanticsLabel: t('drs.progress', {'done': done, 'total': total}), minHeight: 6, value: total == 0 ? 0 : done / total, color: JR.accent, backgroundColor: JR.line)),
-      if (hint != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(hint, key: const Key('drs-hint'), style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35))),
+      if (hint != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(hint, key: const Key('drs-hint'), style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35))),
     ]));
   }
 }
@@ -91,7 +91,7 @@ class ShipFilterBar extends StatelessWidget {
     final t = context.tr;
     final searching = search.text.trim().isNotEmpty;
     return Material(color: JR.bg, child: Container(
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: JR.line))),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: JR.line))),
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [

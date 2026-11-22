@@ -29,7 +29,7 @@ class OfficeApi extends FakeApi {
   }
   int walletCalls = 0;
   @override
-  Future<Json> wallet() async { walletCalls++; return {'managedByOffice': true, 'availableCents': null, 'reservedCents': null, 'heldCents': null, 'entries': [], 'total': 0, 'page': 1, 'pageSize': 25}; }
+  Future<Json> wallet({int page = 1}) async { walletCalls++; return {'managedByOffice': true, 'availableCents': null, 'reservedCents': null, 'heldCents': null, 'entries': [], 'total': 0, 'page': 1, 'pageSize': 25}; }
 }
 
 class OppApi extends FakeApi {
@@ -185,5 +185,5 @@ void main() {
 /// An older overview (no `walletManagedByOffice`) next to a wallet answer that says so and names the office.
 class _WalletOnlyApi extends FakeApi {
   @override
-  Future<Json> wallet() async => {'managedByOffice': true, 'officeName': 'Gulf Express', 'availableCents': null, 'entries': []};
+  Future<Json> wallet({int page = 1}) async => {'managedByOffice': true, 'officeName': 'Gulf Express', 'availableCents': null, 'entries': []};
 }

@@ -257,7 +257,7 @@ function EditParcelDialog({ item, onClose, onSaved }: { item: ShipmentItem; onCl
   };
   const types: RType[] = ["consumer", "business"];
   return (
-    <Modal open onClose={onClose} title={t("bs.edit_title", { code: item.code })} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button loading={a.is("edit")} data-testid="edit-parcel-save" onClick={submit}>{t("common.save")}</Button></>}>
+    <Modal busy={a.is("edit")} open onClose={onClose} title={t("bs.edit_title", { code: item.code })} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button loading={a.is("edit")} data-testid="edit-parcel-save" onClick={submit}>{t("common.save")}</Button></>}>
       <Notice tone={partial ? "warn" : "info"}>{partial ? t("pb.edit_partial_note") : t("bs.edit_note")}</Notice>
       {b2b && <>
         <div role="radiogroup" aria-label={t("bs.recipient_type")} className="inline-flex overflow-hidden rounded-xl border border-line">
@@ -283,7 +283,7 @@ function EditParcelDialog({ item, onClose, onSaved }: { item: ShipmentItem; onCl
 function CancelParcelDialog({ item, onClose, onDone }: { item: ShipmentItem; onClose: () => void; onDone: () => void }) {
   const { t, locale } = useI18n(); const a = useAction(); const [reason, setReason] = useState("");
   return (
-    <Modal open onClose={onClose} title={t("bs.cancel_title", { code: item.code })} footer={<><Button variant="ghost" onClick={onClose}>{t("common.back")}</Button><Button variant="danger" loading={a.is("cx")} disabled={reason.trim().length < 3} onClick={() => a.run("cx", () => post<{ cancelled: boolean; refundedCents: number }>(`/shipments/${item.id}/cancel`, { reason: reason.trim() }), { onDone: (r) => { toast.success(t("bs.parcel_cancelled", { amount: fmtMoney(r.refundedCents, locale) })); onDone(); } })}>{t("bs.cancel_confirm")}</Button></>}>
+    <Modal busy={a.is("cx")} open onClose={onClose} title={t("bs.cancel_title", { code: item.code })} footer={<><Button variant="ghost" onClick={onClose}>{t("common.back")}</Button><Button variant="danger" loading={a.is("cx")} disabled={reason.trim().length < 3} onClick={() => a.run("cx", () => post<{ cancelled: boolean; refundedCents: number }>(`/shipments/${item.id}/cancel`, { reason: reason.trim() }), { onDone: (r) => { toast.success(t("bs.parcel_cancelled", { amount: fmtMoney(r.refundedCents, locale) })); onDone(); } })}>{t("bs.cancel_confirm")}</Button></>}>
       <Notice tone="warn">{t("bs.cancel_note", { name: item.recipientName })}</Notice>
       <Textarea label={t("req.reason")} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} hint={t("bz.min_3")} required />
     </Modal>

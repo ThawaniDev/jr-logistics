@@ -45,7 +45,7 @@ export function financeKpis(x: FinanceFacts, f: ResolvedFilters, spark: Record<s
   return makeKpis(f, [
     ["fin_billed", z(s.billed), { href: "/admin/finance/settlements" }], ["fin_vat", z(s.vat)], ["fin_net_sales", sub(z(s.billed), z(s.vat))], ["fin_provider", z(s.provider)], ["fin_revenue", z(s.margin)],
     ["fin_margin_pct", ratio(s.margin, s.billed)], ["fin_net_position", sub(z(s.margin), z(s.vat))], ["fin_aov", ratio(s.billed, s.orders)], ["fin_rev_per_request", ratio(s.margin, s.orders)],
-    ["fin_rev_per_parcel", ratio(s.margin, x.parcels)], ["fin_settlements", z(s.n)], ["fin_concentration", topShare(x.companies, s.billed)],
+    ["fin_rev_per_parcel", ratio(s.margin, x.parcels)], ["fin_settlements", z(s.n)], ["fin_concentration", topShare(x.companies, s.billed)], ["fin_rental_revenue", z(x.ledger.rental)],
     ["fin_payout_office", z(s.office)], ["fin_payout_direct", z(s.direct)], ["fin_settle_latency", x.latency.avg], ["fin_settle_unpaid", live(x.pipeline.unpaid), { href: "/admin/finance/settlements" }], ["fin_settle_held", live(x.pipeline.held)],
     ["fin_wd_requested", z(w.req_c), { href: "/admin/finance/withdrawals" }], ["fin_wd_paid", z(w.paid_c)], ["fin_wd_rejected", z(w.rej_c)], ["fin_wd_turnaround", w.avg], ["fin_wd_pending", live(w.pending.cents)],
     ["fin_topups", z(x.ledger.topup), { href: "/admin/finance/ledger" }], ["fin_wallet_liability", x.closing.liability], ["fin_escrow", x.closing.escrow], ["fin_cash_drivers", x.closing.cash, { href: "/admin/finance/cod" }],

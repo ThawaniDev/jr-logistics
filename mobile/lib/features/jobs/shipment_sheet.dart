@@ -68,7 +68,7 @@ class _ShipmentSheetState extends ConsumerState<ShipmentSheet> {
     final address = [s.address, if (s.city != null && s.city!.isNotEmpty) cityLabel(context, s.city)].where((e) => e.isNotEmpty).join(' · ');
     final name = s.recipientName, phone = s.recipientPhone;
     final date = shipDate(s.createdAt, lang);
-    Widget tile(Key k, IconData i, String label, VoidCallback? f, {Color? color}) => Expanded(child: Material(key: k, color: JR.bg2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: JR.line)), child: InkWell(
+    Widget tile(Key k, IconData i, String label, VoidCallback? f, {Color? color}) => Expanded(child: Material(key: k, color: JR.bg2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: JR.line)), child: InkWell(
           customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), onTap: _busy ? null : f,
           child: Padding(padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(i, color: f == null ? JR.muted : (color ?? JR.cyan)), const SizedBox(height: 4), Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.2, color: f == null ? JR.muted : null))])),
         )));
@@ -93,22 +93,22 @@ class _ShipmentSheetState extends ConsumerState<ShipmentSheet> {
         key: const Key('sheet-cod'), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(color: JR.gold.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10), border: Border.all(color: JR.gold.withValues(alpha: 0.4))),
         child: Row(children: [
-          const Icon(Icons.payments_outlined, color: JR.gold, size: 20), const SizedBox(width: 8),
+          Icon(Icons.payments_outlined, color: JR.gold, size: 20), const SizedBox(width: 8),
           Expanded(child: Text(t('fmb.map_cash_due'), style: const TextStyle(fontWeight: FontWeight.w600))), const SizedBox(width: 8),
-          Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(s.codCents, lang), textDirection: TextDirection.ltr, style: const TextStyle(color: JR.gold, fontWeight: FontWeight.w800, fontSize: 17)))),
+          Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(s.codCents, lang), textDirection: TextDirection.ltr, style: TextStyle(color: JR.gold, fontWeight: FontWeight.w800, fontSize: 17)))),
         ]),
       )),
       info(Icons.account_balance_wallet_outlined, '${t('drs.l_payment')}: ${t(s.paymentMode == 'cod' ? 'drs.pay_cod' : 'drs.pay_prepaid')} · ${t('drs.l_pieces')}: ${s.pieces}', key: const Key('sheet-payment')),
       if (s.contents != null && s.contents!.isNotEmpty) info(Icons.inventory_2_outlined, '${t('wizard.contents')}: ${s.contents}', key: const Key('sheet-contents')),
       if (s.notes != null && s.notes!.isNotEmpty) info(Icons.sticky_note_2_outlined, s.notes!, key: const Key('sheet-notes'), color: JR.gold, strong: true),
       if (date.isNotEmpty) info(Icons.schedule, date, key: const Key('sheet-date')),
-      if (s.status != 'loaded' && s.failReason != null) info(Icons.report_gmailerrorred, t.has('stopfail.${s.failReason}') ? t('stopfail.${s.failReason}') : '${s.failReason}', key: const Key('sheet-fail'), color: JR.danger),
+      if (s.status != 'loaded' && s.failReason != null) info(Icons.report_gmailerrorred, t.has('stopfail.${s.failReason}') ? t.val('stopfail', s.failReason) : '${s.failReason}', key: const Key('sheet-fail'), color: JR.danger),
       const SizedBox(height: 14),
       IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final (i, w) in tiles.indexed) ...[if (i > 0) const SizedBox(width: 8), w]])),
       if (a.locked) Padding(padding: const EdgeInsets.only(top: 14), child: Banner2(key: const Key('sheet-locked'), text: t('drs.locked'))),
       if (a.arrive) ...[const SizedBox(height: 14), FilledButton.icon(key: const Key('sheet-arrive'), onPressed: _busy ? null : () => _run((j, x) => StopActions.arrive(context, ref, j, x)), icon: busyIcon(_busy, Icons.my_location), label: Text(t('act.checkin')))],
       if (a.deliver) ...[const SizedBox(height: 14), FilledButton.icon(key: const Key('sheet-deliver'), onPressed: _busy ? null : () => _run((j, x) => StopActions.deliver(context, ref, j, x)), icon: busyIcon(_busy, Icons.check), label: Text(t('fmb.map_deliver')))],
-      if (a.cantDeliver) ...[const SizedBox(height: 10), OutlinedButton.icon(key: const Key('sheet-cant'), style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: const BorderSide(color: JR.danger), minimumSize: const Size.fromHeight(50)), onPressed: _busy ? null : () => _run((j, x) => StopActions.cantDeliver(context, ref, j, x)), icon: const Icon(Icons.report_gmailerrorred), label: Text(t('ms.cant_deliver')))],
+      if (a.cantDeliver) ...[const SizedBox(height: 10), OutlinedButton.icon(key: const Key('sheet-cant'), style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: BorderSide(color: JR.danger), minimumSize: const Size.fromHeight(50)), onPressed: _busy ? null : () => _run((j, x) => StopActions.cantDeliver(context, ref, j, x)), icon: const Icon(Icons.report_gmailerrorred), label: Text(t('ms.cant_deliver')))],
       if (a.postpone) ...[const SizedBox(height: 8), OutlinedButton.icon(key: const Key('sheet-postpone'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)), onPressed: _busy ? null : () => _run((j, x) => StopActions.postpone(context, ref, j, x)), icon: const Icon(Icons.schedule), label: Text(t('ms.postpone')))],
     ])));
   }

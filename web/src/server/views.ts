@@ -108,6 +108,7 @@ export function businessActions(o: Offer, ctx: { service: string; rated?: boolea
     }
     case "delivered_reported": case "pending_settlement": case "qty_disputed": return (ctx.failedOpen ?? 0) > 0 ? ["confirm_returns"] : [];
     case "completed": return [...((ctx.failedOpen ?? 0) > 0 ? ["confirm_returns"] : []), ...(ctx.rated ? [] : ["rate"])];
+    case "cancelled": return (ctx.failedOpen ?? 0) > 0 ? ["confirm_returns"] : []; // parcels that were on board when the request was cancelled still have to be received back
     default: return [];
   }
 }
@@ -130,7 +131,7 @@ export async function businessRequestDetail(r: Request, viewer: User) {
       ratedByMe: rated.has(o.id), routeApprovedAt: o.routeApprovedAt, parcels: stats.get(o.id) ?? null,
       loading: manifest ? (() => { const st = stats.get(o.id); const total = st?.total ?? 0; return { mode: ops.requireLoadingRecord ? "warehouse" : "driver_scan", assigned: total, scanned: total - (st?.pending ?? 0), finished: o.loadedAckByDriver === true }; })() : null,
       cod: manifest ? (cods.get(o.id) ?? { collectedCents: 0, receivedCents: 0, outstandingCents: 0 }) : null,
-      actions: staff && !can(viewer, "requests.edit") ? [] : businessActions(o, { service: r.service, rated: rated.has(o.id), manifest, failedOpen: stats.get(o.id)?.failed ?? 0, recordsLoading: ops.requireLoadingRecord }).filter((a) => !staff || !["rate", "handover_custody"].includes(a)), officeId: o.officeId,
+      actions: staff && !can(viewer, "requests.edit") ? (can(viewer, "attendance.edit") ? businessActions(o, { service: r.service, manifest }).filter((a) => ["confirm_attendance", "mark_no_show"].includes(a)) : []) : businessActions(o, { service: r.service, rated: rated.has(o.id), manifest, failedOpen: stats.get(o.id)?.failed ?? 0, recordsLoading: ops.requireLoadingRecord }).filter((a) => !staff || !["rate", "handover_custody"].includes(a)), officeId: o.officeId,
     };
   });
   const offeredCount = rows.filter(({ o }) => o.status === "offered").length;

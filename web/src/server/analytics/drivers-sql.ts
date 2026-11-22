@@ -4,6 +4,7 @@ import { anyWindow, BILLED, NOT_DRAFT, PARCEL_OUTCOME_AT, scope } from "./condit
 import type { ResolvedFilters } from "./filters";
 import { tsz, twin, twinOrZero } from "./companies-lib";
 import { DRIVER_CANCELLED, flagCountSql, flagListSql, flagReasonSql, KEPT, MAX_BUSY_SECONDS, punctuality, PUSHED, STARTS } from "./drivers-lib";
+import { availabilityIntervals, driverScope } from "./fleet-lib";
 import type { Window } from "./periods";
 
 const ids = (xs: string[]) => sql.join(xs.map((x) => sql`${x}`), sql`, `);
@@ -21,9 +22,8 @@ export function driverRows(f: ResolvedFilters, money: boolean, grace: number, op
   const { due, ontime } = punctuality(grace);
   const oo = { offers: opts.officeOnly ? sql` and offers.office_id is not null` : sql``, settlements: opts.officeOnly ? sql` and settlements.office_id is not null` : sql`` };
   const maxEnd = f.prev && f.prev.end > f.cur.end ? f.prev.end : f.cur.end;
+  const minStart = f.prev && f.prev.start < f.cur.start ? f.prev.start : f.cur.start;
   const overlap = (w: Window | null) => (w ? sql`coalesce(sum(greatest(0, extract(epoch from (least(iv.e, ${tsz(w.end)}) - greatest(iv.s, ${tsz(w.start)}))))) filter (where iv.st = 'available'), 0)::float8` : sql`null::float8`);
-  const logDrivers = f.driver.length ? sql`and l.driver_id in (${ids(f.driver)})` : sql``;
-  const logOffice = f.office.length ? sql`and l.driver_id in (select user_id from driver_profiles where office_id in (${ids(f.office)}))` : sql``;
   return sql`
   ow as (
     select offers.driver_id as id,
@@ -64,10 +64,7 @@ export function driverRows(f: ResolvedFilters, money: boolean, grace: number, op
     where ${scope(f, "settlements")}${oo.settlements} and ${BILLED} and ${anyWindow(f, settlements.createdAt)} group by settlements.driver_id`
     : sql`select null::uuid as id, null::float8 as earn_c, null::float8 as earn_p where false`}
   ),
-  iv as (
-    select l.driver_id as id, l.at as s, coalesce(lead(l.at) over (partition by l.driver_id order by l.at), now()) as e, l.to_status as st
-    from driver_availability_log l where l.at < ${tsz(maxEnd)} ${logDrivers} ${logOffice}
-  ),
+  iv as ${availabilityIntervals(minStart, maxEnd, (col) => driverScope(f, col))},
   av as (select iv.id, ${overlap(f.cur)} as online_c, ${overlap(f.prev)} as online_p from iv group by iv.id),
   dr as (
     select u.id, u.name, u.phone, dp.national_id, coalesce(op.office_name, ou.name) as office_name, u.city, u.status as user_status, u.created_at as signup_at, u.last_seen_at, dp.vehicle_type as vehicle, dp.verification_status as verification, dp.availability,

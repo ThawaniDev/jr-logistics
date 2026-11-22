@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/i18n.dart';
+import 'core/notif_text.dart';
 import 'data/models_extra.dart';
 import 'providers.dart';
 import 'providers_extra.dart';
@@ -299,7 +300,7 @@ int stableNotificationId(String s) {
 /// Title and text of the device notification / in-app banner for one new offer: `notif.offer_new` with `{ref} {parcels} {pickupCity} {deliveryCity}`.
 ({String title, String body}) offerNotice(Strings t, AppNotification n) => (
       title: t('fmb.notify_offer_title'),
-      body: t.has('notif.offer_new') ? t('notif.offer_new', n.vars(city: (k) => t.has('city.$k') ? t('city.$k') : k)) : t('um.notif_generic'),
+      body: notificationText(t, n, type: 'offer_new'), // never a raw {placeholder}: short / cut / generic text when a param is missing
     );
 
 // ── state shared with the UI ──

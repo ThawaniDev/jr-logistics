@@ -29,18 +29,18 @@ class _EditForm extends ConsumerStatefulWidget {
 }
 
 class _EditFormState extends ConsumerState<_EditForm> {
-  late final Json _user = ((widget.data['user'] as Map?) ?? const {}).cast<String, dynamic>();
-  late final Json _p = ((widget.data['profile'] as Map?) ?? const {}).cast<String, dynamic>();
+  late final Json _user = mapOf(widget.data['user']) ?? const <String, dynamic>{};
+  late final Json _p = mapOf(widget.data['profile']) ?? const <String, dynamic>{};
   late final _name = TextEditingController(text: '${_user['name'] ?? ''}');
   late final _email = TextEditingController(text: '${_user['email'] ?? ''}');
   late final _plate = TextEditingController(text: '${_p['vehiclePlate'] ?? ''}');
   late final _nid = TextEditingController(text: '${_p['nationalId'] ?? ''}');
   late final _bank = TextEditingController(text: '${_p['bankName'] ?? ''}');
   late final _iban = TextEditingController(text: '${_p['iban'] ?? ''}');
-  late String? _city = _user['city'] as String?;
-  late String? _vehicle = _p['vehicleType'] as String?;
-  late String? _temp = _p['vehicleTemperature'] as String?;
-  late final Set<String> _services = {...((_p['services'] as List?) ?? const []).cast<String>()};
+  late String? _city = strOf(_user['city']);
+  late String? _vehicle = strOf(_p['vehicleType']);
+  late String? _temp = strOf(_p['vehicleTemperature']);
+  late final Set<String> _services = {...listOf(_p['services']).whereType<String>()};
   bool _busy = false, _submitted = false;
   Map<String, String> _server = {};
 
@@ -67,7 +67,7 @@ class _EditFormState extends ConsumerState<_EditForm> {
         'vehiclePlate': _plate.text.trim(), 'nationalId': _nid.text.trim(), 'services': _services.toList(),
         'bankName': _bank.text.trim(), if (_iban.text.trim().isNotEmpty) 'iban': normalizeIban(_iban.text),
       });
-      if (r['user'] is Map) ref.read(authProvider.notifier).updateUser((r['user'] as Map).cast<String, dynamic>());
+      if (r['user'] is Map) ref.read(authProvider.notifier).updateUser(mapOf(r['user']) ?? const <String, dynamic>{});
       ref.invalidate(profileProvider);
       ref.invalidate(overviewProvider);
       if (!mounted) return;
@@ -90,9 +90,9 @@ class _EditFormState extends ConsumerState<_EditForm> {
     final t = context.tr;
     final lang = ref.watch(localeProvider);
     final cat = ref.watch(catalogProvider).value;
-    final cities = ((cat?['cities'] as List?) ?? const []).cast<Map>();
-    final vehicles = ((cat?['vehicleTypes'] as List?) ?? const []).cast<String>();
-    final svcs = ((cat?['services'] as List?) ?? const []).cast<Map>().where((s) => s['driverless'] != true);
+    final cities = listOf(cat?['cities']).whereType<Map>().toList();
+    final vehicles = listOf(cat?['vehicleTypes']).whereType<String>().toList();
+    final svcs = listOf(cat?['services']).whereType<Map>().where((s) => s['driverless'] != true);
     String? err(String field, bool localInvalid, String localMsg) => _submitted || _server.containsKey(field) ? (localInvalid ? localMsg : _server[field]) : null;
     final changedIban = '${_p['iban'] ?? ''}'.isNotEmpty && normalizeIban(_iban.text) != _p['iban'];
     return SafeArea(
@@ -105,10 +105,10 @@ class _EditFormState extends ConsumerState<_EditForm> {
         const SizedBox(height: 22),
         Text(t('profile.vehicle_section'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
-        DropdownButtonFormField<String>(initialValue: vehicles.contains(_vehicle) ? _vehicle : null, decoration: InputDecoration(labelText: t('reg.vehicle')), items: [for (final v in vehicles) DropdownMenuItem(value: v, child: Text(t('vehicle.$v')))], onChanged: (v) => setState(() { _vehicle = v; if (!_needTemp) _temp = null; })),
+        DropdownButtonFormField<String>(initialValue: vehicles.contains(_vehicle) ? _vehicle : null, decoration: InputDecoration(labelText: t('reg.vehicle')), items: [for (final v in vehicles) DropdownMenuItem(value: v, child: Text(t.val('vehicle', v)))], onChanged: (v) => setState(() { _vehicle = v; if (!_needTemp) _temp = null; })),
         if (_needTemp) ...[
           const SizedBox(height: 14),
-          DropdownButtonFormField<String>(key: const Key('edit-temp'), initialValue: _temp, decoration: InputDecoration(labelText: t('reg.temperature'), errorText: err('vehicleTemperature', _temp == null, t('profile.temp_required'))), items: [for (final v in ['dry', 'cold']) DropdownMenuItem(value: v, child: Text(t('temp.$v')))], onChanged: (v) => setState(() => _temp = v)),
+          DropdownButtonFormField<String>(key: const Key('edit-temp'), initialValue: _temp, decoration: InputDecoration(labelText: t('reg.temperature'), errorText: err('vehicleTemperature', _temp == null, t('profile.temp_required'))), items: [for (final v in ['dry', 'cold']) DropdownMenuItem(value: v, child: Text(t.val('temp', v)))], onChanged: (v) => setState(() => _temp = v)),
         ],
         const SizedBox(height: 14),
         Row(children: [
@@ -117,12 +117,12 @@ class _EditFormState extends ConsumerState<_EditForm> {
           Expanded(child: TextField(key: const Key('edit-nid'), controller: _nid, keyboardType: TextInputType.number, inputFormatters: digitsOnly(max: 12), textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: t('reg.national_id')))),
         ]),
         const SizedBox(height: 16),
-        Text(t('reg.services'), style: const TextStyle(color: JR.muted, fontSize: 13)),
+        Text(t('reg.services'), style: TextStyle(color: JR.muted, fontSize: 13)),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final s in svcs) FilterChip(label: Text(t('svc.${s['key']}')), selected: _services.contains(s['key']), selectedColor: JR.accent.withValues(alpha: 0.2), checkmarkColor: JR.accent, side: const BorderSide(color: JR.line), onSelected: (v) => setState(() => v ? _services.add(s['key'] as String) : _services.remove(s['key']))),
+          for (final s in svcs) FilterChip(label: Text(t.val('svc', s['key'])), selected: _services.contains(s['key']), selectedColor: JR.accent.withValues(alpha: 0.2), checkmarkColor: JR.accent, side: BorderSide(color: JR.line), onSelected: (v) => setState(() => v ? _services.add(s['key'] as String) : _services.remove(s['key']))),
         ]),
-        if ((_submitted && _services.isEmpty) || _server.containsKey('services')) Padding(padding: const EdgeInsets.only(top: 4), child: Text(t('profile.services_required'), style: const TextStyle(color: JR.danger, fontSize: 12))),
+        if ((_submitted && _services.isEmpty) || _server.containsKey('services')) Padding(padding: const EdgeInsets.only(top: 4), child: Text(t('profile.services_required'), style: TextStyle(color: JR.danger, fontSize: 12))),
         const SizedBox(height: 22),
         Text(t('profile.payout_section'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
@@ -131,7 +131,7 @@ class _EditFormState extends ConsumerState<_EditForm> {
         TextField(key: const Key('edit-iban'), controller: _iban, onChanged: (_) => setState(() {}), textCapitalization: TextCapitalization.characters, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: t('profile.iban'), hintText: 'SA…', helperText: t('profile.iban_hint'), errorText: !_ibanOk ? t('profile.iban_invalid') : (_server.containsKey('iban') ? t('profile.iban_invalid') : null))),
         if (changedIban) Padding(padding: const EdgeInsets.only(top: 10), child: Banner2(text: t('profile.iban_change_warn'))),
         const SizedBox(height: 24),
-        FilledButton(key: const Key('edit-save'), onPressed: _busy ? null : _save, child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('common.save'))),
+        FilledButton(key: const Key('edit-save'), onPressed: _busy ? null : _save, child: _busy ? SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('common.save'))),
       ]),
     );
   }

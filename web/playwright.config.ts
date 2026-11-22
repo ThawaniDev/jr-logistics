@@ -1,7 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { parse } from "dotenv";
 
 const PORT = Number(process.env.E2E_PORT ?? 3101); // 3100 is often taken by another project
-const DB = "postgres://dogorshom@localhost:5432/jr_logistics_test";
+// The e2e database is the one in .env.test (the same file global-setup and the Vitest setup use). The path is read from the file, not from the shell, so a
+// DATABASE_URL exported for the dev server can never point a run at the wrong database.
+const DB = (() => { try { return parse(readFileSync(".env.test"))["DATABASE_URL"]; } catch { return undefined; } })() ?? "postgres://localhost:5432/jr_logistics_test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
@@ -11,7 +15,7 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   globalSetup: "./e2e/global-setup.ts",
-  use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure", screenshot: "only-on-failure", locale: "en" },
+  use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure", screenshot: "only-on-failure", locale: "en", colorScheme: "dark" /* the platform used to be dark only: specs keep seeing that unless they ask for light (theme.spec.ts) */ },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: `npx next build && npx next start -p ${PORT}`, // production build: deterministic (no on-demand compile reloads)

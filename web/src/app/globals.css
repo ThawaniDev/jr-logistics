@@ -1,9 +1,16 @@
 @import "tailwindcss";
 
 /*
- * JR Logistics design tokens — single source of truth for color.
- * Components must use these semantic classes (bg-bg, bg-card, text-muted, border-line, text-accent …),
- * never raw hex values.
+ * JR Logistics design tokens — single source of truth for color, in two themes.
+ * Components must use these semantic classes (bg-bg, bg-card, text-muted, border-line, text-accent …), never raw hex values.
+ *
+ *   :root                                          dark (the original look; also what a page without `data-theme` gets)
+ *   :root[data-theme="light"]                      light, chosen by the visitor
+ *   @media (prefers-color-scheme: light) system    light, because the visitor follows the OS (`data-theme="system"`) and the OS is light
+ *   @media print                                   light, always (paper); the three light blocks must declare exactly the same values (tests/unit/theme-contrast.test.ts checks it)
+ *
+ * `<html data-theme>` is written by the server from the `jr_theme` cookie (src/app/layout.tsx), the Theme menu changes it (src/components/theme).
+ * Contrast of every text / surface pair of both themes is verified by tests/unit/theme-contrast.test.ts — change a value there and the test tells you if it is still AA.
  */
 :root {
   --jr-bg: #0b132b;          /* primary background — deep navy */
@@ -14,11 +21,94 @@
   --jr-cyan: #00c5d5;        /* secondary accent */
   --jr-text: #f8fafc;        /* primary text */
   --jr-muted: #94a3b8;       /* secondary text */
-  --jr-line: #26334d;        /* borders */
+  --jr-line: #26334d;        /* borders and dividers */
+  --jr-line-strong: #26334d; /* borders of form controls (light: ≥ 3:1 against its surroundings; dark keeps the original border) */
   --jr-gold: #f59e0b;        /* financial / security indicators — use sparingly */
   --jr-danger: #f87171;      /* errors & destructive (status only) */
-  --jr-radius: 14px;
+  --jr-whatsapp: #25d366;    /* WhatsApp brand green (driver contact button) */
+  --jr-scrollbar: #26334d;   /* scrollbar thumb */
+  --jr-backdrop: rgb(5 10 25 / 0.7);  /* behind a modal dialog */
+  --jr-scrim: rgb(0 0 0 / 0.6);       /* behind the mobile menu */
+  --jr-scrim-strong: rgb(0 0 0 / 0.75); /* behind a bottom sheet */
+  --jr-grid: rgba(0, 197, 213, 0.04); /* hero grid pattern */
+  --jr-heat-cap: 1;          /* heat-map cells that carry text: share of the accent tint they may reach (light: lower, so the text stays readable) */
+  --jr-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color-scheme: dark;
 }
+:root[data-theme="light"] {
+  --jr-bg: #f6f8fb;
+  --jr-bg-2: #edf1f7;
+  --jr-card: #ffffff;
+  --jr-accent: #046d4f;
+  --jr-accent-ink: #ffffff;
+  --jr-cyan: #0d6882;
+  --jr-text: #0f172a;
+  --jr-muted: #526179;
+  --jr-line: #d5dde9;
+  --jr-line-strong: #7a889d;
+  --jr-gold: #9b4708;
+  --jr-danger: #b51e1e;
+  --jr-whatsapp: #086130;
+  --jr-scrollbar: #b4bfd0;
+  --jr-backdrop: rgb(15 23 42 / 0.45);
+  --jr-scrim: rgb(15 23 42 / 0.4);
+  --jr-scrim-strong: rgb(15 23 42 / 0.5);
+  --jr-grid: rgba(13, 104, 129, 0.07);
+  --jr-heat-cap: 0.78;
+  --jr-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23424e61' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --jr-bg: #f6f8fb;
+    --jr-bg-2: #edf1f7;
+    --jr-card: #ffffff;
+    --jr-accent: #046d4f;
+    --jr-accent-ink: #ffffff;
+    --jr-cyan: #0d6882;
+    --jr-text: #0f172a;
+    --jr-muted: #526179;
+    --jr-line: #d5dde9;
+    --jr-line-strong: #7a889d;
+    --jr-gold: #9b4708;
+    --jr-danger: #b51e1e;
+    --jr-whatsapp: #086130;
+    --jr-scrollbar: #b4bfd0;
+    --jr-backdrop: rgb(15 23 42 / 0.45);
+    --jr-scrim: rgb(15 23 42 / 0.4);
+    --jr-scrim-strong: rgb(15 23 42 / 0.5);
+    --jr-grid: rgba(13, 104, 129, 0.07);
+    --jr-heat-cap: 0.78;
+    --jr-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23424e61' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    color-scheme: light;
+  }
+}
+@media print {
+  :root, :root[data-theme] {
+    --jr-bg: #f6f8fb;
+    --jr-bg-2: #edf1f7;
+    --jr-card: #ffffff;
+    --jr-accent: #046d4f;
+    --jr-accent-ink: #ffffff;
+    --jr-cyan: #0d6882;
+    --jr-text: #0f172a;
+    --jr-muted: #526179;
+    --jr-line: #d5dde9;
+    --jr-line-strong: #7a889d;
+    --jr-gold: #9b4708;
+    --jr-danger: #b51e1e;
+    --jr-whatsapp: #086130;
+    --jr-scrollbar: #b4bfd0;
+    --jr-backdrop: rgb(15 23 42 / 0.45);
+    --jr-scrim: rgb(15 23 42 / 0.4);
+    --jr-scrim-strong: rgb(15 23 42 / 0.5);
+    --jr-grid: rgba(13, 104, 129, 0.07);
+    --jr-heat-cap: 0.78;
+    --jr-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23424e61' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    color-scheme: light;
+  }
+}
+:root { --jr-radius: 14px; }
 
 @theme inline {
   --color-bg: var(--jr-bg);
@@ -30,16 +120,26 @@
   --color-ink: var(--jr-text);
   --color-muted: var(--jr-muted);
   --color-line: var(--jr-line);
+  --color-line-strong: var(--jr-line-strong);
+  --color-scrim: var(--jr-scrim);
+  --color-scrim-strong: var(--jr-scrim-strong);
   --color-gold: var(--jr-gold);
   --color-danger: var(--jr-danger);
+  --color-whatsapp: var(--jr-whatsapp);
   --font-sans: var(--font-plex), var(--font-tajawal), system-ui, sans-serif;
   --radius-card: var(--jr-radius);
 }
 
-html { color-scheme: dark; scroll-behavior: smooth; }
+/* `light:` variant — for the rare spot that needs a different class in the light theme (everything else just uses the tokens) */
+@custom-variant light {
+  :root[data-theme="light"] & { @slot; }
+  @media (prefers-color-scheme: light) { :root[data-theme="system"] & { @slot; } }
+}
+
+html { scroll-behavior: smooth; }
 body { background: var(--jr-bg); color: var(--jr-text); font-family: var(--font-plex), var(--font-tajawal), system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 ::selection { background: color-mix(in srgb, var(--jr-accent) 35%, transparent); }
-* { scrollbar-width: thin; scrollbar-color: var(--jr-line) transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--jr-scrollbar) transparent; }
 
 .text-gradient { background: linear-gradient(90deg, var(--jr-accent), var(--jr-cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .bg-brand-gradient { background: linear-gradient(135deg, var(--jr-accent), var(--jr-cyan)); }
@@ -47,8 +147,8 @@ body { background: var(--jr-bg); color: var(--jr-text); font-family: var(--font-
 
 .hero-grid-pattern {
   background-image: 
-    linear-gradient(to right, rgba(0, 197, 213, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 197, 213, 0.04) 1px, transparent 1px);
+    linear-gradient(to right, var(--jr-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--jr-grid) 1px, transparent 1px);
   background-size: 44px 44px;
 }
 
@@ -66,13 +166,13 @@ span.ltr-num, p.ltr-num, code.ltr-num, b.ltr-num { display: inline-block; }
 dialog.jr-modal { background: var(--jr-card); color: var(--jr-text); border: 1px solid var(--jr-line); border-radius: 18px; padding: 0; max-width: min(560px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; width: 100%; margin: auto; }
 /* the page behind an open modal must not scroll */
 body:has(dialog.jr-modal[open]) { overflow: hidden; }
-dialog.jr-modal::backdrop { background: rgb(5 10 25 / 0.7); backdrop-filter: blur(3px); }
+dialog.jr-modal::backdrop { background: var(--jr-backdrop); backdrop-filter: blur(3px); }
 
 :focus-visible { outline: 2px solid var(--jr-accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
 
 /* custom select arrow, direction aware */
-select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-size: 16px; background-position: right 0.75rem center; padding-inline-end: 2.25rem; }
+select { appearance: none; -webkit-appearance: none; background-image: var(--jr-select-arrow); background-repeat: no-repeat; background-size: 16px; background-position: right 0.75rem center; padding-inline-end: 2.25rem; }
 [dir="rtl"] select { background-position: left 0.75rem center; }
 select option { background: var(--jr-card); color: var(--jr-text); }
 

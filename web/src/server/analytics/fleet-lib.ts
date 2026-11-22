@@ -61,3 +61,21 @@ export const driverScope = (f: ResolvedFilters, col: string): SQL => {
   return sql`${f.driver.length ? sql`and ${c} in (${ids(f.driver)})` : sql``} ${f.office.length ? sql`and ${c} in (select user_id from driver_profiles where office_id in (${ids(f.office)}))` : sql``}`;
 };
 export const idList = ids;
+
+const tsz = (d: Date) => sql`${d.toISOString()}::timestamptz`;
+/**
+ * The availability intervals `(id, s, e, st)` of the drivers in scope that can overlap `[from, to)`: every log row inside the window plus, per driver, the LAST row before it (the status
+ * the driver was in when the window began; its `s` lies before `from`, callers clamp with `greatest(s, from)`). An interval ends at the driver's next row, or at `now()` for the latest one.
+ * Same intervals as reading the whole log up to `to`, but the cost follows the window and the number of drivers (one index probe each), not the age of the platform: on 1.2 million log
+ * rows the whole-log read took 2.9 s, this 12 ms, identical output (audit K, A4). `scopeOn(col)` renders the driver / office filters for the column it is given (`l.driver_id` in the
+ * window part, `dp.user_id` in the probe part); a driver without a profile row has no log.
+ */
+export function availabilityIntervals(from: Date, to: Date, scopeOn: (col: string) => SQL): SQL {
+  return sql`(select u.id, u.at as s, coalesce(lead(u.at) over (partition by u.id order by u.at), now()) as e, u.st from (
+      select l.driver_id as id, l.at, l.to_status as st from driver_availability_log l where l.at >= ${tsz(from)} and l.at < ${tsz(to)} ${scopeOn("l.driver_id")}
+      union all
+      select b.driver_id, b.at, b.to_status from driver_profiles dp
+        join lateral (select l.driver_id, l.at, l.to_status from driver_availability_log l where l.driver_id = dp.user_id and l.at < ${tsz(from)} order by l.at desc limit 1) b on true
+        where true ${scopeOn("dp.user_id")}
+    ) u)`;
+}

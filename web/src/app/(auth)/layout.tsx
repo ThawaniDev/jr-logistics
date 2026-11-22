@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Logo, LanguageSwitcher } from "@/components/layout/shell";
 import { getT } from "@/i18n/server";
+import { ThemeMenu } from "@/components/theme/theme-menu";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const { t } = await getT();
@@ -10,11 +11,11 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         <div className="absolute -top-28 start-1/3 size-[500px] rounded-full bg-cyan/10 blur-[150px]" />
         <div className="absolute -bottom-28 end-1/4 size-[400px] rounded-full bg-accent/10 blur-[150px]" />
       </div>
-      <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-5 py-6">
+      <header className="relative z-20 mx-auto flex max-w-6xl items-center justify-between px-5 py-6">
         <Link href="/" aria-label={t("ux.d_home")}>
           <Logo size={34} />
         </Link>
-        <LanguageSwitcher compact />
+        <div className="flex items-center gap-2"><LanguageSwitcher compact /><ThemeMenu /></div>
       </header>
       <main id="main" className="relative z-10 mx-auto flex max-w-6xl justify-center px-4 pb-20 pt-2 sm:px-5 sm:pt-4">
         {children}

@@ -32,10 +32,10 @@ String stopErrMessage(BuildContext c, Object e) {
     final d = e.details;
     switch (e.code) {
       case 'TOO_FAR_FROM_WAREHOUSE':
-        final dist = (d['distanceM'] as num?)?.toDouble(), r = (d['radiusM'] as num?)?.toDouble();
+        final dist = numOf(d['distanceM'])?.toDouble(), r = numOf(d['radiusM'])?.toDouble();
         if (dist != null && r != null) return t('fma.err_too_far', {'dist': fmtMeters(t, dist), 'radius': fmtMeters(t, r)});
       case 'CASH_MISMATCH':
-        final due = (d['expectedCents'] as num?)?.toInt();
+        final due = numOf(d['expectedCents'])?.toInt();
         if (due != null) return t('fma.err_cash_mismatch', {'amount': fmtMoney(due, t.code)});
       case 'EVIDENCE_REQUIRED':
         final note = d['note'] == true, photo = d['photo'] == true;
@@ -101,7 +101,7 @@ Future<bool> runStopAction(
     if (context.mounted) {
       refreshAll(ref);
     } else {
-      for (final p in [overviewProvider, offersProvider, activeJobsProvider, historyJobsProvider, opportunitiesProvider, walletProvider]) { container.invalidate(p); }
+      container..invalidate(overviewProvider)..invalidate(offersProvider)..invalidate(activeJobsProvider)..invalidate(historyJobsProvider)..invalidate(opportunitiesProvider)..invalidate(walletProvider);
     }
     container.invalidate(jobProvider(offerId));
   }

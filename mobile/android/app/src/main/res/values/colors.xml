@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background of the native launch window (the app's light `bg`); values-night/colors.xml has the dark one. -->
+    <color name="jr_launch_bg">#FFF6F8FB</color>
+</resources>

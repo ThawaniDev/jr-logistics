@@ -23,7 +23,7 @@ const RouteMap = dynamic(() => import("./route-map"), { ssr: false, loading: () 
 const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 const stateOf = (s: Stop): MapStop["state"] => (s.current ? "current" : isOpenStop(s) ? "todo" : s.status === "delivered" ? "done" : "failed");
-const DOT: Record<MapStop["state"], string> = { current: "bg-accent text-accent-ink border-white", todo: "bg-card text-ink border-cyan", done: "bg-slate-500 text-white border-slate-400", failed: "bg-danger/80 text-black border-danger" };
+const DOT: Record<MapStop["state"], string> = { current: "bg-accent text-accent-ink border-white", todo: "bg-card text-ink border-cyan", done: "bg-slate-500 text-white border-slate-400", failed: "bg-danger/80 text-accent-ink border-danger" };
 
 type Mode = "details" | "deliver" | "fail" | "defer";
 

@@ -48,7 +48,7 @@ class _FailSheetState extends ConsumerState<FailSheet> {
     if (reason == null || _busy) return;
     final sure = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
       title: Text(d.tr('ms.fail_confirm_title')), content: Text('${d.tr('stopfail.$reason')}\n\n${d.tr('ms.fail_confirm_body')}'),
-      actions: [TextButton(key: const Key('fail-cancel'), style: TextButton.styleFrom(minimumSize: const Size(88, 48)), onPressed: () => Navigator.pop(d, false), child: Text(d.tr('common.cancel'))), FilledButton(key: const Key('fail-confirm'), style: FilledButton.styleFrom(minimumSize: const Size(120, 48), backgroundColor: JR.danger, foregroundColor: JR.bg), onPressed: () => Navigator.pop(d, true), child: Text(d.tr('ms.fail_confirm')))],
+      actions: [TextButton(key: const Key('fail-cancel'), style: TextButton.styleFrom(minimumSize: const Size(88, 48)), onPressed: () => Navigator.pop(d, false), child: Text(d.tr('common.cancel'))), FilledButton(key: const Key('fail-confirm'), style: FilledButton.styleFrom(minimumSize: const Size(120, 48), backgroundColor: JR.danger, foregroundColor: JR.dangerInk), onPressed: () => Navigator.pop(d, true), child: Text(d.tr('ms.fail_confirm')))],
     ));
     if (sure != true || !mounted) return;
     setState(() { _busy = true; _error = null; _photoError = null; });
@@ -100,7 +100,7 @@ class _FailSheetState extends ConsumerState<FailSheet> {
             return ListTile(
               key: Key('fail-${r.key}'), enabled: ok && !_busy, selected: _reason == r.key, selectedColor: JR.accent, contentPadding: EdgeInsets.zero, minVerticalPadding: 12,
               leading: Icon(_reason == r.key ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: ok ? JR.accent : JR.muted),
-              title: Text(t('stopfail.${r.key}')), subtitle: sub == null ? null : Text(sub, style: const TextStyle(fontSize: 12)),
+              title: Text(t.val('stopfail', r.key)), subtitle: sub == null ? null : Text(sub, style: const TextStyle(fontSize: 12)),
               onTap: ok && !_busy ? () { haptic(HapticKind.select); setState(() => _reason = r.key); } : null,
             );
           }),
@@ -113,7 +113,7 @@ class _FailSheetState extends ConsumerState<FailSheet> {
           if (_busy && _progress != null) Padding(padding: const EdgeInsets.only(top: 10), child: LinearProgressIndicator(key: const Key('fail-upload-progress'), value: _progress == 0 ? null : _progress, minHeight: 6, color: JR.accent, backgroundColor: JR.line, semanticsLabel: t('um.uploading'))),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Banner2(key: const Key('fail-error'), tone: Tone.danger, text: _error!)),
           const SizedBox(height: 14),
-          FilledButton.icon(key: const Key('fail-submit'), style: FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.bg), onPressed: selOk && noteOk && !_busy ? _submit : null, icon: busyIcon(_busy, Icons.report_gmailerrorred, color: JR.bg), label: Text(t('ms.cant_deliver'))),
+          FilledButton.icon(key: const Key('fail-submit'), style: FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.dangerInk), onPressed: selOk && noteOk && !_busy ? _submit : null, icon: busyIcon(_busy, Icons.report_gmailerrorred, color: JR.bg), label: Text(t('ms.cant_deliver'))),
         ]),
       )));
     }
@@ -195,7 +195,7 @@ class _PostponeSheetState extends ConsumerState<PostponeSheet> {
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(t('ms.postpone'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
-        Text(t('ms.postpone_hint'), style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
+        Text(t('ms.postpone_hint'), style: TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
         if (_needNote || _needPhoto) ...[const SizedBox(height: 10), Banner2(key: const Key('postpone-evidence-note'), text: t('fma.postpone_evidence_note'))],
         const SizedBox(height: 12),
         TextField(key: const Key('postpone-note'), controller: _note, enabled: !_busy, onChanged: (_) => setState(() {}), maxLines: 3, decoration: InputDecoration(labelText: t(_needNote ? 'fma.postpone_reason_required' : 'fma.postpone_reason_optional'))),
@@ -205,7 +205,7 @@ class _PostponeSheetState extends ConsumerState<PostponeSheet> {
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Banner2(key: const Key('postpone-error'), tone: Tone.danger, text: _error!)),
         const SizedBox(height: 14),
         FilledButton.icon(key: const Key('postpone-submit'), onPressed: _busy || !_noteOk || !_photoOk ? null : _submit, icon: busyIcon(_busy, Icons.schedule), label: Text(t('ms.postpone'))),
-        if (missing != null && !_busy) Padding(padding: const EdgeInsets.only(top: 8), child: Text(missing, key: const Key('postpone-hint'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
+        if (missing != null && !_busy) Padding(padding: const EdgeInsets.only(top: 8), child: Text(missing, key: const Key('postpone-hint'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
       ]),
     )));
   }

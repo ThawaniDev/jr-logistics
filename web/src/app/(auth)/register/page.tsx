@@ -77,7 +77,7 @@ function RegisterForm() {
             className={cn(
               "min-h-20 rounded-2xl border p-4 text-start transition-all",
               role === key
-                ? "border-accent bg-accent/15 text-accent shadow-[0_0_20px_rgba(5,229,163,0.15)] font-bold"
+                ? "border-accent bg-accent/15 text-accent shadow-[0_0_20px_color-mix(in_srgb,var(--jr-accent)_15%,transparent)] font-bold"
                 : "border-line bg-card/75 text-muted hover:border-line/80 hover:text-ink"
             )}
           >

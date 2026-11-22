@@ -63,13 +63,13 @@ class _UsernameFieldState extends State<UsernameField> {
   Widget build(BuildContext context) {
     final t = context.tr;
     final (helper, error, icon) = switch (_state) {
-      _ when widget.serverError != null => (null, widget.serverError, const Icon(Icons.error_outline, color: JR.danger)),
+      _ when widget.serverError != null => (null, widget.serverError, Icon(Icons.error_outline, color: JR.danger)),
       UsernameState.empty || UsernameState.tooShort => (t('m.au_un_rules'), null, null),
-      UsernameState.checking => (t('m.au_un_checking'), null, const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accent)))),
-      UsernameState.available => (t('m.au_un_ok'), null, const Icon(Icons.check_circle, color: JR.accent)),
-      UsernameState.taken => (null, t('m.au_un_taken'), const Icon(Icons.error_outline, color: JR.danger)),
-      UsernameState.reserved => (null, t('m.au_un_reserved'), const Icon(Icons.error_outline, color: JR.danger)),
-      UsernameState.unchecked => (t('m.au_un_unchecked'), null, const Icon(Icons.help_outline, color: JR.gold)),
+      UsernameState.checking => (t('m.au_un_checking'), null, Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accent)))),
+      UsernameState.available => (t('m.au_un_ok'), null, Icon(Icons.check_circle, color: JR.accent)),
+      UsernameState.taken => (null, t('m.au_un_taken'), Icon(Icons.error_outline, color: JR.danger)),
+      UsernameState.reserved => (null, t('m.au_un_reserved'), Icon(Icons.error_outline, color: JR.danger)),
+      UsernameState.unchecked => (t('m.au_un_unchecked'), null, Icon(Icons.help_outline, color: JR.gold)),
     };
     return TextField(
       key: const Key('username'), controller: widget.controller, onChanged: _changed, autofillHints: const [AutofillHints.newUsername], keyboardType: TextInputType.visiblePassword,

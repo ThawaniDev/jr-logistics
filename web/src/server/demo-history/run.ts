@@ -146,6 +146,9 @@ export async function runHistory(opts: HistoryOptions, io: RunIO = { log: consol
       await tx.execute(sql`select pg_advisory_xact_lock(7788002)`); // two generators (or a generator and a reset) never run at the same time
       if ((await isHistoryPresent(tx)).present) throw new Error("History appeared while this run was starting (another run finished first): nothing was written.");
       const m = await work(tx);
+      // Rows written in this very transaction have no planner statistics (autovacuum cannot see them): without ANALYZE the integrity queries (anti-joins over a million parcel events)
+      // choose nested loops over sequential scans and do not finish at scale (audit K, A4: a 150 000-parcel run sat in one verify query for 40 minutes).
+      for (const t of ["requests", "offers", "shipments", "shipment_events", "job_events", "settlements", "invoices", "ledger_entries", "cod_remittances", "withdrawals", "tickets", "complaints", "ratings", "notifications"]) await tx.execute(sql.raw(`analyze "${t}"`));
       const v = await verifyHistory(tx);
       for (const c of v.checks) log(`  ${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.ok ? "" : ` — ${c.detail}`}`);
       log(v.ok ? "Integrity: PASS" : "Integrity: FAIL");

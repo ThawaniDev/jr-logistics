@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { staffLogin, gotoReady, DEMO, apiLogin } from "./helpers";
+import { ensureSettlement } from "./settled-job";
 
 /**
  * Admin finance as a group of separate pages (UI redesign F1–F12): overview, settlements, withdrawals, ledger, invoices, cash on delivery, pricing.
@@ -7,6 +8,9 @@ import { staffLogin, gotoReady, DEMO, apiLogin } from "./helpers";
  * the withdrawals / adjustment / price rule below are created here and identified by id or a unique reference.
  */
 test.describe.configure({ mode: "serial" });
+
+// The settlements test reads "the newest settlement": alone, on a freshly seeded database, there is none (it used to pass only after other specs had paid a job).
+test.beforeAll(async ({ browser }) => { test.setTimeout(120_000); await ensureSettlement(browser); });
 
 const BASE = `http://localhost:${process.env.E2E_PORT ?? 3101}`; // not 3100: other projects on this machine use it
 const ADMIN = { email: "admin@jrlogistics.test", password: "E2e!Password2026" };

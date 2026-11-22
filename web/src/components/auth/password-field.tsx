@@ -17,7 +17,7 @@ export function PasswordField({ label, value, onChange, error, hint, autoComplet
         <div className="relative">
           <input id={id} aria-describedby={d} aria-invalid={!!error} required={required} autoFocus={autoFocus} data-testid={testId} dir="ltr" type={shown ? "text" : "password"} value={value} placeholder={placeholder}
             autoComplete={autoComplete} autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => onChange(e.target.value)}
-            className={cn("h-10 w-full rounded-xl border border-line bg-bg2 ps-3 text-start text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-60 aria-[invalid=true]:border-danger", extra ? "pe-28" : "pe-16")} />
+            className={cn("h-10 w-full rounded-xl border border-line-strong bg-bg2 ps-3 text-start text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-60 aria-[invalid=true]:border-danger", extra ? "pe-28" : "pe-16")} />
           <div className="absolute inset-y-0 end-1 flex items-center gap-0.5">
             {extra}
             <button type="button" onClick={() => setShown((s) => !s)} aria-pressed={shown} aria-label={t(shown ? "ja.hide" : "ja.show")} title={t(shown ? "ja.hide" : "ja.show")}

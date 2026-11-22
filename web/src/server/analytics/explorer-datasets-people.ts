@@ -9,6 +9,8 @@ const DOC_STATUS = ["submitted", "under_review", "approved", "rejected", "info_r
 const DOC_TYPES = ["national_id", "driving_license", "vehicle_registration", "vehicle_photo", "office_cr", "office_license", "iban_certificate", "other", "business_cr", "tax_certificate"] as const;
 const city = (e: SQL, o: Partial<Column> = {}) => col("city", "enum", e, { ns: "city", ...o });
 const ACCOUNT_STATUS = ["active", "suspended"] as const;
+/** Today on the Riyadh calendar, whatever time zone the database session runs in (`current_date` is the session's day: a UTC database is a day behind from 00:00 to 03:00 Riyadh). */
+const RIYADH_TODAY = sql`((now() at time zone 'Asia/Riyadh')::date)`;
 /** The columns every account dataset shares (all from `users`). */
 const accountCols = (): Column[] => [
   col("phone", "text", sql`users.phone`, { mask: "phone", default: true }), col("email", "text", sql`users.email`, { mask: "email" }),
@@ -74,12 +76,12 @@ defineDataset({
     col("owner", "text", sql`coalesce(bp.company_name, op.office_name, ow.name)`, { default: true }), col("ownerKind", "enum", sql`documents.owner_kind`, { ns: "role", values: ["driver", "office", "business"], default: true }),
     col("type", "enum", sql`documents.type`, { ns: "doc", values: DOC_TYPES, default: true }), col("status", "status", sql`documents.status`, { ns: "docstatus", values: DOC_STATUS, default: true }),
     col("fileName", "text", sql`documents.file_name`, { mask: "text" }), col("mime", "text", sql`documents.mime`), col("size", "number", sql`documents.size`),
-    col("expiresOn", "date", sql`documents.expires_on`, { default: true }), col("daysToExpiry", "number", sql`(documents.expires_on - current_date)::float8`), col("reviewer", "text", sql`rv.name`),
+    col("expiresOn", "date", sql`documents.expires_on`, { default: true }), col("daysToExpiry", "number", sql`(documents.expires_on - ${RIYADH_TODAY})::float8`), col("reviewer", "text", sql`rv.name`),
     col("reviewNote", "text", sql`documents.review_note`), col("reviewedAt", "datetime", sql`documents.reviewed_at`), createdAt(sql`documents.created_at`, { default: true }),
   ],
   filters: [
     flt("status", "enum", sql`documents.status`, { ns: "docstatus", values: DOC_STATUS }), flt("type", "enum", sql`documents.type`, { ns: "doc", values: DOC_TYPES }), flt("ownerKind", "enum", sql`documents.owner_kind`, { ns: "role", values: ["driver", "office", "business"] }),
-    flt("expired", "flag", sql`documents.expires_on < current_date`), flt("expiringSoon", "flag", sql`documents.expires_on between current_date and current_date + 30`), flt("expires", "date", sql`documents.expires_on`, { dateOnly: true }),
+    flt("expired", "flag", sql`documents.expires_on < ${RIYADH_TODAY}`), flt("expiringSoon", "flag", sql`documents.expires_on between ${RIYADH_TODAY} and ${RIYADH_TODAY} + 30`), flt("expires", "date", sql`documents.expires_on`, { dateOnly: true }),
   ],
   search: [sql`bp.company_name`, sql`op.office_name`, sql`ow.name`, sql`documents.review_note`], searchPii: [sql`documents.file_name`], defaultSort: { key: "createdAt", dir: "desc" },
 });

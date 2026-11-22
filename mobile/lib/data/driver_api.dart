@@ -20,6 +20,14 @@ class DriverApi {
   Future<Json> changePassword(String currentPassword, String newPassword) => c.post('/auth/change-password', {'currentPassword': currentPassword, 'newPassword': newPassword});
   Future<Json> me() => c.get('/auth/me');
   Future<void> logout() async { try { await c.post('/auth/logout'); } catch (_) {} }
+  /// Ends the session behind a token that was never stored (the sign-in of an account this app refuses). Never throws.
+  Future<void> revokeSession(String token) => c.revokeSession(token);
+  /// Best effort, used right before a voluntary sign-out: the driver is no longer reachable on this phone, so he goes offline and his last location is
+  /// cleared (otherwise he stays `available` with a live pin and keeps receiving offers nobody reads). Each call is attempted even if the other fails; never throws.
+  Future<void> goOffline() async {
+    try { await setAvailability(false); } catch (_) {}
+    try { await clearLocation(); } catch (_) {}
+  }
   Future<Json> catalog() => c.get('/catalog');
   Future<Json> profile() => c.get('/profile');
   Future<Json> updateProfile(Json body) => c.patch('/profile', body);
@@ -32,7 +40,12 @@ class DriverApi {
 
   // jobs
   Future<List<Job>> offers() async => _jobs(await c.get('/driver/offers'));
-  Future<List<Job>> jobs({required bool active}) async => _jobs(await c.get('/driver/jobs', query: {'scope': active ? 'active' : 'history'}));
+  Future<List<Job>> jobs({required bool active}) async => (await jobsPage(active: active)).items;
+  /// One page of `GET /driver/jobs` (the server pages at 100: `{items, page, pageSize, total}`). History can be longer than one page.
+  Future<JobsPage> jobsPage({required bool active, int page = 1}) async {
+    final r = await c.get('/driver/jobs', query: {'scope': active ? 'active' : 'history', if (page > 1) 'page': page});
+    return JobsPage(_jobs(r), total: _count(r['total']), page: _count(r['page'], 1), pageSize: _count(r['pageSize']));
+  }
   Future<Job> job(String offerId) async => Job(await c.get('/driver/jobs/$offerId'));
   Future<List<Json>> opportunities() async => _items(await c.get('/driver/opportunities'));
   Future<Json> accept(String offerId) => c.post('/offers/$offerId/accept', {'termsAccepted': true});
@@ -103,7 +116,8 @@ class DriverApi {
   Future<List<Json>> timeline(String offerId) async => _items(await c.get('/offers/$offerId/timeline'));
 
   // money
-  Future<Json> wallet() => c.get('/wallet');
+  /// [page] > 1 = older ledger entries (the server pages at 50: `{entries, page, pageSize, total}`).
+  Future<Json> wallet({int page = 1}) => c.get('/wallet', query: page > 1 ? {'page': page} : null);
   Future<List<Json>> withdrawals() async => _items(await c.get('/withdrawals'));
   Future<Json> requestWithdrawal(int cents) => c.post('/withdrawals', {'amountCents': cents});
 
@@ -113,7 +127,8 @@ class DriverApi {
     final form = FormData.fromMap({'type': type, 'expiresOn': ?expiresOn, 'file': await MultipartFile.fromFile(path, filename: filename, contentType: DioMediaType.parse(_mime(filename)))});
     return c.postForm('/documents', form, onProgress: onProgress);
   }
-  Future<Json> notifications() => c.get('/notifications');
+  /// [page] > 1 = older notifications (the server pages at 30: `{items, page, pageSize, total}`).
+  Future<Json> notifications({int page = 1}) => c.get('/notifications', query: page > 1 ? {'page': page} : null);
   Future<void> markNotificationsRead() async => c.post('/notifications/read');
   Future<Json> invites() => c.get('/driver/invites');
   Future<void> respondInvite(String id, bool accept) async => c.post('/driver/invites/$id/respond', {'accept': accept});
@@ -123,6 +138,7 @@ class DriverApi {
     final raw = r['items'];
     return raw is List ? [for (final e in raw) if (e is Map) e.cast<String, dynamic>()] : const [];
   }
+  static int _count(Object? v, [int fallback = 0]) => v is num ? v.toInt() : fallback;
   List<Job> _jobs(Json r) => [for (final e in _items(r)) if (e['offerId'] != null) Job(e)];
   static String _mime(String f) => f.toLowerCase().endsWith('.png') ? 'image/png' : f.toLowerCase().endsWith('.pdf') ? 'application/pdf' : f.toLowerCase().endsWith('.webp') ? 'image/webp' : 'image/jpeg';
 }

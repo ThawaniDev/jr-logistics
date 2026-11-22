@@ -32,3 +32,9 @@ export function usernameFromEmail(email: string) {
   if (b.length < USERNAME_MIN) b += "user";
   return b.slice(0, 26);
 }
+
+/**
+ * A username that is just the phone number (`u966500000001`: what accounts get when nobody picks one) IS the phone number. Staff without `drivers.sensitive` see
+ * phones masked, so they must not read the number from the username either: `u966500000001` → `u••••••••••01`. Any other username is returned as it is.
+ */
+export const maskPhoneUsername = (u: string | null | undefined): string | null | undefined => (u && /^u\d{8,15}$/.test(u) ? `u${"•".repeat(u.length - 3)}${u.slice(-2)}` : u);

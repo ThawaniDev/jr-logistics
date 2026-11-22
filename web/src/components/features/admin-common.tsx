@@ -98,7 +98,7 @@ function ReasonInner({ open, title, label, hint, notice, minLen = 3, confirmLabe
   const { t } = useI18n();
   const [v, setV] = useState("");
   return (
-    <Modal open={open} onClose={onClose} title={title} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button variant={danger ? "danger" : "primary"} loading={busy} disabled={v.trim().length < minLen} onClick={() => onSubmit(v.trim())}>{confirmLabel ?? t("common.confirm")}</Button></>}>
+    <Modal busy={busy} open={open} onClose={onClose} title={title} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button variant={danger ? "danger" : "primary"} loading={busy} disabled={v.trim().length < minLen} onClick={() => onSubmit(v.trim())}>{confirmLabel ?? t("common.confirm")}</Button></>}>
       {notice}
       {children}
       <Textarea label={label ?? t("req.reason")} hint={hint} value={v} onChange={(e) => setV(e.target.value)} />
@@ -156,7 +156,7 @@ export function ConfirmModal({ open, title, children, confirmLabel, danger, busy
 }) {
   const { t } = useI18n();
   return (
-    <Modal open={open} onClose={onClose} title={title} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button variant={danger ? "danger" : "primary"} loading={busy} onClick={onConfirm}>{confirmLabel ?? t("common.confirm")}</Button></>}>
+    <Modal busy={busy} open={open} onClose={onClose} title={title} footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button variant={danger ? "danger" : "primary"} loading={busy} onClick={onConfirm}>{confirmLabel ?? t("common.confirm")}</Button></>}>
       {children}
     </Modal>
   );

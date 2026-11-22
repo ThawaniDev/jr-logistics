@@ -112,7 +112,7 @@ class _BottomBar extends ConsumerWidget {
     if (job.can('work_stops') && next != null) {
       child = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         FilledButton.icon(key: const Key('drs-next'), onPressed: busy ? null : onNext, icon: const Icon(Icons.local_shipping_outlined), label: Text(t('drs.next_shipment'), textAlign: TextAlign.center)),
-        Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('drs.left', {'n': counts.toDeliver}), key: const Key('drs-left'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted, fontSize: 12.5))),
+        Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('drs.left', {'n': counts.toDeliver}), key: const Key('drs-left'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted, fontSize: 12.5))),
       ]);
     } else if (job.can('report_delivered')) {
       child = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -120,13 +120,13 @@ class _BottomBar extends ConsumerWidget {
         if (counts.notDelivered > 0) Padding(padding: const EdgeInsets.only(top: 8), child: Banner2(key: const Key('return-warning'), tone: Tone.warn, text: t('fma.finish_return_warning', {'n': counts.notDelivered}))),
         const SizedBox(height: 10),
         FilledButton.icon(key: const Key('finish'), onPressed: busy ? null : onFinish, icon: busyIcon(busy, Icons.flag_outlined), label: Text(t('ms.finish_btn'))),
-        Padding(padding: const EdgeInsets.only(top: 6), child: Text(t(job.earningHidden ? 'drs.finish_paid_note_office' : 'fma.finish_paid_note'), key: const Key('finish-paid-note'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35))),
+        Padding(padding: const EdgeInsets.only(top: 6), child: Text(t(job.earningHidden ? 'drs.finish_paid_note_office' : 'fma.finish_paid_note'), key: const Key('finish-paid-note'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35))),
       ]);
     }
     if (child == null) return const SizedBox.shrink();
     return Material(color: JR.bg2, child: SafeArea(top: false, child: Container(
       key: const Key('drs-bottom-bar'), padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: JR.line))), child: child,
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: JR.line))), child: child,
     )));
   }
 }

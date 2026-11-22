@@ -4,6 +4,13 @@ import { db } from "@/db";
 import { scenarioMcqs, type ScenarioMcq } from "@/db/schema";
 import { defineRoutes } from "../router";
 import { toCsv } from "@/server/ops";
+import { requirePerm } from "@/server/auth/permissions";
+
+/**
+ * The scenario bank is internal (operational decisions, API calls, money math, the owner's answers): signed-in staff only. Reading needs `settings.view` (or
+ * `settings.edit`), writing an answer needs `settings.edit`. There is no anonymous access in any mode — a demo deployment signs in like every other.
+ */
+const bo = "backoffice" as const;
 
 function generateMarkdown(items: ScenarioMcq[]): string {
   let md = `# بنك أسئلة وسيناريوهات منصة JR اللوجستية (${items.length} سيناريو تشغيلي واقعي)\n\n`;
@@ -79,13 +86,14 @@ defineRoutes([
   {
     method: "GET",
     path: "/scenarios",
-    auth: "public",
+    auth: bo,
     query: z.object({
       category: z.string().optional(),
       search: z.string().optional(),
       hasCustom: z.string().optional(),
     }),
-    handler: async ({ q }) => {
+    handler: async ({ q, user }) => {
+      requirePerm(user, "settings.view", "settings.edit");
       let items = await db.select().from(scenarioMcqs).orderBy(asc(scenarioMcqs.flowNumber));
 
       if (q.category && q.category !== "all") {
@@ -143,12 +151,13 @@ defineRoutes([
   {
     method: "GET",
     path: "/scenarios/export",
-    auth: "public",
+    auth: bo,
     query: z.object({
       format: z.enum(["csv", "md"]).default("csv"),
       category: z.string().optional(),
     }),
-    handler: async ({ q }) => {
+    handler: async ({ q, user }) => {
+      requirePerm(user, "settings.view", "settings.edit");
       let items = await db.select().from(scenarioMcqs).orderBy(asc(scenarioMcqs.flowNumber));
 
       if (q.category && q.category !== "all") {
@@ -232,11 +241,12 @@ defineRoutes([
   {
     method: "POST",
     path: "/scenarios/:flowNumber/answer",
-    auth: "public",
+    auth: bo,
     body: z.object({
       selectedIndex: z.number().int().min(0).max(3),
     }),
-    handler: async ({ params, input }) => {
+    handler: async ({ params, input, user }) => {
+      requirePerm(user, "settings.edit");
       const flowNum = parseInt(params.flowNumber, 10);
       if (isNaN(flowNum)) {
         return new Response(JSON.stringify({ error: "Invalid flow number" }), { status: 400 });
@@ -273,12 +283,13 @@ defineRoutes([
   {
     method: "POST",
     path: "/scenarios/:flowNumber/custom-response",
-    auth: "public",
+    auth: bo,
     body: z.object({
       customResponse: z.string().trim().max(3000),
       author: z.string().trim().max(100).optional(),
     }),
-    handler: async ({ params, input, maybeUser }) => {
+    handler: async ({ params, input, user }) => {
+      requirePerm(user, "settings.edit");
       const flowNum = parseInt(params.flowNumber, 10);
       if (isNaN(flowNum)) {
         return new Response(JSON.stringify({ error: "Invalid flow number" }), { status: 400 });
@@ -294,7 +305,7 @@ defineRoutes([
       }
 
       const cleanText = input.customResponse.trim();
-      const author = input.author?.trim() || maybeUser?.name || "مشرف تشغيل";
+      const author = user.name || "مشرف تشغيل"; // the author is who is signed in, never what the form says
 
       await db
         .update(scenarioMcqs)

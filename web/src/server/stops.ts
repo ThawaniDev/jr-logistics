@@ -277,7 +277,9 @@ export async function resendCode(driver: User, offerId: string, shipmentId: stri
   await db.transaction(async (tx) => {
     const { o, s } = await stopGuard(tx, driver, offerId, shipmentId);
     if (s.otpSends >= OTP_MAX_RESENDS) throw err("RATE_LIMITED", "The code was already resent the maximum number of times — contact operations");
-    await tx.update(shipments).set({ otpVersion: s.otpVersion + 1, otpAttempts: 0, updatedAt: new Date() }).where(eq(shipments.id, s.id));
+    // The resend is counted when it is REQUESTED, not when the SMS gets through: every resend hands the driver five fresh guesses at the 4-digit code, so a provider
+    // outage (no SMS leaves, nothing is counted) must not turn the cap into "unlimited guesses".
+    await tx.update(shipments).set({ otpVersion: s.otpVersion + 1, otpAttempts: 0, otpSends: s.otpSends + 1, updatedAt: new Date() }).where(eq(shipments.id, s.id));
     await logEvent(tx, { requestId: o.requestId, offerId, actor: actorOf(driver), type: "stop_code_resent", payload: { shipmentId: s.id, code: s.code } });
   });
   const sent = await sendRecipientCodes([shipmentId], { force: true });
@@ -351,7 +353,7 @@ export async function confirmReturns(actor: User, offerId: string, sel: { codes?
   return db.transaction(async (tx) => {
     const o = await lockOffer(tx, offerId);
     const r = await authorizeBusinessSide(tx, actor, o);
-    expect(o, "delivered_reported", "pending_settlement", "qty_disputed", "completed"); // E16: receiving parcels back never blocks the money, so it works after the job is done
+    expect(o, "delivered_reported", "pending_settlement", "qty_disputed", "completed", "cancelled"); // E16: receiving parcels back never blocks the money, so it works after the job is done; "cancelled" = the request was cancelled / called off while the parcels were on the vehicle (they come back as failed(request_cancelled))
     const failed = await tx.select().from(shipments).where(and(eq(shipments.offerId, offerId), eq(shipments.status, "failed"))).orderBy(asc(shipments.seq));
     let chosen = failed;
     if (!sel.all) {
@@ -562,6 +564,18 @@ export async function reshipFromRequest(business: User, requestId: string, ids?:
     // never re-ship a parcel whose order the warehouse system itself cancelled
     sql`not exists (select 1 from partner_orders po where po.connection_id = ${shipments.partnerId} and po.cancelled_by = 'partner' and (lower(po.external_ref) = lower(${shipments.externalRef}) or po.awb = upper(${shipments.externalRef})))`)).orderBy(asc(shipments.seq));
   if (!rows.length) throw err("NOTHING_TO_DO", "There are no undelivered parcels to re-ship");
+  // A parcel already re-shipped into an order that is still alive (a draft, or any order not cancelled / expired) is not re-shipped again: a double click or a retry after a lost
+  // answer would otherwise create a second draft and ship the same parcel twice. The same click again simply returns the draft that already exists.
+  const was = (await db.execute(sql`select distinct on (e.shipment_id) e.shipment_id::text as sid, q.id::text as draft_id, q.status as st from shipment_events e join requests q on q.id::text = e.payload->>'draftId'
+    where e.request_id = ${requestId} and e.type = 'reshipped' order by e.shipment_id, e.created_at desc`)).rows as Array<{ sid: string; draft_id: string; st: string }>;
+  const alive = new Map(was.filter((w) => !["cancelled", "expired"].includes(w.st)).map((w) => [w.sid, w]));
+  const fresh = rows.filter((s) => !alive.has(s.id));
+  if (!fresh.length) {
+    const open = [...alive.values()].find((w) => w.st === "draft");
+    if (open) return (await db.select().from(requests).where(eq(requests.id, open.draft_id)))[0];
+    throw err("NOTHING_TO_DO", "These parcels were already re-shipped");
+  }
+  rows.splice(0, rows.length, ...fresh);
   const startsAt = new Date(Math.max(Date.now() + 3 * 3600_000, src.startsAt.getTime() + 864e5));
   const input: RequestInput = {
     service: src.service as RequestInput["service"], title: `Re-ship of ${src.ref}`, quantity: 1, shipmentsPerDriver: src.shipmentsPerDriver ?? 30, vehicleType: src.vehicleType, temperature: src.temperature,

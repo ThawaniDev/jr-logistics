@@ -48,7 +48,7 @@ defineRoutes([
     const pageSize = 15, page = q.page ?? 1, mine = eq(invoices.businessId, user.id);
     const [rows, [tot]] = await Promise.all([
       db.select({ i: invoices, ref: requests.ref }).from(invoices).innerJoin(requests, eq(requests.id, invoices.requestId)).where(mine).orderBy(desc(invoices.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
-      db.select({ n: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${invoices.totalCents}), 0)::int`, vat: sql<number>`coalesce(sum(${invoices.vatCents}), 0)::int` }).from(invoices).where(mine),
+      db.select({ n: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${invoices.totalCents}), 0)::float8`, vat: sql<number>`coalesce(sum(${invoices.vatCents}), 0)::float8` }).from(invoices).where(mine),
     ]);
     return { page, pageSize, total: Number(tot.n), totals: { totalCents: Number(tot.total), vatCents: Number(tot.vat) },
       items: rows.map(({ i, ref }) => ({ id: i.id, number: i.number, requestId: i.requestId, requestRef: ref, subtotalCents: i.subtotalCents, vatCents: i.vatCents, totalCents: i.totalCents, vatPct: i.vatPct, createdAt: i.createdAt })) };

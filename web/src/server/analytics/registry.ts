@@ -4,8 +4,8 @@ import { err } from "@/lib/errors";
 import { audit } from "../audit";
 import { can, requirePerm } from "../auth/permissions";
 import type { Permission } from "../catalog";
-import { toCsv } from "../ops";
 import { localeOf, translator } from "../export/context";
+import { rawCsv, tableCsv } from "../export/drill-csv";
 import { tableXlsx, XLSX_MIME } from "../export/table-export";
 import type { XlType } from "../export/xlsx-xml";
 import { parseFilters, filtersMeta, type ResolvedFilters } from "./filters";
@@ -53,6 +53,8 @@ export interface DrillDef {
   tiebreak?: SQL;
   /** Permissions required on top of `reports.view` (ALL of them): `["finance.view"]` for money tables. */
   needs?: Permission[];
+  /** Rows per query when the table is exported (CSV / Excel / workbook); default `CSV_PAGE` (1 000). Raise it only for tables whose query costs the same for 1 000 rows as for 25 000. */
+  exportPage?: number;
   /** Column/row-field keys that need `finance.view`; they are removed for everybody else (the table then simply has fewer columns). */
   moneyKeys?: string[];
   query(q: DrillQuery): Promise<{ rows: Array<Record<string, unknown>>; total: number }>;
@@ -103,13 +105,16 @@ const intParam = (query: URLSearchParams, k: string, def: number, min: number, m
   return n;
 };
 
-/** Walks a table in pages of `CSV_PAGE` up to `MAX_CSV_ROWS` (the cap of every export); `truncated` says the cap was hit. */
-export async function pageAll(fetch: (limit: number, offset: number) => Promise<Array<Record<string, unknown>>>): Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean }> {
+/**
+ * Walks a table in pages of `page` rows (default `CSV_PAGE`) up to `MAX_CSV_ROWS` (the cap of every export); `truncated` says the cap was hit. Every page re-runs the table's query, so a table
+ * whose query is expensive however few rows it returns (a per-driver-per-day grid) sets `exportPage` on its definition: 50 pages of 1 000 rows took 93 s on a year of data, 2 pages of 25 000 ≈ 6 s.
+ */
+export async function pageAll(fetch: (limit: number, offset: number) => Promise<Array<Record<string, unknown>>>, page: number = CSV_PAGE): Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean }> {
   let out: Array<Record<string, unknown>> = []; let truncated = false;
-  for (let offset = 0; ; offset += CSV_PAGE) {
-    const part = await fetch(CSV_PAGE, offset);
+  for (let offset = 0; ; offset += page) {
+    const part = await fetch(page, offset);
     out = out.concat(part);
-    if (part.length < CSV_PAGE) break;
+    if (part.length < page) break;
     if (out.length >= MAX_CSV_ROWS) { out = out.slice(0, MAX_CSV_ROWS); truncated = true; break; }
   }
   return { rows: out, truncated };
@@ -118,7 +123,7 @@ export async function pageAll(fetch: (limit: number, offset: number) => Promise<
 export async function collectTable(user: User, def: DrillDef, filters: ResolvedFilters, query: URLSearchParams = new URLSearchParams()) {
   const { hide, columns } = shape(def, user);
   const sort = sortOf(def, query), order = orderOf(def, sort);
-  const all = await pageAll(async (limit, offset) => strip((await def.query({ filters, user, limit, offset, order, sort })).rows, hide));
+  const all = await pageAll(async (limit, offset) => strip((await def.query({ filters, user, limit, offset, order, sort })).rows, hide), def.exportPage);
   return { ...all, columns, hidden: hide.size > 0 };
 }
 
@@ -133,17 +138,20 @@ export async function runTable(user: User, def: DrillDef, query: URLSearchParams
   if (format !== "json" && format !== "csv" && format !== "xlsx") throw err("VALIDATION", "format must be json, csv or xlsx", { field: "format" });
   if (format === "csv" || format === "xlsx") {
     requirePerm(user, "reports.export");
-    const tr = format === "xlsx" ? translator(localeOf(query, user)) : null; // an invalid `lang` is refused before any query runs
-    const { rows: out, truncated } = await pageAll(async (limit, offset) => strip((await def.query({ filters, user, limit, offset, order, sort })).rows, hide));
+    const rawKeys = format === "csv" && query.get("headers") === "keys"; // `headers=keys`: the machine form (column keys, money in halalas)
+    const tr = rawKeys ? null : translator(localeOf(query, user)); // an invalid `lang` is refused before any query runs
+    const { rows: out, truncated } = await pageAll(async (limit, offset) => strip((await def.query({ filters, user, limit, offset, order, sort })).rows, hide), def.exportPage);
     await audit(user, "report.export", "report", `${def.report}/${def.name}`, { rows: out.length, truncated, filters: filters.canonical, ...(format === "xlsx" ? { format: "xlsx" } : {}) });
+    if (tr && format === "csv") {
+      return new Response("\uFEFF" + (await tableCsv(tr, columns, out)), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${def.report}-${def.name}.csv"`, "cache-control": "no-store" } });
+    }
     if (tr) {
       const file = await tableXlsx({ tr, report: def.report, table: def.name, titleKey: def.title, columns, rows: out, truncated, max: MAX_CSV_ROWS, filters, moneyHidden: hide.size > 0 });
       const { from, to } = filters.cur;
       return new Response(new Uint8Array(file), { headers: { "content-type": XLSX_MIME, "content-disposition": `attachment; filename="${def.report}-${def.name}-${from}_${to}.xlsx"`, "cache-control": "no-store" } });
     }
-    const cell = (v: unknown) => (v !== null && typeof v === "object" ? JSON.stringify(v) : v);
-    const body = toCsv(columns.map((c) => c.key), out.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, cell(v)]))));
-    return new Response("﻿" + body, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${def.report}-${def.name}.csv"`, "cache-control": "no-store" } });
+    const body = rawCsv(columns, out);
+    return new Response("\uFEFF" + body, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${def.report}-${def.name}.csv"`, "cache-control": "no-store" } });
   }
   const page = intParam(query, "page", 1, 1, 100_000), pageSize = intParam(query, "pageSize", 25, 1, MAX_PAGE_SIZE);
   const res = await def.query({ filters, user, limit: pageSize, offset: (page - 1) * pageSize, order, sort });

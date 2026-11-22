@@ -1,3 +1,4 @@
+import { maskPhoneUsername } from "@/lib/username";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { walletAccounts, type User } from "@/db/schema";
@@ -83,7 +84,7 @@ export async function ownerRaw(viewer: User, id: string, kind: OwnerKind) {
     ? sql`select (select count(*) from offers where driver_id = ${id})::int as offers, (select count(*) from ratings where ratee_id = ${id})::int as ratings, (select count(*) from login_events where user_id = ${id})::int as logins, (select count(*) from driver_location_history where driver_id = ${id})::int as location_points, (select count(*) from driver_availability_log where driver_id = ${id})::int as availability_changes, (select count(*) from documents where owner_id = ${id})::int as documents`
     : sql`select (select count(*) from driver_profiles where office_id = ${id})::int as drivers, (select count(*) from offers where office_id = ${id})::int as offers, (select count(*) from settlements where office_id = ${id})::int as settlements, (select count(*) from office_agreements where office_id = ${id})::int as agreements, (select count(*) from office_invites where office_id = ${id})::int as invites, (select count(*) from documents where owner_id = ${id})::int as documents`);
   return {
-    user: { ...user, phone: sensitive ? user.phone : mask(user.phone) }, [kind === "driver" ? "driverProfile" : "officeProfile"]: { ...profile, ...(sensitive ? { nationalId, iban, bankName, taxNumber } : {}) },
+    user: { ...user, phone: sensitive ? user.phone : mask(user.phone), username: sensitive ? user.username : maskPhoneUsername(user.username as string | null) }, [kind === "driver" ? "driverProfile" : "officeProfile"]: { ...profile, ...(sensitive ? { nationalId, iban, bankName, taxNumber } : {}) },
     walletAccountId: acct?.id ?? null, counts: c ?? {}, generatedAt: new Date().toISOString(),
   };
 }

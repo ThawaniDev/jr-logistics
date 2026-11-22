@@ -157,7 +157,7 @@ class _DeliverFormState extends ConsumerState<DeliverForm> {
           handle: (e) {
             if (e is! ApiException || !mounted) return false;
             if (e.code == 'OTP_INVALID' || e.code == 'OTP_LOCKED') {
-              final left = (e.details['attemptsLeft'] as num?)?.toInt();
+              final left = numOf(e.details['attemptsLeft'])?.toInt();
               setState(() {
                 _otp.clear();
                 if (e.code == 'OTP_LOCKED' || (left != null && left <= 0)) { _locked = true; _triesOverride = 0; _error = null; }
@@ -242,7 +242,7 @@ class _DeliverFormState extends ConsumerState<DeliverForm> {
         const SizedBox(height: 16),
         Text(t('fma.sign_title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         const SizedBox(height: 2),
-        Text(t('fma.sign_hint'), style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.35)),
+        Text(t('fma.sign_hint'), style: TextStyle(color: JR.muted, fontSize: 13, height: 1.35)),
         const SizedBox(height: 8),
         SignaturePad(controller: _sig, enabled: !working),
       ],
@@ -250,7 +250,7 @@ class _DeliverFormState extends ConsumerState<DeliverForm> {
       if (_error != null) ...[const SizedBox(height: 10), Banner2(key: const Key('deliver-error'), tone: Tone.danger, text: _error!)],
       const SizedBox(height: 14),
       FilledButton.icon(key: const Key('deliver-submit'), onPressed: _canSubmit ? _deliver : null, icon: busyIcon(working && !_uploading, Icons.check), label: Text(t('ms.deliver_btn'))),
-      if (missing != null && !working) Padding(padding: const EdgeInsets.only(top: 8), child: Text(missing, key: const Key('deliver-hint'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
+      if (missing != null && !working) Padding(padding: const EdgeInsets.only(top: 8), child: Text(missing, key: const Key('deliver-hint'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
       if (s.needsOtp && !_receiptMode && !_isLocked && !resendBlocked) _resendButton(t),
     ]);
   }
@@ -293,7 +293,7 @@ class _DeliverFormState extends ConsumerState<DeliverForm> {
       final label = wait > 0 ? t('um.resend_in', {'time': fmtCountdown(wait)}) : t('ms.resend_code');
       final onTap = _working || wait > 0 ? null : _resend;
       return filled
-          ? FilledButton.icon(key: const Key('resend-code'), style: FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.bg), onPressed: onTap, icon: busyIcon(_working, Icons.sms_outlined, color: JR.bg), label: Text(label))
+          ? FilledButton.icon(key: const Key('resend-code'), style: FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.dangerInk), onPressed: onTap, icon: busyIcon(_working, Icons.sms_outlined, color: JR.dangerInk), label: Text(label))
           : TextButton.icon(key: const Key('resend-code'), style: TextButton.styleFrom(minimumSize: const Size(0, 48)), onPressed: onTap, icon: const Icon(Icons.sms_outlined), label: Text(label));
     }
     final at = _resendAt;
@@ -307,14 +307,14 @@ class _DeliverFormState extends ConsumerState<DeliverForm> {
       Banner2(text: t('ms.receipt_hint')),
       const SizedBox(height: 10),
       if (photo != null) Stack(alignment: Alignment.bottomCenter, children: [
-        ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(height: 180, width: double.infinity, child: Image.file(File(photo.path), key: const Key('receipt-preview'), fit: BoxFit.cover, cacheWidth: 900, errorBuilder: (_, _, _) => Container(color: JR.bg2, alignment: Alignment.center, child: const Icon(Icons.receipt_long, size: 48, color: JR.muted))))),
-        if (_uploaded) PositionedDirectional(top: 8, end: 8, child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: JR.accent, shape: BoxShape.circle), child: const Icon(Icons.check, size: 20, color: JR.accentInk))),
+        ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(height: 180, width: double.infinity, child: Image.file(File(photo.path), key: const Key('receipt-preview'), fit: BoxFit.cover, cacheWidth: 900, errorBuilder: (_, _, _) => Container(color: JR.bg2, alignment: Alignment.center, child: Icon(Icons.receipt_long, size: 48, color: JR.muted))))),
+        if (_uploaded) PositionedDirectional(top: 8, end: 8, child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: JR.accent, shape: BoxShape.circle), child: Icon(Icons.check, size: 20, color: JR.accentInk))),
       ]),
       if (photo != null) const SizedBox(height: 8),
       if (_uploading) Padding(padding: const EdgeInsets.only(bottom: 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         LinearProgressIndicator(key: const Key('upload-progress'), value: _progress == null || _progress == 0 ? null : _progress, minHeight: 6, color: JR.accent, backgroundColor: JR.line, semanticsLabel: t('um.uploading')),
         const SizedBox(height: 4),
-        Text(_progress == null || _progress == 0 ? t('um.uploading') : t('um.uploading_pct', {'pct': (_progress! * 100).round()}), style: const TextStyle(color: JR.muted, fontSize: 12)),
+        Text(_progress == null || _progress == 0 ? t('um.uploading') : t('um.uploading_pct', {'pct': (_progress! * 100).round()}), style: TextStyle(color: JR.muted, fontSize: 12)),
       ])),
       if (_uploadError != null && !_uploading) Padding(padding: const EdgeInsets.only(bottom: 8), child: Banner2(
         key: const Key('upload-error'), tone: Tone.danger, text: errMessage(context, _uploadError!),
@@ -325,7 +325,7 @@ class _DeliverFormState extends ConsumerState<DeliverForm> {
         action: OutlinedButton.icon(onPressed: () => ref.read(linkOpenerProvider).openAppSettings(), icon: const Icon(Icons.settings_outlined), label: Text(t('um.open_settings'))),
       )),
       OutlinedButton.icon(key: const Key('receipt-pick'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)), onPressed: _working || _uploading ? null : _takePhoto, icon: busyIcon(_uploading, Icons.photo_camera_outlined, color: JR.accent), label: Text(_uploaded || photo != null ? t('ms.retake_photo') : t('ms.take_photo'))),
-      if (_uploaded) Padding(padding: const EdgeInsets.only(top: 6), child: Row(children: [const Icon(Icons.check_circle, size: 18, color: JR.accent), const SizedBox(width: 6), Text(t('ms.photo_uploaded'), key: const Key('photo-ok'), style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w600))])),
+      if (_uploaded) Padding(padding: const EdgeInsets.only(top: 6), child: Row(children: [Icon(Icons.check_circle, size: 18, color: JR.accent), const SizedBox(width: 6), Text(t('ms.photo_uploaded'), key: const Key('photo-ok'), style: TextStyle(color: JR.accent, fontWeight: FontWeight.w600))])),
       const SizedBox(height: 10),
       TextField(key: const Key('receiver-name'), controller: _receiver, onChanged: (v) { ref.read(stopDraftProvider.notifier).put(s.id, receiver: v); setState(() {}); }, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.done, decoration: InputDecoration(labelText: t('ms.receiver_name'), prefixIcon: const Icon(Icons.badge_outlined))),
     ];
@@ -343,14 +343,14 @@ class CodBox extends StatelessWidget {
       key: const Key('cod-box'), width: double.infinity, padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: JR.gold.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(JR.radius), border: Border.all(color: JR.gold, width: 1.5)),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        const Icon(Icons.payments_outlined, color: JR.gold, size: 30),
+        Icon(Icons.payments_outlined, color: JR.gold, size: 30),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(t('fma.cod_collect'), style: const TextStyle(color: JR.gold, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.3)),
+          Text(t('fma.cod_collect'), style: TextStyle(color: JR.gold, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.3)),
           const SizedBox(height: 2),
           FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(fmtMoney(cents, t.code), key: const Key('cod-amount'), textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.15))),
           const SizedBox(height: 2),
-          Text(t('fma.cod_collect_hint'), style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35)),
+          Text(t('fma.cod_collect_hint'), style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35)),
         ])),
       ]),
     );
@@ -392,12 +392,12 @@ class DeliverSheet extends ConsumerWidget {
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(s.recipientName ?? t('um.parcel_n', {'n': s.seq}), key: const Key('deliver-sheet-title'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, height: 1.2)),
         const SizedBox(height: 4),
-        Text('${s.address}${s.city != null ? ' · ${cityLabel(context, s.city)}' : ''}', style: const TextStyle(color: JR.muted, fontSize: 15, height: 1.3)),
+        Text('${s.address}${s.city != null ? ' · ${cityLabel(context, s.city)}' : ''}', style: TextStyle(color: JR.muted, fontSize: 15, height: 1.3)),
         const SizedBox(height: 14),
         if (s.resolved) const SizedBox.shrink()
         else if (fresh.routingEnabled && !s.current) Banner2(key: const Key('deliver-locked'), tone: Tone.warn, text: t('err.STOP_LOCKED'))
         else if (!s.arrived) ...[
-          Text(t('ms.arrive_first'), style: const TextStyle(color: JR.muted, height: 1.4)),
+          Text(t('ms.arrive_first'), style: TextStyle(color: JR.muted, height: 1.4)),
           const SizedBox(height: 12),
           FilledButton.icon(key: const Key('arrive'), onPressed: busy ? null : () => StopActions.arrive(context, ref, fresh, s), icon: busyIcon(busy, Icons.my_location), label: Text(t('act.checkin'))),
         ] else DeliverForm(key: ValueKey('deliver-${s.id}'), job: fresh, stop: s, onDelivered: () { if (context.mounted) Navigator.pop(context, true); }),

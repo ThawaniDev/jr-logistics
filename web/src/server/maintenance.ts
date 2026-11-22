@@ -1,17 +1,19 @@
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { offers, requests, driverProfiles, documents, shipments, rateLimits, sessions, otpCodes, apiIdempotency, apiLogs, settings } from "@/db/schema";
-import { OFFER_DEAD } from "./catalog";
+import { offers, requests, driverProfiles, shipments, rateLimits, sessions, otpCodes, apiIdempotency, apiLogs, settings } from "@/db/schema";
+import { DRIVER_DOC_TYPES, OFFER_DEAD } from "./catalog";
 import { dispatchOffers } from "./matching";
 import { lockRequest, releaseReserve } from "./requests";
 import { getSettings } from "./settings";
 import { recomputeDriverVerification } from "./accounts";
 import { logEvent } from "./events";
 import { notify, notifyMany } from "./notify";
-import { autoConfirmDelivery } from "./jobs";
-import { paySettlementsDue } from "./settlement";
+import { autoConfirmDelivery, completeIfReady } from "./jobs";
+import { escrowStillNeeded, paySettlementsDue } from "./settlement";
 import { batchOf, recordShipmentEvents } from "./shipment-events";
 import { runCaptureTick } from "./snapshots";
+import { describeError } from "@/lib/log";
+import { riyadhDay } from "./analytics/time";
 
 /**
  * Scheduled housekeeping (idempotent):
@@ -20,28 +22,43 @@ import { runCaptureTick } from "./snapshots";
  */
 const PARTIAL_GRACE_MIN = 60;
 
+/**
+ * One bad row must never stop the tick: every per-request transaction (and every later step) runs under `guard`, which logs the failure and moves on. The failed row is
+ * simply retried by the next tick; what failed is reported in the result (`errors`) so the health check / cron caller can see it.
+ */
+type StepError = { step: string; id?: string; message: string };
+
 export async function runMaintenance() {
   const s = await getSettings();
   const now = new Date();
+  const errors: StepError[] = [];
+  const guard = async (step: string, id: string | undefined, fn: () => Promise<unknown>) => {
+    try { await fn(); }
+    catch (e) {
+      const d = describeError(e);
+      if (errors.length < 20) errors.push({ step, id, message: String((d as { message?: string }).message ?? "error").slice(0, 160) });
+      console.warn(JSON.stringify({ level: "warn", msg: "maintenance step failed", step, id, ...d }));
+    }
+  };
   const staleOffers = await db.update(offers).set({ status: "expired", updatedAt: now })
     .where(and(eq(offers.status, "offered"), lt(offers.createdAt, new Date(now.getTime() - s.offerExpiryMin * 60_000)))).returning({ id: offers.id });
 
   let broadcast = 0;
   const windowDue = await db.select().from(requests).where(and(inArray(requests.status, ["published", "filling"]), lt(requests.officeWindowEndsAt, now)));
   for (const r of windowDue) {
-    await db.transaction(async (tx) => {
+    await guard("office_window", r.id, () => db.transaction(async (tx) => {
       const locked = await lockRequest(tx, r.id);
       if (!locked.officeWindowEndsAt || locked.officeWindowEndsAt > now) return;
       await tx.update(requests).set({ officeWindowEndsAt: null }).where(eq(requests.id, r.id));
       broadcast += await dispatchOffers(tx, { ...locked, officeWindowEndsAt: null });
       await logEvent(tx, { requestId: r.id, type: "office_window_elapsed" });
-    });
+    }));
   }
 
   let expired = 0;
   const lapsed = await db.select().from(requests).where(and(inArray(requests.status, ["published", "filling"]), lt(requests.startsAt, now), sql`${requests.slotsFilled} = 0`));
   for (const r of lapsed) {
-    await db.transaction(async (tx) => {
+    await guard("expire_unfilled", r.id, () => db.transaction(async (tx) => {
       const l = await lockRequest(tx, r.id);
       if (!["published", "filling"].includes(l.status) || l.slotsFilled > 0) return;
       await releaseReserve(tx, l, l.reservedCents, `expire-release:${l.id}`);
@@ -52,14 +69,14 @@ export async function runMaintenance() {
       await logEvent(tx, { requestId: l.id, type: "request_expired", oldStatus: l.status, newStatus: "expired" });
       await notify(l.businessId, "request_expired", { requestId: l.id, ref: l.ref }, tx);
       expired++;
-    });
+    }));
   }
 
   // All-or-nothing requests (the business ticked "start only if every driver is found"): not fully staffed at the start time → called off and refunded.
   let calledOff = 0;
   const allOrNothing = await db.select().from(requests).where(and(inArray(requests.status, ["published", "filling"]), eq(requests.allowPartial, false), lt(requests.startsAt, now), sql`${requests.slotsFilled} > 0`, sql`${requests.slotsFilled} < ${requests.quantity}`));
   for (const r of allOrNothing) {
-    await db.transaction(async (tx) => {
+    await guard("call_off", r.id, () => db.transaction(async (tx) => {
       const l = await lockRequest(tx, r.id);
       if (!["published", "filling"].includes(l.status) || l.slotsFilled <= 0 || l.slotsFilled >= l.quantity) return;
       const live = (await tx.select().from(offers).where(eq(offers.requestId, l.id))).filter((o) => !(OFFER_DEAD as string[]).includes(o.status) && o.status !== "offered");
@@ -75,7 +92,7 @@ export async function runMaintenance() {
       await notify(l.businessId, "request_called_off", { requestId: l.id, ref: l.ref, filled: l.slotsFilled, requested: l.quantity }, tx);
       await notifyMany(live.map((o) => o.driverId), "request_cancelled", { ref: l.ref }, tx);
       calledOff++;
-    });
+    }));
   }
 
   // Partly staffed requests: once the start time + grace has passed, close the open slots so the job can finish
@@ -83,12 +100,12 @@ export async function runMaintenance() {
   let partial = 0;
   const partlyFilled = await db.select().from(requests).where(and(inArray(requests.status, ["published", "filling"]), lt(requests.startsAt, new Date(now.getTime() - PARTIAL_GRACE_MIN * 60_000)), sql`${requests.slotsFilled} > 0`, sql`${requests.slotsFilled} < ${requests.quantity}`, eq(requests.allowPartial, true)));
   for (const r of partlyFilled) {
-    await db.transaction(async (tx) => {
+    await guard("close_open_slots", r.id, () => db.transaction(async (tx) => {
       const l = await lockRequest(tx, r.id);
       if (!["published", "filling"].includes(l.status) || l.slotsFilled <= 0 || l.slotsFilled >= l.quantity) return;
       const all = await tx.select().from(offers).where(eq(offers.requestId, l.id));
       const live = all.filter((o) => !(OFFER_DEAD as string[]).includes(o.status) && o.status !== "offered");
-      const held = live.reduce((a, o) => a + (l.unitPriceCents ?? 0) * o.expectedUnits, 0);
+      const held = await escrowStillNeeded(tx, l, live); // a paid offer's share is already off the reserve
       await releaseReserve(tx, l, Math.max(0, l.reservedCents - held), `partial-release:${l.id}`);
       await tx.update(offers).set({ status: "expired", updatedAt: now }).where(and(eq(offers.requestId, l.id), eq(offers.status, "offered")));
       const started = live.some((o) => ["attendance_confirmed", "delivered_reported", "pending_settlement"].includes(o.status));
@@ -97,20 +114,35 @@ export async function runMaintenance() {
       await tx.update(requests).set({ quantity: l.slotsFilled, status: started ? "in_progress" : "assigned", updatedAt: now }).where(eq(requests.id, l.id));
       await logEvent(tx, { requestId: l.id, type: "unfilled_slots_closed", oldStatus: l.status, newStatus: started ? "in_progress" : "assigned", payload: { requested: l.quantity, staffed: l.slotsFilled } });
       await notify(l.businessId, "request_partially_filled", { requestId: l.id, ref: l.ref, filled: l.slotsFilled, requested: l.quantity }, tx);
+      await completeIfReady(tx, l.id, null); // every driver that took a slot may already be done: nobody else will ever trigger the completion
       partial++;
-    });
+    }));
   }
 
-  const reminded = await remindIncompleteParcels(now);
-  const settled = await settleDueWork();
+  let reminded = 0, settled: { offers: number; paid: number } = { offers: 0, paid: 0 };
+  await guard("remind_incomplete", undefined, async () => { reminded = await remindIncompleteParcels(now); });
+  await guard("settle_due", undefined, async () => { settled = await settleDueWork(); });
 
-  const drivers = await db.selectDistinct({ id: documents.ownerId }).from(documents).where(and(eq(documents.ownerKind, "driver"), eq(documents.status, "approved"), sql`${documents.expiresOn} < current_date`));
-  for (const d of drivers) await recomputeDriverVerification(d.id);
-  await housekeeping(now);
-  await db.insert(settings).values({ key: "maintenance_last_run", value: { at: now.toISOString() } }).onConflictDoUpdate({ target: settings.key, set: { value: { at: now.toISOString() }, updatedAt: now } });
-  const unsuspended = await db.update(driverProfiles).set({ suspendedUntil: null }).where(lt(driverProfiles.suspendedUntil, now)).returning({ id: driverProfiles.userId });
+  // A document that expires ON a date is valid through the end of that Riyadh day (UTC+3): from 21:00 UTC the next Riyadh day has begun. (`current_date` is the UTC date.)
+  const today = riyadhDay(now);
+  // Only drivers whose status WOULD change: a required document that is approved and expired with no valid approved document of the same type left, and a status that is not
+  // "expired" yet. (Selecting every driver that ever had an expired document re-ran the recompute for each of them every minute, for ever — 170 of 190 statements of an idle tick.)
+  // Uploading / approving a replacement goes through `reviewDocument`, which recomputes at that moment.
+  let drivers: Array<{ id: string }> = [];
+  await guard("document_expiry", undefined, async () => {
+    const required = DRIVER_DOC_TYPES.filter((d) => d.required).map((d) => d.key);
+    drivers = await db.select({ id: driverProfiles.userId }).from(driverProfiles).where(and(ne(driverProfiles.verificationStatus, "expired"), sql`exists (
+      select 1 from documents d where d.owner_id = ${driverProfiles.userId} and d.owner_kind = 'driver' and d.status = 'approved' and d.expires_on < ${today}
+        and d.type in (${sql.join(required.map((k) => sql`${k}`), sql`, `)})
+        and not exists (select 1 from documents v where v.owner_id = d.owner_id and v.owner_kind = 'driver' and v.type = d.type and v.status = 'approved' and (v.expires_on is null or v.expires_on >= ${today})))`));
+  });
+  for (const d of drivers) await guard("driver_verification", d.id, () => recomputeDriverVerification(d.id));
+  await guard("housekeeping", undefined, () => housekeeping(now));
+  await guard("last_run", undefined, () => db.insert(settings).values({ key: "maintenance_last_run", value: { at: now.toISOString(), errors: errors.length } }).onConflictDoUpdate({ target: settings.key, set: { value: { at: now.toISOString(), errors: errors.length }, updatedAt: now } }));
+  let unsuspended = 0;
+  await guard("unsuspend", undefined, async () => { unsuspended = (await db.update(driverProfiles).set({ suspendedUntil: null }).where(lt(driverProfiles.suspendedUntil, now)).returning({ id: driverProfiles.userId })).length; });
   const captured = await runCaptureTick(now); // hourly / daily snapshots, request milestones, webhook log sync, retention (never throws)
-  return { capture: captured, remindedIncomplete: reminded, settledOffers: settled.offers, paidSettlements: settled.paid, expiredOffers: staleOffers.length, broadcast, expiredRequests: expired, partialClosed: partial, calledOff, driversRecomputed: drivers.length, unsuspended: unsuspended.length };
+  return { capture: captured, remindedIncomplete: reminded, settledOffers: settled.offers, paidSettlements: settled.paid, expiredOffers: staleOffers.length, broadcast, expiredRequests: expired, partialClosed: partial, calledOff, driversRecomputed: drivers.length, unsuspended, errors };
 }
 
 /**
@@ -122,7 +154,7 @@ export async function settleDueWork() {
   const stuck = await db.select({ id: offers.id }).from(offers).where(inArray(offers.status, ["delivered_reported", "pending_settlement"])).limit(100);
   for (const o of stuck) {
     try { await db.transaction((tx) => autoConfirmDelivery(tx, o.id, null)); offersDone++; }
-    catch (e) { console.warn(JSON.stringify({ level: "warn", msg: "auto-confirm failed", offerId: o.id, error: e instanceof Error ? e.message.slice(0, 160) : "error" })); }
+    catch (e) { console.warn(JSON.stringify({ level: "warn", msg: "auto-confirm failed", offerId: o.id, ...describeError(e) })); }
   }
   return { offers: offersDone, paid: await paySettlementsDue() };
 }

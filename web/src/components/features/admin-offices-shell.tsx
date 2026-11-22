@@ -36,7 +36,7 @@ export function OfficeShell({ id, children }: { id: string; children: ReactNode 
     <>
       <Breadcrumbs items={[root, { label: o.officeName }]} />
       <DetailHeader name={o.officeName} avatar={<span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent" aria-hidden><Building2 className="size-7" /></span>}
-        subtitle={<span className="inline-flex flex-wrap items-center gap-x-2"><UserRound className="size-4" aria-hidden />{o.contact}{o.email && <span className="text-muted/80">· {o.email}</span>}</span>}
+        subtitle={<span className="inline-flex flex-wrap items-center gap-x-2"><UserRound className="size-4" aria-hidden />{o.contact}{o.email && <span className="text-muted/80 light:text-muted">· {o.email}</span>}</span>}
         badges={<><StatusBadge status={o.status} /><StatusBadge status={o.verificationStatus} /><AgreementBadge status={o.agreement?.status} expiresAt={o.agreement?.expiresAt} /></>}
         facts={[
           { label: t("auth.phone"), value: <span className="ltr-num" data-testid="rdq-office-phone">{o.phone ?? "—"}</span> },

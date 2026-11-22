@@ -25,7 +25,8 @@ async function main() {
     if (r.stats) console.log(`simulation: ${Object.entries(r.stats).filter(([k]) => process.env.HISTORY_DEBUG || !k.startsWith("dbg:")).map(([k, n]) => `${k} ${n}`).join(", ")}`);
     if (r.verify) console.log(`\nMoney & integrity: ${r.verify.ok ? "PASS" : "FAIL"} (${r.verify.checks.filter((c) => c.ok).length}/${r.verify.checks.length} checks)`);
   } catch (e) {
-    console.error(`\nFAILED: ${(e as Error).message}`);
+    const pg = (e as { cause?: { message?: string; detail?: string } }).cause; // Drizzle hides the Postgres reason (which row still references what) in `cause`
+    console.error(`\nFAILED: ${(e as Error).message}${pg?.message ? `\n  because: ${pg.message}${pg.detail ? ` — ${pg.detail}` : ""}` : ""}`);
     process.exitCode = 1;
   } finally { await closeDb(); }
 }

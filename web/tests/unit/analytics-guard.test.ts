@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const tx = { execute: vi.fn(async () => ({ rows: [{ n: 1 }] })) };
 const transaction = vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx));
-vi.mock("@/db", () => ({ db: { transaction: (cb: never, cfg: never) => (transaction as unknown as (a: unknown, b: unknown) => unknown)(cb, cfg) } }));
+const fakeDb = { transaction: (cb: never, cfg: never) => (transaction as unknown as (a: unknown, b: unknown) => unknown)(cb, cfg) };
+vi.mock("@/db", () => ({ db: fakeDb, getReportDb: () => fakeDb })); // reports run on their own pool (db/index.ts getReportDb)
 const { cached, clearAnalyticsCache, permClass, rows, timed, STATEMENT_TIMEOUT_MS } = await import("@/server/analytics/guard");
 const { sql } = await import("drizzle-orm");
 

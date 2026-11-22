@@ -38,7 +38,7 @@ class _EndRouteSheetState extends State<EndRouteSheet> {
         const SizedBox(height: 10),
         TextField(key: const Key('end-note'), controller: _note, maxLines: 2, decoration: InputDecoration(labelText: t('ms.end_route_note'))),
         const SizedBox(height: 16),
-        FilledButton(key: const Key('end-submit'), style: FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.bg), onPressed: _reason.text.trim().length >= 3 ? () => Navigator.pop(context, (reason: _reason.text.trim(), note: _note.text.trim().isEmpty ? null : _note.text.trim())) : null, child: Text(t('ms.end_route'))),
+        FilledButton(key: const Key('end-submit'), style: FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.dangerInk), onPressed: _reason.text.trim().length >= 3 ? () => Navigator.pop(context, (reason: _reason.text.trim(), note: _note.text.trim().isEmpty ? null : _note.text.trim())) : null, child: Text(t('ms.end_route'))),
       ]),
     )));
   }

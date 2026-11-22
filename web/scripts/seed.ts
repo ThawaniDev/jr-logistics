@@ -14,12 +14,18 @@ async function main() {
   const { ensureAccount, post } = await import("../src/server/wallet");
   const { createRule } = await import("../src/server/pricing");
   const { env } = await import("../src/lib/env");
+  const { initialAdminPasswordProblem } = await import("../src/lib/env-check");
   const { getSettings } = await import("../src/server/settings");
   const { STAFF_PRESETS } = await import("../src/server/catalog");
   const { backfillAuth, demoUsernameFor, DEMO_PASSWORD } = await import("../src/server/demo-credentials");
 
   const email = process.env.SUPER_ADMIN_EMAIL, pw = process.env.SUPER_ADMIN_PASSWORD;
   if (!email || !pw) throw new Error("SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD are required");
+  // A guessable initial password is refused when the admin is created on a real deployment (an existing admin keeps its own password: the variable is ignored then).
+  if (!env.demoMode && !(await db.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase()))).length) {
+    const problem = initialAdminPasswordProblem(pw);
+    if (problem) throw new Error(`SUPER_ADMIN_PASSWORD is not acceptable: ${problem}.`);
+  }
   const admin = await ensureSuperAdmin(email, pw);
   console.log(`✓ super admin: ${admin.email}`);
   await getSettings(); // materialise defaults lazily

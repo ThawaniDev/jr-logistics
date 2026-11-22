@@ -117,7 +117,7 @@ export async function companyDetail(viewer: User, id: string) {
 /** Cash this company's drivers still hold: per offer, collected on delivered parcels minus what was handed back (same rule as /admin/cod). */
 async function codFigures(businessId: string) {
   const r = await db.execute<{ collected: number; received: number; outstanding: number }>(sql`
-    select coalesce(sum(c.collected),0)::int as collected, coalesce(sum(coalesce(r.received,0)),0)::int as received, coalesce(sum(greatest(c.collected - coalesce(r.received,0),0)),0)::int as outstanding
+    select coalesce(sum(c.collected),0)::float8 as collected, coalesce(sum(coalesce(r.received,0)),0)::float8 as received, coalesce(sum(greatest(c.collected - coalesce(r.received,0),0)),0)::float8 as outstanding
     from (select s.offer_id, sum(s.cod_collected_cents) as collected from shipments s join requests q on q.id = s.request_id
           where q.business_id = ${businessId} and s.status = 'delivered' and s.cod_collected_cents is not null and s.offer_id is not null group by s.offer_id) c
     left join (select offer_id, sum(amount_cents) as received from cod_remittances where business_id = ${businessId} group by offer_id) r on r.offer_id = c.offer_id`);
@@ -135,7 +135,7 @@ export async function companyOverview(viewer: User, id: string) {
     seeOrders ? db.select({ status: requests.status, n: count() }).from(requests).where(eq(requests.businessId, id)).groupBy(requests.status) : null,
     seeOrders ? db.select().from(requests).where(eq(requests.businessId, id)).orderBy(desc(requests.createdAt)).limit(5) : null,
     money ? db.select().from(walletAccounts).where(eq(walletAccounts.ownerId, id)) : null,
-    can(viewer, "finance.view") ? db.select({ s: sql<number>`coalesce(sum(${settlements.customerCents}),0)::int`, n: count() }).from(settlements).where(and(eq(settlements.businessId, id), eq(settlements.status, "paid"))) : null,
+    can(viewer, "finance.view") ? db.select({ s: sql<number>`coalesce(sum(${settlements.customerCents}),0)::float8`, n: count() }).from(settlements).where(and(eq(settlements.businessId, id), eq(settlements.status, "paid"))) : null,
     can(viewer, "cod.manage") || can(viewer, "finance.view") ? codFigures(id) : null,
     can(viewer, "tickets.view") ? db.select({ n: count() }).from(tickets).where(and(eq(tickets.openedBy, id), inArray(tickets.status, ["open", "in_review"]))) : null,
     can(viewer, "complaints.manage") ? db.select({ n: count() }).from(complaints).where(and(eq(complaints.filedBy, id), inArray(complaints.status, ["open", "in_progress"]))) : null,

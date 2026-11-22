@@ -46,7 +46,7 @@ export function AckCard({ job, offerId, onDone }: { job: any; offerId: string; o
           <Button size="lg" variant="danger" className="h-14 text-base" onClick={() => { setNote(""); setDispute(true); }}>{t("act.dispute_loading")}</Button>
         </div>
       </ActionBar>
-      <Modal open={dispute} onClose={() => setDispute(false)} title={t("job.dispute_title")} footer={<><Button variant="ghost" onClick={() => setDispute(false)}>{t("common.cancel")}</Button><Button variant="danger" loading={a.is("dis")} disabled={note.trim().length < 3} onClick={() => a.run("dis", () => post(`/offers/${offerId}/loading-ack`, { ok: false, note: note.trim() }), { success: "common.saved", onDone: () => { setDispute(false); onDone(); } })}>{t("act.dispute_loading")}</Button></>}>
+      <Modal busy={a.is("dis")} open={dispute} onClose={() => setDispute(false)} title={t("job.dispute_title")} footer={<><Button variant="ghost" onClick={() => setDispute(false)}>{t("common.cancel")}</Button><Button variant="danger" loading={a.is("dis")} disabled={note.trim().length < 3} onClick={() => a.run("dis", () => post(`/offers/${offerId}/loading-ack`, { ok: false, note: note.trim() }), { success: "common.saved", onDone: () => { setDispute(false); onDone(); } })}>{t("act.dispute_loading")}</Button></>}>
         <Notice tone="info">{t("job.dispute_hint")}</Notice>
         <Textarea label={t("job.dispute_reason")} value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} autoFocus />
       </Modal>

@@ -22,7 +22,7 @@ export function BroadcastCard() {
         </div>
         <Button data-testid="admin-broadcast-send" disabled={!ok} onClick={() => setAsk(true)}>{t("common.send")}</Button>
       </div>
-      <Modal open={ask} onClose={() => setAsk(false)} title={t("adm.broadcast_confirm_title")} footer={<><Button variant="ghost" onClick={() => setAsk(false)}>{t("common.cancel")}</Button><Button data-testid="admin-broadcast-confirm" loading={a.is("bc")} onClick={send}>{t("common.send")}</Button></>}>
+      <Modal busy={a.is("bc")} open={ask} onClose={() => setAsk(false)} title={t("adm.broadcast_confirm_title")} footer={<><Button variant="ghost" onClick={() => setAsk(false)}>{t("common.cancel")}</Button><Button data-testid="admin-broadcast-confirm" loading={a.is("bc")} onClick={send}>{t("common.send")}</Button></>}>
         <p className="text-sm">{t("adm.broadcast_confirm", { audience })}</p>
         <p className="rounded-xl bg-bg2 p-3 text-sm">{message}</p>
       </Modal>

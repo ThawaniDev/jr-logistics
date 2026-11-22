@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, integer, bigserial, boolean, timestamp, jsonb, date, doublePrecision,
+  pgTable, uuid, text, integer, bigint, bigserial, boolean, timestamp, jsonb, date, doublePrecision,
   index, uniqueIndex, check, primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -45,7 +45,10 @@ export const users = pgTable("users", {
   lastLoginClient: text("last_login_client"), // web | mobile | api
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index("users_role_idx").on(t.role), index("users_status_idx").on(t.status), index("users_last_seen_idx").on(t.lastSeenAt)]);
+}, (t) => [
+  index("users_status_idx").on(t.status), index("users_last_seen_idx").on(t.lastSeenAt),
+  check("users_username_lower_chk", sql`${t.username} is null or ${t.username} = lower(${t.username})`), // 0023: the unique indexes are case-sensitive, every lookup lower-cases
+]);
 
 export const sessions = pgTable("sessions", {
   id: id(),
@@ -290,6 +293,7 @@ export const requests = pgTable("requests", {
   index("requests_status_idx").on(t.status, t.startsAt),
   index("requests_activity_idx").on(t.lastActivityAt),
   check("requests_qty", sql`${t.quantity} > 0`),
+  check("requests_amounts_chk", sql`coalesce(${t.totalCents}, 0) >= 0 and coalesce(${t.unitPriceCents}, 0) >= 0 and coalesce(${t.expectedUnits}, 0) >= 0`), // 0023 (NOT VALID)
 ]);
 
 export const offers = pgTable("offers", {
@@ -326,6 +330,7 @@ export const offers = pgTable("offers", {
   index("offers_request_idx").on(t.requestId, t.status),
   index("offers_driver_idx").on(t.driverId, t.status),
   index("offers_office_idx").on(t.officeId).where(sql`${t.officeId} is not null`),
+  index("offers_driver_accepted_idx").on(t.driverId, t.acceptedAt).where(sql`${t.acceptedAt} is not null`), // 0025: last / first job of a driver (max / min accepted_at) is one index probe
   uniqueIndex("offers_unique_active").on(t.requestId, t.driverId).where(sql`${t.status} NOT IN ('rejected','expired','cancelled','no_show','replaced')`),
 ]);
 
@@ -391,6 +396,7 @@ export const shipments = pgTable("shipments", {
   uniqueIndex("shipments_request_seq_uniq").on(t.requestId, t.seq),
   index("shipments_incomplete_idx").on(t.requestId).where(sql`${t.detailsComplete} = false`),
   index("shipments_partner_ref_idx").on(t.partnerId, sql`lower(${t.externalRef})`).where(sql`${t.partnerId} is not null`),
+  check("shipments_cod_chk", sql`${t.codCents} >= 0 and (${t.codCollectedCents} is null or ${t.codCollectedCents} >= 0)`), // 0023 (NOT VALID)
 ]);
 
 /** Evidence captured at a stop: a photo for a postponement / failed attempt, or the recipient's signature. */
@@ -545,7 +551,6 @@ export const complaints = pgTable("complaints", {
 }, (t) => [
   index("complaints_status_idx").on(t.status),
   index("complaints_request_idx").on(t.requestId).where(sql`${t.requestId} is not null`),
-  index("complaints_filer_idx").on(t.filedBy, t.createdAt),
 ]);
 
 export const complaintNotes = pgTable("complaint_notes", {
@@ -563,20 +568,24 @@ export const walletAccounts = pgTable("wallet_accounts", {
   id: id(),
   ownerId: uuid("owner_id").references(() => users.id), // null for the platform account
   kind: text("kind").notNull(), // user | platform
-  availableCents: integer("available_cents").notNull().default(0),
-  reservedCents: integer("reserved_cents").notNull().default(0),
-  heldCents: integer("held_cents").notNull().default(0), // pending withdrawals
+  // bigint since 0024 (the platform wallet only ever grows: integer stopped every payout at SAR 21 474 836.47); `mode: "number"` = JS numbers, exact to SAR 90 trillion.
+  // Raw SQL (`db.execute`) returns a bigint column as a STRING: cast (`::float8`) or wrap with `Number()` / `num()`.
+  availableCents: bigint("available_cents", { mode: "number" }).notNull().default(0),
+  reservedCents: bigint("reserved_cents", { mode: "number" }).notNull().default(0),
+  heldCents: bigint("held_cents", { mode: "number" }).notNull().default(0), // pending withdrawals
   creditLimitCents: integer("credit_limit_cents").notNull().default(0), // B7: approved postpaid facility — available may go down to -creditLimit
   updatedAt: updatedAt(),
 }, (t) => [
   uniqueIndex("wallet_owner_unique").on(t.ownerId),
+  uniqueIndex("wallet_one_platform_uniq").on(sql`(true)`).where(sql`${t.kind} = 'platform'`), // 0023: owner_id NULL is not unique, so this is what keeps the platform account single
+  check("wallet_kind_chk", sql`(${t.kind} = 'platform' and ${t.ownerId} is null) or (${t.kind} = 'user' and ${t.ownerId} is not null)`),
   check("wallet_nonneg", sql`${t.availableCents} + ${t.creditLimitCents} >= 0 AND ${t.reservedCents} >= 0 AND ${t.heldCents} >= 0 AND ${t.creditLimitCents} >= 0`),
 ]);
 
 export const ledgerEntries = pgTable("ledger_entries", {
   id: id(),
   accountId: uuid("account_id").notNull().references(() => walletAccounts.id),
-  kind: text("kind").notNull(), // topup|reserve|release_reserve|refund|payout|platform_fee|withdrawal_hold|withdrawal_paid|withdrawal_release|adjustment
+  kind: text("kind").notNull(), // topup|reserve|release_reserve|charge|payout|platform_fee|withdrawal_hold|withdrawal_paid|withdrawal_release (+ refund|adjustment for manual corrections) — no CHECK: new kinds are added in code
   availableDeltaCents: integer("available_delta_cents").notNull().default(0),
   reservedDeltaCents: integer("reserved_delta_cents").notNull().default(0),
   heldDeltaCents: integer("held_delta_cents").notNull().default(0),
@@ -620,7 +629,10 @@ export const settlements = pgTable("settlements", {
   pricingSnapshot: jsonb("pricing_snapshot"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index("settlements_status_idx").on(t.status), index("settlements_payee_idx").on(t.driverId, t.officeId), index("settlements_request_idx").on(t.requestId)]);
+}, (t) => [
+  index("settlements_status_idx").on(t.status), index("settlements_payee_idx").on(t.driverId, t.officeId), index("settlements_request_idx").on(t.requestId),
+  check("settlements_vat_refund_chk", sql`${t.vatCents} >= 0 and ${t.refundCents} >= 0`), // 0023 (NOT VALID); the older settlements_money_chk (0007) lives in the migration only
+]);
 
 export const payoutBatches = pgTable("payout_batches", {
   id: id(),
@@ -629,7 +641,7 @@ export const payoutBatches = pgTable("payout_batches", {
   itemCount: integer("item_count").notNull().default(0),
   paidCount: integer("paid_count").notNull().default(0),
   failedCount: integer("failed_count").notNull().default(0),
-  totalCents: integer("total_cents").notNull().default(0),
+  totalCents: bigint("total_cents", { mode: "number" }).notNull().default(0), // bigint since 0026: a batch summed many settlements
   results: jsonb("results"),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: createdAt(),
@@ -660,7 +672,10 @@ export const invoices = pgTable("invoices", {
   totalCents: integer("total_cents").notNull(),
   vatPct: integer("vat_pct").notNull(),
   createdAt: createdAt(),
-}, (t) => [index("invoices_request_idx").on(t.requestId)]);
+}, (t) => [
+  index("invoices_request_idx").on(t.requestId),
+  check("invoices_money_chk", sql`${t.subtotalCents} >= 0 and ${t.vatCents} >= 0 and ${t.totalCents} >= 0 and ${t.subtotalCents} + ${t.vatCents} = ${t.totalCents}`), // 0023 (NOT VALID)
+]);
 
 export const counters = pgTable("counters", {
   key: text("key").primaryKey(),
@@ -679,6 +694,7 @@ export const notifications = pgTable("notifications", {
   createdAt: createdAt(),
 }, (t) => [
   index("notif_user_idx").on(t.userId, t.readAt, t.createdAt),
+  index("notifications_created_idx").on(t.createdAt), // 0028: the retention prune (server/snapshots.ts NOTIFICATION_RETENTION)
   index("notif_request_idx").on(sql`(${t.data}->>'requestId')`, t.createdAt).where(sql`${t.data} ? 'requestId'`),
 ]);
 

@@ -12,6 +12,7 @@ import { requirePerm, can } from "./auth/permissions";
 import { dispatchOffers, evaluateCandidates } from "./matching";
 import { lockRequest } from "./requests";
 import { contains, likeEscape } from "@/lib/sql";
+import { addDays, riyadhDay } from "./analytics/time";
 
 // ───────── SLA (pure; unit-tested) ─────────
 export type StartSla = "on_time" | "late" | "missed" | "at_risk" | "pending";
@@ -88,8 +89,8 @@ export async function opsAlerts() {
   const disputes = await db.select({ o: offers, r: requests }).from(offers).innerJoin(requests, eq(requests.id, offers.requestId)).where(eq(offers.status, "qty_disputed"));
   for (const d of disputes) alerts.push({ type: "qty_dispute", severity: "critical", requestId: d.r.id, offerId: d.o.id, ref: d.r.ref });
   const expiring = await db.select({ d: documents, u: users.name }).from(documents).innerJoin(users, eq(users.id, documents.ownerId))
-    .where(and(eq(documents.status, "approved"), isNotNull(documents.expiresOn), sql`${documents.expiresOn} <= (current_date + 30)`)).limit(100);
-  for (const e of expiring) alerts.push({ type: "doc_expiring", severity: e.d.expiresOn! < new Date().toISOString().slice(0, 10) ? "critical" : "info", detail: { owner: e.u, type: e.d.type, expiresOn: e.d.expiresOn } });
+    .where(and(eq(documents.status, "approved"), isNotNull(documents.expiresOn), sql`${documents.expiresOn} <= ${addDays(riyadhDay(now), 30)}`)).limit(100); // Riyadh calendar day, not the UTC one
+  for (const e of expiring) alerts.push({ type: "doc_expiring", severity: e.d.expiresOn! < riyadhDay(now) ? "critical" : "info", detail: { owner: e.u, type: e.d.type, expiresOn: e.d.expiresOn } });
   const stale = await db.select({ n: count() }).from(settlements).where(and(eq(settlements.status, "pending_review"), lt(settlements.createdAt, new Date(now.getTime() - 24 * 3600_000))));
   if (Number(stale[0].n) > 0) alerts.push({ type: "settlement_pending", severity: "info", detail: { count: Number(stale[0].n) } });
   const order = { critical: 0, warning: 1, info: 2 };
@@ -148,9 +149,6 @@ export async function rematch(staff: User, requestId: string) {
 }
 
 // ───────── Directory ─────────
-export async function driverDirectory(staff: User, f: { q?: string; verification?: string; status?: string; suspended?: boolean; page?: number; pageSize?: number }) {
-  return (await driverDirectoryPage(staff, f)).items;
-}
 /** Same list with the paging envelope: `total` counts every match, not just the page. */
 export async function driverDirectoryPage(staff: User, f: { q?: string; verification?: string; status?: string; suspended?: boolean; page?: number; pageSize?: number }) {
   requirePerm(staff, "drivers.view");
@@ -229,18 +227,18 @@ export async function report(staff: User, type: ReportType, f: { from?: Date; to
   }
 }
 /** CSV with formula-injection protection. */
+const PLAIN_NEGATIVE = /^-\d+(\.\d+)?$/;
+const csvCell = (v: unknown) => {
+  let s = v == null ? "" : String(v);
+  if (/^[=+\-@\t\r]/.test(s) && !PLAIN_NEGATIVE.test(s)) s = "'" + s; // a plain negative number (-32.84) cannot be a formula; `-2+3` and `+966…` still get the guard
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; // a bare CR inside an unquoted cell ends the record in Python / Excel: `Bob\r=1+1` would start a new row with a live formula (audit K, A4)
+};
+/** One CSV line: every value quoted when it needs it and made formula-safe (a leading `= + - @`, tab or CR would make a spreadsheet read it as a formula). */
+export const csvLine = (values: unknown[]): string => values.map(csvCell).join(",");
 export function toCsv(columns: string[], rows: Array<Record<string, unknown>>) {
-  const cell = (v: unknown) => {
-    let s = v == null ? "" : String(v);
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return [columns.join(","), ...rows.map((r) => columns.map((c) => cell(r[c])).join(","))].join("\n");
+  return [csvLine(columns), ...rows.map((r) => csvLine(columns.map((c) => r[c])))].join("\n");
 }
 
-export async function auditTrail(staff: User, f: { entity?: string; page?: number; actorId?: string; action?: string; from?: Date; to?: Date; pageSize?: number }) {
-  return (await auditPage(staff, f)).items;
-}
 /** Audit log with the actor's name joined in and a total. `action` matches by prefix ("settlement." finds every settlement action). */
 export async function auditPage(staff: User, f: { entity?: string; page?: number; pageSize?: number; actorId?: string; action?: string; from?: Date; to?: Date }) {
   requirePerm(staff, "audit.view");

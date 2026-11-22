@@ -127,6 +127,15 @@ export async function poolSize(x: Exec, requestId: string) {
   const [r] = await x.select({ n: sql<number>`count(*)::int` }).from(shipments).where(and(eq(shipments.requestId, requestId), isNull(shipments.offerId), eq(shipments.status, "pending")));
   return r?.n ?? 0;
 }
+/** Which of these requests have a manifest, and how many parcels nobody carries yet — one grouped query for a whole list (the per-request versions below cost one query each). */
+export async function manifestFacts(x: Exec, requestIds: string[]) {
+  const out = new Map<string, { manifest: boolean; pool: number }>();
+  if (!requestIds.length) return out;
+  const rows = await x.select({ r: shipments.requestId, pool: sql<number>`count(*) filter (where ${shipments.offerId} is null and ${shipments.status} = 'pending')::int` }).from(shipments).where(inArray(shipments.requestId, requestIds)).groupBy(shipments.requestId);
+  for (const id of requestIds) out.set(id, { manifest: false, pool: 0 });
+  for (const r of rows) out.set(r.r, { manifest: true, pool: r.pool });
+  return out;
+}
 /** A request with a manifest runs the per-shipment flow; older bulk requests (no rows) keep the count-based flow. */
 export const isManifestJob = async (x: Exec, requestId: string) => (await manifestCount(x, requestId)) > 0;
 
@@ -224,7 +233,9 @@ export async function markLoaded(tx: Exec, r: Request, o: Offer, sel: { codes?: 
 export async function releaseOfferShipments(tx: Exec, o: Pick<Offer, "id" | "requestId">, why: string, opts: { loadedToPool?: boolean } = {}) {
   const now = new Date();
   // `loadedToPool`: nothing was delivered yet, so the driver simply brings everything back and a replacement loads afresh.
-  const back = await tx.update(shipments).set({ offerId: null, stopOrder: null, status: "pending", loadedAt: null, notifiedAt: null, updatedAt: now })
+  // The next driver starts the parcel afresh: no arrival, postponement, wrong-code count or receipt photo of the previous one may carry over (an old arrival would let the
+  // new driver deliver without ever being at the door; a locked code or a used-up postponement would block him for something he did not do).
+  const back = await tx.update(shipments).set({ offerId: null, stopOrder: null, status: "pending", loadedAt: null, notifiedAt: null, arrivedAt: null, deferCount: 0, otpAttempts: 0, proofKey: null, updatedAt: now })
     .where(and(eq(shipments.offerId, o.id), inArray(shipments.status, opts.loadedToPool ? ["pending", "loaded"] : ["pending"]))).returning({ id: shipments.id });
   const out = await tx.update(shipments).set({ status: "failed", failReason: why, failedAt: now, updatedAt: now })
     .where(and(eq(shipments.offerId, o.id), eq(shipments.status, "loaded"))).returning({ id: shipments.id });
@@ -294,7 +305,7 @@ export async function sendRecipientCodes(ids: string[], opts: { force?: boolean 
       await sendSms(provider, s.recipientPhone, withCode
         ? `${biz}: طلبك في الطريق. رمز الاستلام ${otpFor(s)} — أعطه للمندوب عند الاستلام فقط. | Your order is on its way. Delivery code ${otpFor(s)}. Track: ${track}${cash}`
         : `${biz}: طلبك في الطريق. تتبّع الطلب: ${track} | Your order is on its way. Track: ${track}${cash}`, { type: withCode ? "recipient_code" : "recipient_track", requestId: r.id, shipmentId: s.id });
-      await db.update(shipments).set({ notifiedAt: new Date(), otpSends: opts.force ? sql`${shipments.otpSends} + 1` : shipments.otpSends }).where(eq(shipments.id, s.id));
+      await db.update(shipments).set({ notifiedAt: new Date() }).where(eq(shipments.id, s.id)); // (resends are counted when requested — see `resendCode`)
       await logEvent(db, { requestId: r.id, offerId: s.offerId, type: "recipient_notified", payload: { shipmentId: s.id, code: s.code, forced: !!opts.force } });
       sent++;
     } catch (e) {

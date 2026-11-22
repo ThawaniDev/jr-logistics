@@ -119,7 +119,7 @@ class StatTile extends StatelessWidget {
           FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, key: Key('$tileKey-value'), textDirection: TextDirection.ltr, style: TextStyle(fontSize: dense ? 18 : 22, fontWeight: FontWeight.w800, height: 1.15, color: color))),
           const SizedBox(height: 2),
           Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: JR.muted, fontSize: dense ? 11.5 : 12.5, height: 1.25)),
-          if (sub != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(sub!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JR.muted, fontSize: 12, height: 1.25))),
+          if (sub != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(sub!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: JR.muted, fontSize: 12, height: 1.25))),
         ]),
       );
 }

@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { db, type Tx } from "@/db";
+import { getReportDb, type Tx } from "@/db";
 import { err } from "@/lib/errors";
 import { can } from "../auth/permissions";
 import type { User } from "@/db/schema";
@@ -20,7 +20,7 @@ const CACHE_MAX = 200;
 
 export async function timed<T>(fn: (tx: Tx) => Promise<T>, ms = STATEMENT_TIMEOUT_MS): Promise<T> {
   try {
-    return await db.transaction(async (tx) => {
+    return await getReportDb().transaction(async (tx) => { // the reports' own small pool: a heavy report load never starves the API's pool
       await tx.execute(sql`select set_config('statement_timeout', ${String(ms)}, true)`);
       return fn(tx);
     }, { accessMode: "read only" });

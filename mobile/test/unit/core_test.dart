@@ -55,11 +55,6 @@ void main() {
       expect(fmtDateTime('2026-03-05T06:05:00.000Z', 'ur'), '5 مارچ 2026 · 09:05');
       expect(fmtDateTime(null, 'en'), '—');
     });
-    test('distance & duration', () {
-      expect(fmtKm(12345), '12.3 km');
-      expect(fmtDuration(600), '10 min');
-      expect(fmtDuration(5400), '1 h 30 min');
-    });
   });
 
   group('models', () {

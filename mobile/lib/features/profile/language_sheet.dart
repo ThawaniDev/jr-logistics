@@ -13,7 +13,7 @@ Future<void> showLanguageSheet(BuildContext context, WidgetRef ref) {
         for (final code in supportedCodes)
           ListTile(
             title: Text(langNames[code]!, style: const TextStyle(fontSize: 17)),
-            trailing: ref.read(localeProvider) == code ? const Icon(Icons.check_circle, color: JR.accent) : null,
+            trailing: ref.read(localeProvider) == code ? Icon(Icons.check_circle, color: JR.accent) : null,
             onTap: () async {
               await ref.read(localeProvider.notifier).set(code);
               // persist for signed-in drivers so web and mobile stay in sync (failure is harmless)

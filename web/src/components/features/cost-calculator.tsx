@@ -39,7 +39,7 @@ export function CostCalculator() {
   const clampUnits = (v: number) => Math.min(delivery ? 2000 : 100, Math.max(1, Math.floor(v) || 1));
 
   return (
-    <div id="estimate" className="relative mx-auto max-w-5xl rounded-3xl border border-line/80 bg-card/60 p-6 sm:p-10 shadow-2xl backdrop-blur-xl">
+    <div id="estimate" className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl border border-line/80 bg-card/60 p-6 sm:p-10 shadow-2xl backdrop-blur-xl">
       <div className="absolute -top-12 -start-12 size-48 rounded-full bg-cyan/10 blur-3xl pointer-events-none" />
       <div className="absolute -bottom-12 -end-12 size-48 rounded-full bg-accent/10 blur-3xl pointer-events-none" />
 
@@ -80,7 +80,7 @@ export function CostCalculator() {
                     className={cn(
                       "flex flex-col items-center justify-center gap-2 rounded-2xl border p-4 text-center transition-all",
                       active
-                        ? "border-accent bg-accent/15 text-accent shadow-[0_0_20px_rgba(5,229,163,0.15)] font-bold"
+                        ? "border-accent bg-accent/15 text-accent shadow-[0_0_20px_color-mix(in_srgb,var(--jr-accent)_15%,transparent)] font-bold"
                         : "border-line bg-bg2/60 text-muted hover:border-line/80 hover:text-ink"
                     )}
                   >
@@ -157,7 +157,7 @@ export function CostCalculator() {
                 id="est-city"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                className="w-full rounded-2xl border border-line bg-bg2/60 ps-10 pe-4 py-3 text-sm font-medium text-ink focus:border-accent focus:outline-none"
+                className="w-full rounded-2xl border border-line-strong bg-bg2/60 ps-10 pe-4 py-3 text-sm font-medium text-ink focus:border-accent focus:outline-none"
               >
                 {(cities.length ? cities : [{ key: "riyadh", ar: "الرياض", en: "Riyadh", ur: "ریاض", pickup: true }]).map((c) => (
                   <option key={c.key} value={c.key} className="bg-card text-ink">
@@ -196,7 +196,7 @@ export function CostCalculator() {
 
             <Link
               href="/login?role=business"
-              className="mt-6 inline-flex w-full h-13 items-center justify-center gap-2 rounded-2xl bg-accent px-6 font-bold text-accent-ink hover:brightness-110 shadow-[0_0_25px_rgba(5,229,163,0.3)] transition-all"
+              className="mt-6 inline-flex w-full h-13 items-center justify-center gap-2 rounded-2xl bg-accent px-6 font-bold text-accent-ink hover:brightness-110 shadow-[0_0_25px_color-mix(in_srgb,var(--jr-accent)_30%,transparent)] transition-all"
             >
               <span>{t("landing.est_cta")}</span>
               <ArrowRight className="size-4 rtl:rotate-180" aria-hidden />

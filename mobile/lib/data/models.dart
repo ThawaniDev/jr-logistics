@@ -92,6 +92,13 @@ class Job {
   bool get awaitingLoadingAck => status == 'attendance_confirmed' && loadedUnits != null && j['loadedAckByDriver'] == null;
 }
 
+/// One page of the job list. [total] is what the server holds in all (0 = unknown, e.g. an older server): [hasMore] is then decided by a full page.
+class JobsPage {
+  const JobsPage(this.items, {this.total = 0, this.page = 1, this.pageSize = 0});
+  final List<Job> items;
+  final int total, page, pageSize;
+}
+
 /// `ops` on the job view: the warehouse's effective switches (platform default overridden per warehouse).
 class JobOps {
   JobOps(this.j);

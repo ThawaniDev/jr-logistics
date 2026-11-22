@@ -106,7 +106,7 @@ class _ScanFieldState extends State<ScanField> {
       onChanged: widget.onChanged, onSubmitted: widget.onSubmitted,
       decoration: InputDecoration(
         labelText: widget.label, helperText: widget.helper, helperMaxLines: 3, prefixIcon: Icon(widget.prefixIcon),
-        suffixIcon: IconButton(key: scanKey, tooltip: context.tr('fma.scan_camera'), constraints: const BoxConstraints(minWidth: 48, minHeight: 48), icon: const Icon(Icons.photo_camera_outlined, color: JR.accent), onPressed: widget.enabled ? _scan : null),
+        suffixIcon: IconButton(key: scanKey, tooltip: context.tr('fma.scan_camera'), constraints: const BoxConstraints(minWidth: 48, minHeight: 48), icon: Icon(Icons.photo_camera_outlined, color: JR.accent), onPressed: widget.enabled ? _scan : null),
       ),
     );
   }
@@ -178,8 +178,9 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
     final t = context.tr;
     final v = _verdict;
     final vColor = v == null ? JR.accent : v.ok ? JR.accent : v.warning ? JR.gold : JR.danger;
-    return Scaffold(
-      backgroundColor: Colors.black,
+    // The camera surface is black in both modes: light status-bar icons whatever the app theme.
+    return AnnotatedRegion<SystemUiOverlayStyle>(value: systemOverlayFor(Brightness.dark, navigationBar: false), child: Scaffold(
+      backgroundColor: JR.mediaBg,
       body: Stack(fit: StackFit.expand, children: [
         MobileScanner(
           controller: _controller, onDetect: _onDetect,
@@ -188,10 +189,10 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
         ),
         SafeArea(child: Column(children: [
           Padding(padding: const EdgeInsets.fromLTRB(4, 4, 4, 0), child: Row(children: [
-            IconButton(key: const Key('scan-close'), tooltip: t('fma.scan_close'), color: Colors.white, iconSize: 28, constraints: const BoxConstraints(minWidth: 48, minHeight: 48), icon: const Icon(Icons.close), onPressed: () => _close()),
-            Expanded(child: Text(widget.title ?? t('fma.scan_title'), maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700))),
+            IconButton(key: const Key('scan-close'), tooltip: t('fma.scan_close'), color: JR.mediaFg, iconSize: 28, constraints: const BoxConstraints(minWidth: 48, minHeight: 48), icon: const Icon(Icons.close), onPressed: () => _close()),
+            Expanded(child: Text(widget.title ?? t('fma.scan_title'), maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(color: JR.mediaFg, fontSize: 17, fontWeight: FontWeight.w700))),
             ValueListenableBuilder<MobileScannerState>(valueListenable: _controller, builder: (c, st, _) => IconButton(
-              key: const Key('scan-torch'), tooltip: t('fma.scan_torch'), color: Colors.white, iconSize: 28, constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              key: const Key('scan-torch'), tooltip: t('fma.scan_torch'), color: JR.mediaFg, iconSize: 28, constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               icon: Icon(st.torchState == TorchState.on ? Icons.flash_on : Icons.flash_off), onPressed: st.torchState == TorchState.unavailable || !st.isRunning ? null : () => _controller.toggleTorch(),
             )),
           ])),
@@ -199,19 +200,19 @@ class _ScannerPageState extends ConsumerState<ScannerPage> {
           if (v?.message != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Container(
             key: const Key('scan-verdict'), width: double.infinity, padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: vColor.withValues(alpha: 0.92), borderRadius: BorderRadius.circular(12)),
-            child: Row(children: [Icon(v!.ok ? Icons.check_circle : Icons.error_outline, color: JR.accentInk), const SizedBox(width: 10), Expanded(child: Text(v.message!, style: const TextStyle(color: JR.accentInk, fontWeight: FontWeight.w700, height: 1.3)))]),
+            child: Row(children: [Icon(v!.ok ? Icons.check_circle : Icons.error_outline, color: JR.accentInk), const SizedBox(width: 10), Expanded(child: Text(v.message!, style: TextStyle(color: JR.accentInk, fontWeight: FontWeight.w700, height: 1.3)))]),
           )),
           Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(t('fma.scan_hint'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, height: 1.35)),
+            Text(t('fma.scan_hint'), textAlign: TextAlign.center, style: TextStyle(color: JR.mediaFgSoft, height: 1.35)),
             const SizedBox(height: 8),
             Row(children: [
-              Expanded(child: TextButton.icon(key: const Key('scan-type'), style: TextButton.styleFrom(foregroundColor: Colors.white, minimumSize: const Size(0, 48)), onPressed: () => _close(), icon: const Icon(Icons.keyboard_outlined), label: Text(t('fma.scan_type_instead'), textAlign: TextAlign.center))),
+              Expanded(child: TextButton.icon(key: const Key('scan-type'), style: TextButton.styleFrom(foregroundColor: JR.mediaFg, minimumSize: const Size(0, 48)), onPressed: () => _close(), icon: const Icon(Icons.keyboard_outlined), label: Text(t('fma.scan_type_instead'), textAlign: TextAlign.center))),
               if (widget.continuous) ...[const SizedBox(width: 8), Expanded(child: FilledButton(key: const Key('scan-done'), style: FilledButton.styleFrom(minimumSize: const Size(0, 52)), onPressed: () => _close(_lastOk), child: Text(t('fma.scan_done'))))],
             ]),
           ])),
         ])),
       ]),
-    );
+    ));
   }
 }
 
@@ -224,15 +225,15 @@ class ScanErrorView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tr;
     return Container(
-      key: const Key('scan-error'), color: Colors.black, padding: const EdgeInsets.all(24), alignment: Alignment.center,
+      key: const Key('scan-error'), color: JR.mediaBg, padding: const EdgeInsets.all(24), alignment: Alignment.center,
       child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.no_photography_outlined, size: 56, color: JR.gold),
+        Icon(Icons.no_photography_outlined, size: 56, color: JR.mediaGold),
         const SizedBox(height: 14),
-        Text(t(denied ? 'fma.scan_denied' : 'fma.scan_unavailable'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.4)),
+        Text(t(denied ? 'fma.scan_denied' : 'fma.scan_unavailable'), textAlign: TextAlign.center, style: TextStyle(color: JR.mediaFg, fontSize: 16, height: 1.4)),
         const SizedBox(height: 18),
         if (denied) FilledButton.icon(key: const Key('scan-open-settings'), onPressed: () => ref.read(linkOpenerProvider).openAppSettings(), icon: const Icon(Icons.settings_outlined), label: Text(t('um.open_settings'))),
         const SizedBox(height: 10),
-        OutlinedButton.icon(key: const Key('scan-type-error'), style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white54), minimumSize: const Size(0, 52)), onPressed: onType, icon: const Icon(Icons.keyboard_outlined), label: Text(t('fma.scan_type_instead'), textAlign: TextAlign.center)),
+        OutlinedButton.icon(key: const Key('scan-type-error'), style: OutlinedButton.styleFrom(foregroundColor: JR.mediaFg, side: BorderSide(color: JR.mediaFgFaint), minimumSize: const Size(0, 52)), onPressed: onType, icon: const Icon(Icons.keyboard_outlined), label: Text(t('fma.scan_type_instead'), textAlign: TextAlign.center)),
       ])),
     );
   }
@@ -251,10 +252,10 @@ class _FramePainter extends CustomPainter {
     final w = size.width * 0.78, h = (size.width * 0.5).clamp(120.0, size.height * 0.4);
     final frame = RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(size.width / 2, size.height * 0.42), width: w, height: h), const Radius.circular(18));
     final dim = Path()..addRect(Offset.zero & size)..addRRect(frame)..fillType = PathFillType.evenOdd;
-    canvas.drawPath(dim, Paint()..color = Colors.black.withValues(alpha: 0.5));
-    canvas.drawRRect(frame, Paint()..color = JR.accent..style = PaintingStyle.stroke..strokeWidth = 3);
+    canvas.drawPath(dim, Paint()..color = JR.mediaBg.withValues(alpha: 0.5));
+    canvas.drawRRect(frame, Paint()..color = JR.mediaAccent..style = PaintingStyle.stroke..strokeWidth = 3);
   }
 
   @override
-  bool shouldRepaint(_FramePainter old) => false;
+  bool shouldRepaint(_FramePainter old) => true; // cheap, and keeps the frame in step with any palette change
 }

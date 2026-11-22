@@ -94,7 +94,10 @@ test("complaints: a status filter with counts and a complaint opened as its own 
   test.setTimeout(120_000);
   const biz = await apiLogin(browser, DEMO.business);
   const tag = `E2E${Date.now()}`;
-  const made = await api(biz.request, "POST", "/complaints", { category: "delay", description: `The driver was two hours late ${tag}` });
+  const mine = (await api(biz.request, "GET", "/requests")).json;
+  const requestId: string | undefined = (mine.items ?? mine.requests ?? [])[0]?.id; // a hold finds its settlement through the complaint's order
+  expect(requestId, "the demo business has an order").toBeTruthy();
+  const made = await api(biz.request, "POST", "/complaints", { category: "delay", description: `The driver was two hours late ${tag}`, requestId });
   expect(made.status).toBe(201);
   const id: string = made.json.id;
   const ap = await adminPage(browser);

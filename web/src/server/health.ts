@@ -1,7 +1,9 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { partnerOutbox, settings, webhookDeliveries } from "@/db/schema";
+import { logError } from "@/lib/log";
 import { activeSmsProvider } from "./auth/otp";
+import { paymentProvider } from "./wallet";
 
 /** A tick that has not run for this long means housekeeping (expiry, refunds, payouts' webhooks) has stopped. */
 const STALE_MIN = 10;
@@ -9,9 +11,13 @@ const STALE_MIN = 10;
 /** Liveness + dependency check. Cheap and public: status only. */
 export async function basicHealth() {
   const t0 = Date.now();
-  await db.execute(sql`select 1`);
+  // The route answers 503 without saying why (it is public): the reason goes to the server log, with the usual scrubbing.
+  try { await db.execute(sql`select 1`); } catch (e) { logError(e, { correlationId: "health", path: "/api/v1/health" }); throw e; }
   return { status: "ok" as const, time: new Date().toISOString(), db: { ok: true, latencyMs: Date.now() - t0 } };
 }
+
+/** The payment provider that top-ups would really use (null = not configured: top-ups answer 503). */
+function activePaymentName(): string | null { try { return paymentProvider().name; } catch { return null; } }
 
 /** Operator view (needs the cron secret): queue depths, scheduler freshness and provider configuration — no personal data. */
 export async function deepHealth() {
@@ -29,6 +35,6 @@ export async function deepHealth() {
     status: stale ? ("degraded" as const) : base.status,
     maintenance: { lastRunAt: at, ageMinutes: ageMin, stale },
     queues: { webhooksOverdue: wh.n, webhooksDeadLetter: dead.n, partnerUpdatesOverdue: ob.n, partnerUpdatesDead: obDead.n },
-    providers: { sms: activeSmsProvider()?.name ?? null, storage: process.env.STORAGE_DRIVER ?? (process.env.NODE_ENV === "production" ? null : "local"), payments: process.env.PAYMENT_PROVIDER ?? null },
+    providers: { sms: activeSmsProvider()?.name ?? null, storage: process.env.STORAGE_DRIVER ?? (process.env.NODE_ENV === "production" ? null : "local"), payments: activePaymentName() },
   };
 }

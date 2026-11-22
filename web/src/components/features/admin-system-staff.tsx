@@ -94,7 +94,7 @@ function StaffInner() {
           : a.run(conf.s.id, () => patch(`/admin/staff/${conf.s.id}`, { status: "suspended" }), { success: "common.saved", onDone: () => { setConf(null); mutate(); } }))}>
         <p className="text-sm">{conf?.kind === "mfa" ? t("mfa.reset_confirm") : t("uxa.staff_suspend_confirm", { name: conf?.s.name ?? "" })}</p>
       </ConfirmModal>
-      <Modal open={!!pw} onClose={() => setPw(null)} title={pw ? `${t("adm.reset_password")} · ${pw.name}` : ""} footer={<><Button variant="ghost" onClick={() => setPw(null)}>{t("common.cancel")}</Button><Button loading={a.is("pw")} disabled={pwv.length < 10} onClick={reset}>{t("common.confirm")}</Button></>}>
+      <Modal busy={a.is("pw")} open={!!pw} onClose={() => setPw(null)} title={pw ? `${t("adm.reset_password")} · ${pw.name}` : ""} footer={<><Button variant="ghost" onClick={() => setPw(null)}>{t("common.cancel")}</Button><Button loading={a.is("pw")} disabled={pwv.length < 10} onClick={reset}>{t("common.confirm")}</Button></>}>
         <Notice tone="info">{t("adm.reset_note")}</Notice>
         <Input label={t("staff.temp_password")} type="password" ltr autoComplete="new-password" value={pwv} onChange={(e) => setPwv(e.target.value)} hint={t("staff.password_hint")} />
         {pwErr && <p role="alert" className="text-sm text-danger">{pwErr}</p>}

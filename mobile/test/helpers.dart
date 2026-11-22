@@ -48,21 +48,47 @@ class FakeApi extends DriverApi {
   @override
   Future<List<Job>> offers() async => offerList;
   @override
-  Future<List<Job>> jobs({required bool active}) async => active ? activeJobs : [];
+  Future<List<Job>> jobs({required bool active}) async => active ? activeJobs : historyJobs;
+  /// Finished jobs the fake server holds (paged like the real one: `historyPageSize` per page, `total` = all of them unless [historyTotal] says otherwise).
+  List<Job> historyJobs = [];
+  int historyPageSize = 100;
+  int? historyTotal;
+  final pagesAsked = <int>[];
+  @override
+  Future<JobsPage> jobsPage({required bool active, int page = 1}) async {
+    if (!active) pagesAsked.add(page);
+    final all = await jobs(active: active); // a subclass may serve its own lists through jobs()
+    final from = (page - 1) * historyPageSize;
+    return JobsPage(from >= all.length ? const [] : all.skip(from).take(historyPageSize).toList(), total: active ? all.length : (historyTotal ?? all.length), page: page, pageSize: historyPageSize);
+  }
   @override
   Future<Job> job(String offerId) async { jobFetches++; if (jobFetchError != null) throw jobFetchError!; return jobResult!; }
   Object? jobFetchError;
   @override
-  Future<Json> catalog() async => {'terms': {'driver': ''}, 'policy': {'cancelPolicyEnabled': true, 'cancelWarnAt': 2, 'cancelSuspendAt': 4, 'cancelWindowDays': 7, 'cancelSuspendDays': 3}, 'cities': catalogCities, 'vehicleTypes': catalogVehicles, 'services': catalogServices, 'documents': {'driver': []}};
+  Future<Json> catalog() async => {'terms': {'driver': ''}, 'policy': {'minWithdrawalCents': minWithdrawalCents, 'cancelPolicyEnabled': true, 'cancelWarnAt': 2, 'cancelSuspendAt': 4, 'cancelWindowDays': 7, 'cancelSuspendDays': 3}, 'cities': catalogCities, 'vehicleTypes': catalogVehicles, 'services': catalogServices, 'documents': {'driver': []}};
+  int minWithdrawalCents = 0;
   List<Json> catalogCities = [], catalogServices = [];
   List<String> catalogVehicles = [];
+  /// Ledger pages the fake server answers (index 0 = page 1); null = one empty page.
+  List<Json>? walletPages;
   @override
-  Future<Json> wallet() async => {'availableCents': 12500, 'heldCents': 0, 'reservedCents': 0, 'entries': []};
+  Future<Json> wallet({int page = 1}) async {
+    calls.add('wallet:$page');
+    final p = walletPages;
+    return p != null && page - 1 < p.length ? p[page - 1] : {'availableCents': 12500, 'heldCents': 0, 'reservedCents': 0, 'entries': []};
+  }
   @override
   Future<List<Json>> withdrawals() async => [];
   // ── auth: username + password (no OTP) ──
   /// What `POST /auth/login` and `POST /auth/register` answer.
   Json loginResult = {'token': 'tok', 'user': {'id': 'u1', 'role': 'driver', 'name': 'Omar Test', 'username': 'demo.driver', 'phone': '+966500000011', 'language': 'en', 'mustChangePassword': false}};
+  // ── sign-out: recorded, never touches a network ──
+  @override
+  Future<void> goOffline() async { calls.add('goOffline'); }
+  @override
+  Future<void> logout() async { calls.add('logout'); }
+  @override
+  Future<void> revokeSession(String token) async { calls.add('revoke:$token'); }
   @override
   Future<Json> login(String username, String password) async { calls.add('login:$username:$password'); await gate?.future; _maybeThrow(); return loginResult; }
   /// Usernames the server would report as taken; every other valid name is available. [availabilityError] makes the next check fail (offline…).
@@ -193,14 +219,25 @@ class FakeApi extends DriverApi {
   Future<void> clearLocation() async { calls.add('clearLocation'); }
   @override
   Future<void> sendLocation(double lat, double lng) async { calls.add('loc'); }
+  /// The chat of the job: what `GET /offers/:id/messages` answers (a later `sendMessage` appends to it).
+  List<Map<String, dynamic>> chatMessages = [];
+  int messageFetches = 0;
   @override
-  Future<List<Map<String, dynamic>>> messages(String offerId) async => [];
+  Future<List<Map<String, dynamic>>> messages(String offerId) async { messageFetches++; return [...chatMessages]; }
+  @override
+  Future<void> sendMessage(String offerId, String body) async { calls.add('send:$body'); _maybeThrow(); chatMessages = [...chatMessages, {'id': 'm${chatMessages.length + 1}', 'senderId': 'u1', 'body': body, 'createdAt': '2026-11-20T10:00:00Z'}]; }
   @override
   Future<List<Map<String, dynamic>>> opportunities() async => [];
   @override
   Future<Json> invites() async => {'items': []};
+  /// Notification pages the fake server answers (index 0 = page 1); null = none.
+  List<Json>? notificationPages;
   @override
-  Future<Json> notifications() async => {'items': [], 'unread': 0};
+  Future<Json> notifications({int page = 1}) async {
+    calls.add('notifications:$page');
+    final p = notificationPages;
+    return p != null && page - 1 < p.length ? p[page - 1] : {'items': [], 'unread': 0};
+  }
 }
 
 class FakeLinks implements LinkOpener {
@@ -334,9 +371,15 @@ void seedBook(FakeApi api, int total, {List<int> scanned = const []}) {
   }
 }
 
+/// The mode the screen helpers render in. Dark is the original look; suites that must hold in both modes loop over [Brightness.values]
+/// and switch it with [useBrightness] (and back in a tearDown). The palette (`JR.*`) and the Material theme always move together.
+Brightness testBrightness = Brightness.dark;
+void useBrightness(Brightness b) { testBrightness = b; JR.use(b); }
+
 /// Pumps [child] inside a themed, localized shell with the real dictionaries.
 Future<void> pumpScreen(WidgetTester t, Widget child, {String lang = 'en', required FakeApi api, FakeLinks? links, LocationService? location, FakePhotos? photos, FakeBarcodeScanner? scanner, EvidencePhotos? evidence, List<Override> extra = const []}) async {
-  SharedPreferences.setMockInitialValues({'lang': lang});
+  JR.use(testBrightness);
+  SharedPreferences.setMockInitialValues({'lang': lang, installMarkerKey: '1'}); // not a first launch of the install (a fresh one drops the stored token)
   final prefs = await SharedPreferences.getInstance();
   t.view.physicalSize = const Size(900, 1900);
   t.view.devicePixelRatio = 2;
@@ -352,7 +395,7 @@ Future<void> pumpScreen(WidgetTester t, Widget child, {String lang = 'en', requi
       ...extra,
     ],
     child: MaterialApp(
-      theme: buildTheme(), locale: Locale(lang),
+      theme: buildTheme(testBrightness), locale: Locale(lang),
       builder: (c, w) => Directionality(textDirection: isRtl(lang) ? TextDirection.rtl : TextDirection.ltr, child: StringsScope(strings: strings(lang), child: w!)),
       home: child,
     ),
@@ -363,7 +406,8 @@ Future<void> pumpScreen(WidgetTester t, Widget child, {String lang = 'en', requi
 
 /// Same as [pumpScreen] but inside a GoRouter, for screens that navigate (e.g. after accepting a job).
 Future<void> pumpRouted(WidgetTester t, Widget child, {String lang = 'en', required FakeApi api, FakeLinks? links}) async {
-  SharedPreferences.setMockInitialValues({'lang': lang});
+  JR.use(testBrightness);
+  SharedPreferences.setMockInitialValues({'lang': lang, installMarkerKey: '1'}); // not a first launch of the install (a fresh one drops the stored token)
   final prefs = await SharedPreferences.getInstance();
   t.view.physicalSize = const Size(900, 1900);
   t.view.devicePixelRatio = 2;
@@ -373,7 +417,7 @@ Future<void> pumpRouted(WidgetTester t, Widget child, {String lang = 'en', requi
     retry: (_, _) => null,
     overrides: [prefsProvider.overrideWithValue(prefs), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(MemoryTokenStore()), linkOpenerProvider.overrideWithValue(links ?? FakeLinks()), locationServiceProvider.overrideWithValue(FakeLocation())],
     child: MaterialApp.router(
-      theme: buildTheme(), locale: Locale(lang), routerConfig: router,
+      theme: buildTheme(testBrightness), locale: Locale(lang), routerConfig: router,
       builder: (c, w) => Directionality(textDirection: isRtl(lang) ? TextDirection.rtl : TextDirection.ltr, child: StringsScope(strings: strings(lang), child: w!)),
     ),
   ));

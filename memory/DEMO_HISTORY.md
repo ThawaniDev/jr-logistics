@@ -45,7 +45,7 @@ npm run db:seed:history -- --yes --days 90 --companies 12 --offices 3 --drivers 
 | ledger | idempotency key prefix `hist:` (the ids come from `post()` and are random) |
 | the run | `settings.demo_history` (options, window, counts, and what a reset must restore) |
 
-Generated people can still sign in through the normal OTP flow in demo mode (the code is shown), e.g. to look at a driver's or a company's view.
+Generated people have a username (`u` + the digits of the phone) but **no password**, so they cannot sign in until staff set one (Admin › user › Security › Reset password) — use that to look at a driver's or a company's view. (There is no one-time-code sign-in any more: decision J1.)
 
 ## 3. What it generates (default run: seed 42, window 2026-05-24 → 2026-11-19)
 
@@ -92,6 +92,12 @@ Runtime ≈ 20–25 s, peak ≈ 420 MB (rows are buffered and flushed in FK orde
 ## 6. Integrity check (printed PASS / FAIL, run inside the transaction)
 
 Wallets equal their ledger; internal transfers net to zero; each user's reserved balance equals the escrow of their requests; nothing negative (`wallet_nonneg`) · every paid settlement: customer = provider + margin, refund = reserved − customer, four ledger postings, exactly one VAT-inclusive invoice · platform margin booked = Σ margin · held payouts = open holding complaints · COD remitted ≤ collected per job, collected only on delivered parcels and exactly the amount due · parcel states coherent; parcels belong to an offer of their own request · offer / request milestone order · slots filled = live offers · every event, ledger row and message points at an existing request / parcel · every parcel has `created` (and `delivered` when delivered) · ticket / complaint timings · withdrawal states · no timestamp in the future · generated users off the demo card · every snapshot moment has a platform row. The same checks run in `history-seed.test.ts` against the test database (14 days, existing demo accounts, idempotency, determinism, reset restores every original row incl. wallet timestamps).
+
+### Practical limits (measured in audit K, A4)
+
+* **Size.** All rows and the final money step run in ONE transaction, and every generated posting goes through `wallet.post()`. Each posting updates a wallet row, so a hot wallet (the platform account gets one `platform_fee` per settlement) builds a long in-transaction version chain and the cost grows quadratically with the number of settlements: `--days 365 --companies 100 --offices 10 --drivers 300` (≈ 24 000 requests, 150 000 parcels, 23 000 settlements, 122 000 postings, ≈ 3 GB) takes about 8 minutes on a busy laptop (the integrity check runs `ANALYZE` on the generated tables first: without statistics an anti-join over a million parcel events never finished); the money step grows quadratically, so three times the settlements takes well over an hour (a 64 000-settlement run was abandoned after 35 minutes). Stay at or below ~25 000 settlements; for a bigger scratch database copy rows with SQL instead.
+* **`--reset` after real use.** It stops with an error (now with Postgres' reason, e.g. `offers_driver_id_users_id_fk … Key (id)=(5eed1157-…) is still referenced from table "offers"`) once the running application has created rows that depend on a generated account — for instance every request published after the history was generated dispatches `offers` to the generated drivers. Nothing is deleted in that case (the transaction rolls back). Remove those rows first or re-create the database.
+* **Ledger guard.** `ledger_entries` is append-only since migration 0024; `--reset` lifts the guard for its own transaction (`set_config('jr.ledger_maintenance', 'on', true)`). Backdating `created_at` (what the generator does) is allowed.
 
 ## 7. Known simplifications
 

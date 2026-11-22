@@ -21,7 +21,7 @@ class _NotifApi extends FakeApi {
   Json result = {'items': [], 'unread': 0};
   int fetches = 0;
   @override
-  Future<Json> notifications() async { fetches++; return result; }
+  Future<Json> notifications({int page = 1}) async { fetches++; return result; }
 }
 
 void main() {

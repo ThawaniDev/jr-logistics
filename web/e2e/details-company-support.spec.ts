@@ -234,15 +234,12 @@ test("complaint view: deadlines, filer, payment hold with its effect, resolution
   await expect(page.getByTestId("dv3-hold-state")).toContainText("does not hold the payment");
   await page.getByTestId("complaints-take").click();
   await expect.poll(async () => (await api(co.ctx!.request, "GET", `/complaints/${co.complaint}`)).json.complaint.status).toBe("in_progress");
-  await page.getByTestId("complaints-hold").click();
-  await expect(page.getByTestId("complaints-hold")).toBeChecked();
-  await expect(page.getByTestId("dv3-hold-state")).toContainText("holding the payment");
+  await expect(page.getByTestId("complaints-hold")).toBeDisabled(); // not linked to an order: there is no settlement to hold (the hold with an order is covered in admin-system-views)
+  await expect(page.getByText("Link the complaint to an order before holding its settlement")).toBeVisible();
   await expect(page.getByTestId("dv3-sla-first-state")).toHaveText("Met"); // the first staff action answered it
   await page.getByTestId("complaints-resolution-input").fill(`Late fee credited ${STAMP}`);
   await page.getByTestId("complaints-to-resolved").click();
   await expect(page.getByTestId("complaints-resolution")).toContainText(`Late fee credited ${STAMP}`);
-  await expect(page.getByTestId("dv3-hold-state")).toContainText("hold ended");
-  await expect(page.getByTestId("dv3-history")).toContainText("Settlement hold turned on");
   await expect(page.getByTestId("dv3-history")).toContainText("Status set to");
   await expect(page.getByTestId("dv3-outcomes")).toBeVisible();
   await expect(page.getByTestId("dtk-log")).toBeVisible();

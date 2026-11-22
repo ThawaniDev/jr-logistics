@@ -63,7 +63,7 @@ function ParcelPicker({ mode, requestId, offerId, onClose, onDone, onCompleteDet
   const handOverComplete = () => send(ready.map((s) => s.code), ready.length);
   const rest = mine.length - chosen.length - missingList.length;
   return (
-    <Modal open onClose={onClose} title={mode === "handover" ? t("bs.handover_title") : t("bs.returns_title")}
+    <Modal busy={a.is("go")} open onClose={onClose} title={mode === "handover" ? t("bs.handover_title") : t("bs.returns_title")}
       footer={<><Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button><Button loading={a.is("go")} disabled={chosen.length === 0} data-testid="handover-submit" onClick={submit}>{mode === "handover" ? t("bs.handover_submit", { n: chosen.length }) : t("bs.returns_submit", { n: chosen.length })}</Button></>}>
       <Notice tone="info">{mode === "handover" ? t("bs.handover_note") : t("fob.returns_note")}</Notice>
       {mode === "handover" && missingList.length > 0 && (

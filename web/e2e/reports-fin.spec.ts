@@ -191,7 +191,9 @@ test("drill-down tables: sort by a header and the CSV of the whole filtered set 
   const res = await page.request.get(href);
   expect(res.status()).toBe(200); expect(res.headers()["content-type"]).toContain("text/csv");
   const body = await res.text();
-  expect(body.startsWith("﻿code,")).toBe(true); expect(body).toMatch(/JR-\d+-\d{3}/);
+  const raw = await (await page.request.get(`${href}&headers=keys`)).text(); // the machine form keeps the column keys
+  expect(raw.startsWith("﻿code,")).toBe(true); expect(body.startsWith("﻿")).toBe(true); expect(body.split("\n")[0]).not.toBe(raw.split("\n")[0]); // the default CSV has readable headers
+  expect(body).toMatch(/JR-\d+-\d{3}/);
   await expect(page.getByTestId("report-csv")).toHaveAttribute("href", /\/analytics\/deliveries\/table\/parcels\?.*format=csv/);
   for (const [path, id, table] of [["cod", "cod-drill-remittances", "remittances"], ["finance", "fin-drill-companies", "companies"]] as const) {
     await gotoReady(page, `/admin/reports/${path}?compare=none`);
@@ -241,7 +243,7 @@ test("access: without finance access COD shows counts but no amounts, finance is
   await gotoReady(viewer, "/admin/reports/deliveries");
   await expect(viewer.getByTestId("kpi-dlv_created")).toBeVisible(); // parcels carry no money
   await gotoReady(viewer, "/admin/reports/finance");
-  await expect(viewer.locator('[role="alert"]:not(#__next-route-announcer__)')).toBeVisible();
+  await expect(viewer.getByTestId("no-access")).toBeVisible(); // a calm "no access" page (decision K9), not an error alert
   await expect(viewer.getByTestId("kpi-fin_billed")).toHaveCount(0);
   expect((await api(viewer.request, "GET", "/admin/analytics/finance")).status).toBe(403);
   expect((await api(viewer.request, "GET", "/admin/analytics/cod/table/outstanding")).status).toBe(403);

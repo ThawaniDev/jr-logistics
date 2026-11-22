@@ -3,6 +3,7 @@
  * link through Update3plDetails). Dependency-free: a one-page A6 PDF with a Code 128-B barcode of the AWB, drawn as rectangles.
  * The standard PDF fonts cannot shape Arabic, so text that is not Latin-1 is left out of the label (the driver app shows it) — decision I16.
  */
+import { riyadhDay } from "../analytics/time"; // pure helper (no imports): the printed date is the Riyadh calendar day
 
 // Code 128 bar/space widths, values 0–106 (103–105 = start A/B/C, 106 = stop). Each symbol is 11 modules; the stop is 13.
 export const CODE128 = [
@@ -77,7 +78,7 @@ export function labelPdf(l: LabelInput): Buffer {
   row("Weight", l.weightGrams ? `${(l.weightGrams / 1000).toFixed(2)} kg` : null);
   row("JR parcel", pdfText(l.parcelCode));
   row("From", pdfText(clip(l.sender ?? "", 40)));
-  text(M, M + 6, 7, pdfText(`Printed ${l.createdAt.toISOString().slice(0, 10)} - track at JR with ${l.awb}`));
+  text(M, M + 6, 7, pdfText(`Printed ${riyadhDay(l.createdAt)} - track at JR with ${l.awb}`));
 
   const stream = ops.join("\n");
   const objs = [

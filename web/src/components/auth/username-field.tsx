@@ -46,7 +46,7 @@ export function UsernameField({ label, value, onChange, state, error, hint, requ
         <>
           <input id={id} aria-describedby={d} aria-invalid={!!error || bad} required={required} autoFocus={autoFocus} data-testid={testId} dir="ltr" value={value} placeholder={placeholder} autoComplete={autoComplete} autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="text" maxLength={60}
             onChange={(e) => onChange(e.target.value)}
-            className="h-10 w-full rounded-xl border border-line bg-bg2 px-3 text-start text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-60 aria-[invalid=true]:border-danger" />
+            className="h-10 w-full rounded-xl border border-line-strong bg-bg2 px-3 text-start text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-60 aria-[invalid=true]:border-danger" />
           {!error && !bad && msg && (
             <p role="status" data-testid={`${testId}-status`} className={cn("flex items-center gap-1.5 text-xs", TONE[state])}>
               {state === "checking" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : state === "available" ? <Check className="size-3.5" aria-hidden /> : <X className="size-3.5" aria-hidden />}{msg}

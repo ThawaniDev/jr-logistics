@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's dark `bg`: a cold start in dark mode no longer flashes white. -->
+    <color name="jr_launch_bg">#FF0B132B</color>
+</resources>

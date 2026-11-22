@@ -14,7 +14,7 @@ const NO_PAYEE_REQUEST = ["city", "service", "vehicle", "company", "status", "ch
  * (paid / rejected: decided); balances are the closing state of the last day of the period (today: live).
  */
 export const FINANCE_KPI_GROUPS = {
-  revenue: ["fin_billed", "fin_vat", "fin_net_sales", "fin_provider", "fin_revenue", "fin_margin_pct", "fin_net_position", "fin_aov", "fin_rev_per_request", "fin_rev_per_parcel", "fin_settlements", "fin_concentration"],
+  revenue: ["fin_billed", "fin_vat", "fin_net_sales", "fin_provider", "fin_revenue", "fin_margin_pct", "fin_net_position", "fin_aov", "fin_rev_per_request", "fin_rev_per_parcel", "fin_settlements", "fin_concentration", "fin_rental_revenue"],
   payouts: ["fin_payout_office", "fin_payout_direct", "fin_settle_latency", "fin_settle_unpaid", "fin_settle_held", "fin_wd_requested", "fin_wd_paid", "fin_wd_rejected", "fin_wd_turnaround", "fin_wd_pending"],
   wallets: ["fin_topups", "fin_wallet_liability", "fin_escrow", "fin_cash_drivers", "fin_credit_used", "fin_credit_util", "fin_invoices", "fin_invoiced", "fin_cancel_refunds", "fin_settle_refunds", "fin_adjustments"],
 } as const;
@@ -34,6 +34,7 @@ defineKpis("finance", [
   k("fin_cash_drivers", "money", "lower", { money: true, notFilteredBy: ALL }),
   k("fin_credit_used", "money", "lower", { money: true, notFilteredBy: [...NOT_REQUEST, "office", "driver"] }),
   k("fin_credit_util", "percent", "lower", { money: true, ratio: true, notFilteredBy: [...NOT_REQUEST, "office", "driver"] }),
+  k("fin_rental_revenue", "money", "higher", { money: true, notFilteredBy: ["office", "driver"] }), // driverless rentals (no settlement): reconciles revenue with the platform wallet, see ANALYTICS.md §14
   k("fin_invoices", "count", "higher"), k("fin_invoiced", "money", "higher", { money: true }),
   k("fin_cancel_refunds", "money", "lower", { money: true }), k("fin_settle_refunds", "money", "neutral", { money: true }),
   k("fin_adjustments", "money", "neutral", { money: true, notFilteredBy: [...NOT_REQUEST, "office", "driver"] }),

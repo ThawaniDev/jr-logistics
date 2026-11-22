@@ -97,7 +97,6 @@ test("<ActivityLog> on a detail page: kind chips with counts, search, expandable
   await admin(page);
   await gotoReady(page, `/admin/requests/${req.id}/activity`); // the order's Activity section embeds the full log, the notes and the raw data
   const log = page.getByTestId("dtk-log");
-  test.skip(!(await log.count()), "no detail page embeds <ActivityLog> yet");
   await expect(log).toBeVisible();
   await expect(page.getByTestId("dtk-chip-all")).toBeVisible();
   const parcels = page.getByTestId("dtk-chip-parcel");
@@ -125,7 +124,7 @@ test("<NotesPanel>: write, pin and delete a note from the page", async ({ page }
   await admin(page);
   await gotoReady(page, `/admin/requests/${req.id}/activity`); // the order's Activity section embeds the full log, the notes and the raw data
   const panel = page.getByTestId("dtk-notes");
-  test.skip(!(await panel.count()), "no detail page embeds <NotesPanel> yet");
+  await expect(panel).toBeVisible(); // a missing panel is a failure, not a skip
   await page.getByTestId("dtk-note-body").fill("Note written from the page");
   await page.getByTestId("dtk-note-add").click();
   const note = page.getByTestId("dtk-note").filter({ hasText: "Note written from the page" });

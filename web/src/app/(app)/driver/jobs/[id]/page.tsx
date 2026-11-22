@@ -104,7 +104,7 @@ export default function DriverJob({ params }: { params: Promise<{ id: string }> 
       {manifest && <div className="mb-5"><ManifestFlow job={j} offerId={id} onRefresh={async () => { await mutate(); tl.mutate(); }} onJob={(fresh) => { void mutate(fresh, { revalidate: false }); void tl.mutate(); }} /></div>}
 
       <div className="mb-5 grid gap-4 lg:grid-cols-2">
-        <Card><h3 className="mb-2 font-semibold">{t("job.details")}</h3><dl className="divide-y divide-line">
+        <Card><h2 className="mb-2 font-semibold">{t("job.details")}</h2><dl className="divide-y divide-line">
           <KV label={t("req.starts")}>{fmtDateTime(j.startsAt, locale)}</KV>
           {j.vehicleType && <KV label={t("wizard.vehicle")}>{t(`vehicle.${j.vehicleType}`)}{j.temperature ? ` · ${t(`temp.${j.temperature}`)}` : ""}</KV>}
           <KV label={t(hasShip ? "units.exp" : "wizard.days")}>{fmtNum(j.expectedUnits, locale)}</KV>
@@ -114,7 +114,7 @@ export default function DriverJob({ params }: { params: Promise<{ id: string }> 
           {j.contents && <KV label={t("wizard.contents")}>{j.contents}</KV>}{j.notes && <KV label={t("wizard.notes")}>{j.notes}</KV>}
           {j.cancelReason && <KV label={t("req.reason")}>{j.cancelReason}</KV>}
         </dl></Card>
-        <Card className="space-y-3"><h3 className="font-semibold">{t("job.locations")}</h3>
+        <Card className="space-y-3"><h2 className="font-semibold">{t("job.locations")}</h2>
           {j.pickup || j.delivery ? <>
             <div className="rounded-xl bg-bg2 p-3"><p className="text-xs text-muted">{t("wizard.pickup_address")}</p><p className="text-sm font-medium">{j.pickup?.address ?? "—"}</p></div>
             {manifest
@@ -137,7 +137,7 @@ export default function DriverJob({ params }: { params: Promise<{ id: string }> 
 
       {custody.length > 0 && (
         <Card className="mb-5 space-y-3">
-          <h3 className="font-semibold">{t("custody.title")}</h3>
+          <h2 className="font-semibold">{t("custody.title")}</h2>
           <ul className="divide-y divide-line">
             {custody.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
@@ -155,7 +155,7 @@ export default function DriverJob({ params }: { params: Promise<{ id: string }> 
 
       {j.status === "completed" && rated !== "already" && (
         <Card className="mb-5 space-y-3">
-          <h3 className="font-semibold">{t("job.rate_title")}</h3>
+          <h2 className="font-semibold">{t("job.rate_title")}</h2>
           {rated === "done" ? <Notice tone="success">{t("job.rated_ok")}</Notice> : <>
             <p className="text-sm text-muted">{t("job.rate_hint")}</p>
             <div className="flex gap-1" role="radiogroup" aria-label={t("job.rate_title")}>{[1, 2, 3, 4, 5].map((n) => <button key={n} type="button" role="radio" aria-checked={stars === n} aria-label={t("rate.star", { n })} onClick={() => setStars(n)} className="p-1"><Star className={cn("size-9", n <= stars ? "fill-gold text-gold" : "text-line")} /></button>)}</div>
@@ -168,26 +168,26 @@ export default function DriverJob({ params }: { params: Promise<{ id: string }> 
 
       {!["offered", "rejected", "expired"].includes(j.status) && <div className="grid gap-4 lg:grid-cols-2"><JobChat offerId={id} closed={["completed", "cancelled", "replaced", "no_show"].includes(j.status)} /><Timeline events={tl.data?.items ?? []} /></div>}
 
-      <Modal open={m === "accept"} onClose={() => setM(null)} title={t("opp.terms_title")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button disabled={!terms} loading={a.is("acc")} onClick={() => a.run("acc", () => post(`/offers/${id}/accept`, { termsAccepted: terms }), { success: "driver.accepted_ok", onDone: () => { setM(null); void mutate(); void tl.mutate(); }, onError: () => { void mutate(); } })}>{t("act.accept_job")}</Button></>}>
+      <Modal busy={a.is("acc")} open={m === "accept"} onClose={() => setM(null)} title={t("opp.terms_title")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button disabled={!terms} loading={a.is("acc")} onClick={() => a.run("acc", () => post(`/offers/${id}/accept`, { termsAccepted: terms }), { success: "driver.accepted_ok", onDone: () => { setM(null); void mutate(); void tl.mutate(); }, onError: () => { void mutate(); } })}>{t("act.accept_job")}</Button></>}>
         <div className="max-h-40 overflow-y-auto rounded-xl bg-bg2 p-3 text-xs leading-relaxed text-muted">{cat?.terms?.driver || t("opp.terms_default")}</div>
         <Checkbox checked={terms} onChange={(e) => setTerms(e.target.checked)} label={t("opp.terms_accept")} />
       </Modal>
-      <Modal open={m === "cancel"} onClose={() => setM(null)} title={t("act.cancel_job")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.back")}</Button><Button variant="danger" loading={a.is("cn")} disabled={v.reason?.trim().length < 3} onClick={() => doIt("cn", () => post(`/offers/${id}/cancel`, { reason: v.reason }), "job.cancelled_ok")}>{t("act.cancel_job")}</Button></>}>
+      <Modal busy={a.is("cn")} open={m === "cancel"} onClose={() => setM(null)} title={t("act.cancel_job")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.back")}</Button><Button variant="danger" loading={a.is("cn")} disabled={v.reason?.trim().length < 3} onClick={() => doIt("cn", () => post(`/offers/${id}/cancel`, { reason: v.reason }), "job.cancelled_ok")}>{t("act.cancel_job")}</Button></>}>
         {cat?.policy?.cancelPolicyEnabled && <Notice tone="warn" title={t("job.cancel_policy_title")}>{t("job.cancel_policy", { warn: cat.policy.cancelWarnAt, suspend: cat.policy.cancelSuspendAt, days: cat.policy.cancelWindowDays, sd: cat.policy.cancelSuspendDays })}</Notice>}
         <Textarea label={t("req.reason")} value={v.reason ?? ""} onChange={(e) => setV({ ...v, reason: e.target.value })} />
       </Modal>
-      <Modal open={m === "delivered"} onClose={() => setM(null)} title={hasShip ? t("act.report_delivered") : t("act.finish_work")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button loading={a.is("dl")} disabled={v.units === "" || v.units == null} onClick={reportDelivered}>{t("common.submit")}</Button></>}>
+      <Modal busy={a.is("dl")} open={m === "delivered"} onClose={() => setM(null)} title={hasShip ? t("act.report_delivered") : t("act.finish_work")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button loading={a.is("dl")} disabled={v.units === "" || v.units == null} onClick={reportDelivered}>{t("common.submit")}</Button></>}>
         <Input label={t(hasShip ? "job.how_many_delivered" : "job.days_worked")} type="number" inputMode="numeric" min={0} value={v.units ?? ""} onChange={(e) => setV({ ...v, units: e.target.value, maxErr: undefined })} error={v.maxErr != null ? t("job.max_units", { max: v.maxErr }) : undefined} hint={hasShip ? t("job.delivered_hint", { n: j.loadedUnits ?? j.expectedUnits }) : undefined} autoFocus />
       </Modal>
-      <Modal open={m === "dispute"} onClose={() => setM(null)} title={t("job.dispute_title")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button variant="danger" loading={a.is("dis")} disabled={(v.reason ?? "").trim().length < 3} onClick={() => doIt("dis", () => post(`/offers/${id}/loading-ack`, { ok: false, note: v.reason.trim() }))}>{t("act.dispute_loading")}</Button></>}>
+      <Modal busy={a.is("dis")} open={m === "dispute"} onClose={() => setM(null)} title={t("job.dispute_title")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button variant="danger" loading={a.is("dis")} disabled={(v.reason ?? "").trim().length < 3} onClick={() => doIt("dis", () => post(`/offers/${id}/loading-ack`, { ok: false, note: v.reason.trim() }))}>{t("act.dispute_loading")}</Button></>}>
         <Notice tone="info">{t("job.dispute_hint")}</Notice>
         <Textarea label={t("job.dispute_reason")} value={v.reason ?? ""} maxLength={300} onChange={(e) => setV({ ...v, reason: e.target.value })} autoFocus />
       </Modal>
-      <Modal open={m === "noresponse"} onClose={() => setM(null)} title={t("job.cant_reach")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button loading={a.is("nr")} onClick={() => doIt("nr", () => post(`/driver/jobs/${id}/contact-exception`, { reason: v.reason, note: v.note }), "job.reported_ok")}>{t("common.submit")}</Button></>}>
+      <Modal busy={a.is("nr")} open={m === "noresponse"} onClose={() => setM(null)} title={t("job.cant_reach")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button loading={a.is("nr")} onClick={() => doIt("nr", () => post(`/driver/jobs/${id}/contact-exception`, { reason: v.reason, note: v.note }), "job.reported_ok")}>{t("common.submit")}</Button></>}>
         <div className="flex flex-wrap gap-2">{["no_answer", "wrong_number", "refused", "other"].map((k) => <button key={k} aria-pressed={v.reason === k} onClick={() => setV({ ...v, reason: k })} className={cn("rounded-full border px-3 py-1.5 text-sm", v.reason === k ? "border-accent bg-accent/10 text-accent" : "border-line text-muted")}>{t(`contact_ex.${k}`)}</button>)}</div>
         <Textarea label={t("support.details")} value={v.note ?? ""} onChange={(e) => setV({ ...v, note: e.target.value })} />
       </Modal>
-      <Modal open={m === "problem"} onClose={() => setM(null)} title={t("act.report_problem")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button loading={a.is("np")} onClick={reportNoWork}>{t("common.submit")}</Button></>}>
+      <Modal busy={a.is("np")} open={m === "problem"} onClose={() => setM(null)} title={t("act.report_problem")} footer={<><Button variant="ghost" onClick={() => setM(null)}>{t("common.cancel")}</Button><Button loading={a.is("np")} onClick={reportNoWork}>{t("common.submit")}</Button></>}>
         <Notice tone="info">{t("job.problem_note")}</Notice><Textarea label={t("support.details")} value={v.note ?? ""} onChange={(e) => setV({ ...v, note: e.target.value })} />
       </Modal>
     </>

@@ -260,6 +260,8 @@ export async function updateComplaint(staff: User, id: string, patch: { status?:
     }
     if (patch.holdsSettlement !== undefined && patch.holdsSettlement !== c.holdsSettlement) {
       if (patch.holdsSettlement && ["resolved", "closed"].includes(c.status)) throw err("INVALID_TRANSITION", "A resolved complaint cannot hold a settlement");
+      // A hold finds its settlement through the complaint's order / job; one with neither would show "on hold" while the money is paid anyway.
+      if (patch.holdsSettlement && !c.requestId && !c.offerId) throw err("VALIDATION", "Link the complaint to an order before holding its settlement", { field: "holdsSettlement" });
       set.holdsSettlement = patch.holdsSettlement;
       await tx.insert(complaintNotes).values({ complaintId: id, authorId: staff.id, authorRole: staff.role, kind: "status", body: patch.holdsSettlement ? "settlement hold on" : "settlement hold off" });
     }

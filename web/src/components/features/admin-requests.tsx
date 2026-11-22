@@ -85,18 +85,18 @@ export function OfferStaffActions({ offer, service, onDone }: { offer: any; serv
   return (
     <>
       <div className="flex flex-wrap gap-2">{btns}</div>
-      <Modal open={m === "noshow"} onClose={close} title={t("adm.mark_no_show")} footer={<>{cancel}<Button variant="danger" loading={a.is("m")} disabled={!textOk} onClick={() => go("m", `/offers/${id}/attendance`, { present: false, reason: text.trim() })}>{t("common.confirm")}</Button></>}>
+      <Modal busy={a.is("m")} open={m === "noshow"} onClose={close} title={t("adm.mark_no_show")} footer={<>{cancel}<Button variant="danger" loading={a.is("m")} disabled={!textOk} onClick={() => go("m", `/offers/${id}/attendance`, { present: false, reason: text.trim() })}>{t("common.confirm")}</Button></>}>
         <Notice tone="info">{t("req.noshow_note")}</Notice><Textarea label={t("req.reason")} value={text} onChange={(e) => setText(e.target.value)} />
       </Modal>
-      <Modal open={m === "loading"} onClose={close} title={t("adm.record_loading")} footer={<>{cancel}<Button loading={a.is("m")} disabled={!unitsOk} onClick={() => go("m", `/offers/${id}/loading`, { units: Number(units) })}>{t("common.confirm")}</Button></>}>
+      <Modal busy={a.is("m")} open={m === "loading"} onClose={close} title={t("adm.record_loading")} footer={<>{cancel}<Button loading={a.is("m")} disabled={!unitsOk} onClick={() => go("m", `/offers/${id}/loading`, { units: Number(units) })}>{t("common.confirm")}</Button></>}>
         <Input label={t("req.loading_hint")} type="number" min={0} step={1} value={units} onChange={(e) => setUnits(e.target.value)} />
       </Modal>
-      <Modal open={m === "replace"} onClose={close} title={t("office.replace")} footer={<>{cancel}<Button variant="danger" loading={busy === "rp"} disabled={!textOk} onClick={replace}>{t("common.confirm")}</Button></>}>
+      <Modal busy={(busy === "rp")} open={m === "replace"} onClose={close} title={t("office.replace")} footer={<>{cancel}<Button variant="danger" loading={busy === "rp"} disabled={!textOk} onClick={replace}>{t("common.confirm")}</Button></>}>
         {repErr && <Notice tone="danger">{repErr}</Notice>}
         {st === "attendance_confirmed" && offer.routeApprovedAt && <Notice tone="info">{t("shipadm.replace_hint_started")}</Notice>}
         <Textarea label={t("req.reason")} value={text} onChange={(e) => setText(e.target.value)} />
       </Modal>
-      <Modal open={m === "end_route"} onClose={close} title={t("shipadm.end_route_title")} footer={<>{cancel}<Button variant="danger" loading={a.is("m")} disabled={!textOk} onClick={() => a.run("m", () => post(`/offers/${id}/end-route`, { reason: text.trim(), ...(note.trim() ? { note: note.trim() } : {}) }), { success: "shipadm.route_ended", onDone: () => { setM(null); onDone(); } })}>{t("shipadm.end_route")}</Button></>}>
+      <Modal busy={a.is("m")} open={m === "end_route"} onClose={close} title={t("shipadm.end_route_title")} footer={<>{cancel}<Button variant="danger" loading={a.is("m")} disabled={!textOk} onClick={() => a.run("m", () => post(`/offers/${id}/end-route`, { reason: text.trim(), ...(note.trim() ? { note: note.trim() } : {}) }), { success: "shipadm.route_ended", onDone: () => { setM(null); onDone(); } })}>{t("shipadm.end_route")}</Button></>}>
         <Notice tone="warn" title={t("shipadm.end_route_consequences")}>
           <ul className="list-disc space-y-1 ps-5"><li>{t("shipadm.end_route_c1")}</li><li>{t("shipadm.end_route_c2")}</li><li>{t("shipadm.end_route_c3")}</li></ul>
         </Notice>

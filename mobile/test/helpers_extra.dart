@@ -181,7 +181,8 @@ List<RouteBase> stubRoutes() => [
 
 /// Pumps [home] at "/" inside a GoRouter (so `context.push` / `go` work) with the Mobile-B providers faked. Extra routes: [routes].
 Future<GoRouter> pumpRoutedB(WidgetTester t, Widget home, {String lang = 'en', required FakeApi api, FakeExtraApi? extraApi, FakeMapActions? actions, FakeAttachmentPicker? picker, FakeLinks? links, LocationService? location, LocalNotifier? notifier, List<Override> overrides = const [], List<RouteBase> routes = const [], Map<String, Object> prefsValues = const {}, Size size = const Size(900, 1900), String initial = '/'}) async {
-  SharedPreferences.setMockInitialValues({'lang': lang, ...prefsValues});
+  JR.use(testBrightness);
+  SharedPreferences.setMockInitialValues({'lang': lang, installMarkerKey: '1', ...prefsValues});
   final prefs = await SharedPreferences.getInstance();
   t.view.physicalSize = size;
   t.view.devicePixelRatio = 2;
@@ -200,7 +201,7 @@ Future<GoRouter> pumpRoutedB(WidgetTester t, Widget home, {String lang = 'en', r
       ...extraOverrides(api: extraApi, actions: actions, picker: picker, notifier: notifier), ...overrides,
     ],
     child: MaterialApp.router(
-      theme: buildTheme(), locale: Locale(lang), routerConfig: router,
+      theme: buildTheme(testBrightness), locale: Locale(lang), routerConfig: router,
       builder: (c, w) => Directionality(textDirection: isRtl(lang) ? TextDirection.rtl : TextDirection.ltr, child: StringsScope(strings: strings(lang), child: w!)),
     ),
   ));

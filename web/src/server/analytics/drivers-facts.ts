@@ -7,6 +7,7 @@ import type { ResolvedFilters } from "./filters";
 import { num, numOrNull, rows } from "./guard";
 import { asOfWindow, pairOf, priorWindow, seriesOf, tsz, twin, type Pair } from "./companies-lib";
 import { ACCEPT_EDGES, averageAvailable, bandMatrix, COMPLETE_EDGES, DRIVER_CANCELLED, emptyHeat, HEAT_DAYS, JOB_EDGES, KEPT, MIN_RESOLVED, PUSHED, slotCounts, SUCCESS_EDGES } from "./drivers-lib";
+import { availabilityIntervals } from "./fleet-lib";
 import { withDrivers } from "./drivers-sql";
 import { histogramFromRow, histogramSelect } from "./stats";
 
@@ -124,8 +125,7 @@ export async function availabilityHeat(f: ResolvedFilters): Promise<Heat> {
   const slots = slotCounts(start.getTime(), end.getTime());
   const [log, snap] = await Promise.all([
     rows<Row>(sql`
-      with iv as (select l.driver_id as id, l.at as s, coalesce(lead(l.at) over (partition by l.driver_id order by l.at), now()) as e, l.to_status as st
-        from driver_availability_log l where l.at < ${tsz(end)} ${driverCond(f, "l.driver_id")}),
+      with iv as ${availabilityIntervals(start, end, (col) => driverCond(f, col))},
       c as (select id, greatest(s, ${tsz(start)}) as s, least(e, ${tsz(end)}) as e from iv where st = 'available' and e > ${tsz(start)} and s < ${tsz(end)}),
       sl as (select c.s, c.e, h from c, lateral generate_series(date_trunc('hour', c.s), c.e, interval '1 hour') as h)
       select ${riyadhDow(sql`sl.h`)} as dow, ${riyadhHour(sql`sl.h`)} as hr, (sum(greatest(0, extract(epoch from (least(sl.e, sl.h + interval '1 hour') - greatest(sl.s, sl.h))))) / 3600)::float8 as hours from sl group by 1, 2`),

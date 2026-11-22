@@ -204,7 +204,8 @@ test("drill-down table: sort by a header, CSV of the whole filtered set", async 
   expect(res.status()).toBe(200);
   expect(res.headers()["content-type"]).toContain("text/csv");
   const body = await res.text();
-  expect(body.startsWith("﻿ref,")).toBe(true);
+  const raw = await (await page.request.get(`${href}&headers=keys`)).text(); // the machine form keeps the column keys
+  expect(raw.startsWith("﻿ref,")).toBe(true); expect(body.startsWith("﻿")).toBe(true); expect(body.split("\n")[0]).not.toBe(raw.split("\n")[0]); // the default CSV has readable headers
   expect(body).toContain(req.ref);
   await expect(page.getByTestId("report-csv")).toHaveAttribute("href", /\/api\/v1\/admin\/analytics\/overview\/table\/requests\?.*format=csv/);
 });
@@ -285,7 +286,7 @@ test("access: no finance means no money anywhere, no reports.view means an error
   expect((await api(viewer.request, "GET", "/admin/analytics/overview/table/requests?format=csv")).status).toBe(403);
   const blind = await staffPage(browser, page, ["requests.view"], "b");
   await gotoReady(blind, "/admin/reports");
-  await expect(blind.locator('[role="alert"]:not(#__next-route-announcer__)')).toBeVisible();
+  await expect(blind.getByTestId("no-access")).toBeVisible(); // a calm "no access" page (decision K9), not an error alert
   await expect(blind.getByTestId("kpi-grid")).toHaveCount(0);
   const biz = await businessApi(browser);
   expect((await api(biz.request, "GET", "/admin/analytics/overview")).status).toBe(403);

@@ -119,7 +119,7 @@ test("assign it to a staff member on the Staff page; he signs in and sees exactl
   person.ctx = await staffContext(browser, person.email);
   person.page = await person.ctx.newPage();
   await gotoReady(person.page, "/admin/cases");
-  await expectNav(person.page, ["/admin/audit", "/admin/cases", "/admin/notifications", "/scenarios"]);
+  await expectNav(person.page, ["/admin/audit", "/admin/cases", "/admin/notifications"]);
   expect((await api(person.page.request, "GET", "/admin/audit?pageSize=1")).status).toBe(200);
   expect((await api(person.page.request, "GET", "/admin/pricing")).status).toBe(403);
   expect((await api(person.page.request, "GET", "/admin/roles")).status).toBe(403);
@@ -151,7 +151,7 @@ test("editing the role changes his access at once and his sidebar after a reload
   expect((await api(him.request, "GET", "/admin/audit?pageSize=1")).status).toBe(403); // the same session, the very next request
   expect((await api(him.request, "GET", "/admin/pricing")).status).toBe(200);
   await him.reload(); await him.waitForSelector('html[data-hydrated="true"]');
-  await expectNav(him, ["/admin/cases", "/admin/finance/pricing", "/admin/notifications", "/scenarios"]);
+  await expectNav(him, ["/admin/cases", "/admin/finance/pricing", "/admin/notifications"]);
 });
 
 test("the matrix lists every role and permission, filters, and exports a CSV", async ({ page }) => {

@@ -152,8 +152,8 @@ export function Toggle({ checked, onChange, label, hint, warn, disabled, busy, t
 export function Switch({ checked, onChange, labelledBy, label, disabled, busy, testId }: { checked: boolean; onChange: (v: boolean) => void; labelledBy?: string; label?: string; disabled?: boolean; busy?: boolean; testId?: string }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-labelledby={labelledBy} aria-label={labelledBy ? undefined : label} data-testid={testId} disabled={disabled || busy} onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 shrink-0 rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60 ${checked ? "border-accent bg-accent" : "border-line bg-bg2"}`}>
-      <span className={`absolute start-0.5 top-0.5 flex size-5 items-center justify-center rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5 rtl:-translate-x-5" : ""}`}>{busy && <Loader2 className="size-3 animate-spin text-accent-ink" aria-hidden />}</span>
+      className={`relative h-6 w-11 shrink-0 rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60 ${checked ? "border-accent bg-accent" : "border-line-strong bg-bg2"}`}>
+      <span className={`absolute start-0.5 top-0.5 flex size-5 items-center justify-center rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5 rtl:-translate-x-5" : "light:bg-line-strong"}`}>{busy && <Loader2 className="size-3 animate-spin text-accent-ink" aria-hidden />}</span>
     </button>
   );
 }

@@ -70,7 +70,7 @@ export function SignaturePad({ ref, onChange, height = 200, className }: { ref?:
 
   return (
     <div className={cn("space-y-2", className)} data-testid="signature-pad">
-      <div className="relative overflow-hidden rounded-2xl border-2 border-line bg-white">
+      <div className="relative overflow-hidden rounded-2xl border-2 border-line-strong bg-white">
         <canvas ref={canvasRef} data-testid="signature-canvas" role="img" aria-label={t("fod.sig_canvas")} style={{ height, touchAction: "none" }} className="block w-full cursor-crosshair"
           onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onPointerLeave={up} />
         {inkCount === 0 && <p aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm font-medium text-slate-400">{t("fod.sig_here")}</p>}

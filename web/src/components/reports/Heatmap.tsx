@@ -8,7 +8,7 @@ import { ChartCard } from "./ChartCard";
  * Cells are labelled for assistive technology through the table view and the chart's summary.
  */
 export function Heatmap({ title, description, cells, unit, loading, testId }: { title: string; description?: string; cells: number[][]; unit: string; loading?: boolean; testId?: string }) {
-  const { t, locale } = useI18n();
+  const { t, locale, dir } = useI18n();
   const max = Math.max(0, ...cells.flat());
   const total = cells.flat().reduce((s, n) => s + n, 0);
   let peak = { d: 0, h: 0, n: -1 };
@@ -34,7 +34,7 @@ export function Heatmap({ title, description, cells, unit, loading, testId }: { 
       </div>
       <div className="mt-3 flex items-center gap-2 text-[11px] text-muted" aria-hidden>
         <span>{t("rpf.hm_less")}</span>
-        <span className="h-2 w-24 rounded-full" style={{ background: "linear-gradient(to right, color-mix(in srgb, var(--jr-accent) 14%, transparent), var(--jr-accent))" }} />
+        <span className="h-2 w-24 rounded-full" style={{ background: `linear-gradient(to ${dir === "rtl" ? "left" : "right"}, color-mix(in srgb, var(--jr-accent) 14%, transparent), var(--jr-accent))` }} />
         <span>{t("rpf.hm_more")}</span>
         {peak.n > 0 && <span className="ms-auto">{t("rpf.hm_busiest", { day: t(`rpf.wd_${peak.d}`), hour: hh(peak.h), n: formatValue(peak.n, "number", locale) })}</span>}
       </div>

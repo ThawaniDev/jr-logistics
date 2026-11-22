@@ -138,11 +138,12 @@ test("downloads: CSV and Excel of the selection, the whole file not the page", a
   const csv = readFileSync((await csvDl.path())!, "utf8");
   expect(csv.charCodeAt(0)).toBe(0xfeff);
   const lines = csv.slice(1).trim().split("\n");
-  expect(lines[0].startsWith("name,username,phone,city,status,verification,officeName,paidViaOffice,walletAvailableCents")).toBe(true);
+  expect(lines[0].startsWith("Driver,Username,Phone,City,Status,Verification,Office,Paid via office,Wallet available (SAR)")).toBe(true); // readable headers, never raw keys
+  expect(lines[0]).toContain("Withdrawals requested (SAR)"); expect(lines[0]).not.toContain("Cents");
   expect(lines).toHaveLength(2); // the search narrowed the file too
   expect(lines[1]).toContain("Tariq Mahmood");
   expect(lines[1]).toContain(OFFICE);
-  expect(lines[1]).toContain(",true,"); // paid via office
+  expect(lines[1]).toContain(",Yes,"); // paid via office, in words
   await page.getByTestId("fd-download").click();
   const [xlDl] = await Promise.all([page.waitForEvent("download"), page.getByTestId("fd-download-xlsx").click()]);
   expect(xlDl.suggestedFilename()).toMatch(/\.xlsx$/);

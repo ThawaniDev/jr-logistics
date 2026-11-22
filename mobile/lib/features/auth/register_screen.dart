@@ -59,7 +59,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (!mounted) return;
       final fields = registerFieldErrors(context.tr, e);
       setState(() { _errors = fields; if (fields.containsKey('username')) _un = UsernameState.taken; });
-      toast(context, fields.isNotEmpty ? fields.values.first : errMessage(context, e), error: true);
+      // The answer may simply not have come back: the account can exist already, so a second try would say "username taken" — point at signing in instead.
+      toast(context, fields.isNotEmpty ? fields.values.first : e is ApiException && e.isNetwork ? context.tr('m.reg_unconfirmed') : errMessage(context, e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -71,21 +72,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final catAsync = ref.watch(catalogProvider);
     final cat = catAsync.value;
     final lang = ref.watch(localeProvider);
-    final cities = ((cat?['cities'] as List?) ?? const []).cast<Map>();
-    final vehicles = ((cat?['vehicleTypes'] as List?) ?? const []).cast<String>();
-    final svcs = ((cat?['services'] as List?) ?? const []).cast<Map>().where((s) => s['driverless'] != true);
-    final termsText = (cat?['terms'] as Map?)?['driver'] as String? ?? '';
+    final cities = listOf(cat?['cities']).whereType<Map>().toList();
+    final vehicles = listOf(cat?['vehicleTypes']).whereType<String>().toList();
+    final svcs = listOf(cat?['services']).whereType<Map>().where((s) => s['driverless'] != true);
+    final termsText = strOf(mapOf(cat?['terms'])?['driver']) ?? '';
     final ok = _un.submittable && _passwordOk && phoneValid(_phone.text) && _name.text.trim().length >= 2 && _city != null && _vehicle != null && (!_needTemp || _temp != null) && _services.isNotEmpty && _ibanOk && _terms;
     Widget heading(String s) => Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(s, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)));
     return Scaffold(
       appBar: AppBar(leading: BackButton(onPressed: () => context.go('/login')), title: Text(t('reg.title'))),
       body: SafeArea(
         child: ListView(padding: const EdgeInsets.all(20), children: [
-          Text(t('m.au_reg_sub'), style: const TextStyle(color: JR.muted, height: 1.4)),
+          Text(t('m.au_reg_sub'), style: TextStyle(color: JR.muted, height: 1.4)),
           const SizedBox(height: 20),
           // The city / vehicle / service lists come from the server. Without them the form is unusable: say why and offer a retry.
           if (catAsync.hasError && cat == null) ...[Banner2(key: const Key('catalog-error'), tone: Tone.warn, text: t('um.catalog_failed'), action: OutlinedButton.icon(onPressed: () => ref.invalidate(catalogProvider), icon: const Icon(Icons.refresh), label: Text(t('common.retry')))), const SizedBox(height: 16)]
-          else if (cat == null) ...[const Padding(padding: EdgeInsets.only(bottom: 16), child: LinearProgressIndicator(color: JR.accent, backgroundColor: JR.line)),],
+          else if (cat == null) ...[Padding(padding: EdgeInsets.only(bottom: 16), child: LinearProgressIndicator(color: JR.accent, backgroundColor: JR.line)),],
           heading(t('m.au_section_account')),
           AccountSection(
             username: _username, password: _password, confirm: _confirm, phone: _phone, errors: _errors, check: ref.read(apiProvider).usernameAvailable,
@@ -98,10 +99,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(initialValue: _city, decoration: InputDecoration(labelText: t('reg.city')), items: [for (final c in cities) DropdownMenuItem(value: c['key'] as String, child: Text('${c[lang]}'))], onChanged: (v) => setState(() => _city = v)),
           const SizedBox(height: 14),
-          DropdownButtonFormField<String>(initialValue: _vehicle, decoration: InputDecoration(labelText: t('reg.vehicle'), errorText: _errors['vehicleType']), items: [for (final v in vehicles) DropdownMenuItem(value: v, child: Text(t('vehicle.$v')))], onChanged: (v) => setState(() { _vehicle = v; if (!_needTemp) _temp = null; })),
+          DropdownButtonFormField<String>(initialValue: _vehicle, decoration: InputDecoration(labelText: t('reg.vehicle'), errorText: _errors['vehicleType']), items: [for (final v in vehicles) DropdownMenuItem(value: v, child: Text(t.val('vehicle', v)))], onChanged: (v) => setState(() { _vehicle = v; if (!_needTemp) _temp = null; })),
           if (_needTemp) ...[
             const SizedBox(height: 14),
-            DropdownButtonFormField<String>(initialValue: _temp, decoration: InputDecoration(labelText: t('reg.temperature'), errorText: _errors['vehicleTemperature']), items: [for (final v in ['dry', 'cold']) DropdownMenuItem(value: v, child: Text(t('temp.$v')))], onChanged: (v) => setState(() => _temp = v)),
+            DropdownButtonFormField<String>(initialValue: _temp, decoration: InputDecoration(labelText: t('reg.temperature'), errorText: _errors['vehicleTemperature']), items: [for (final v in ['dry', 'cold']) DropdownMenuItem(value: v, child: Text(t.val('temp', v)))], onChanged: (v) => setState(() => _temp = v)),
           ],
           const SizedBox(height: 14),
           Row(children: [
@@ -114,25 +115,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const SizedBox(height: 14),
           TextField(key: const Key('iban'), controller: _iban, onChanged: (_) => setState(() {}), textCapitalization: TextCapitalization.characters, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: t('profile.iban'), hintText: 'SA…', helperText: t('profile.iban_hint'), errorText: _ibanOk ? _errors['iban'] : t('profile.iban_invalid'))),
           const SizedBox(height: 18),
-          Text(t('reg.services'), style: const TextStyle(color: JR.muted, fontSize: 13)),
+          Text(t('reg.services'), style: TextStyle(color: JR.muted, fontSize: 13)),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
             for (final s in svcs)
-              FilterChip(label: Text(t('svc.${s['key']}')), selected: _services.contains(s['key']), selectedColor: JR.accent.withValues(alpha: 0.2), checkmarkColor: JR.accent, side: const BorderSide(color: JR.line), onSelected: (v) => setState(() => v ? _services.add(s['key'] as String) : _services.remove(s['key']))),
+              FilterChip(label: Text(t.val('svc', s['key'])), selected: _services.contains(s['key']), selectedColor: JR.accent.withValues(alpha: 0.2), checkmarkColor: JR.accent, side: BorderSide(color: JR.line), onSelected: (v) => setState(() => v ? _services.add(s['key'] as String) : _services.remove(s['key']))),
           ]),
-          if (_errors['services'] != null) Text(_errors['services']!, style: const TextStyle(color: JR.danger, fontSize: 12)),
+          if (_errors['services'] != null) Text(_errors['services']!, style: TextStyle(color: JR.danger, fontSize: 12)),
           const SizedBox(height: 18),
           SectionCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(t('reg.terms_title'), style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            Text(termsText.isEmpty ? t('reg.terms_default_driver') : termsText, style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.5)),
+            Text(termsText.isEmpty ? t('reg.terms_default_driver') : termsText, style: TextStyle(color: JR.muted, fontSize: 13, height: 1.5)),
             CheckboxListTile(key: const Key('terms'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, activeColor: JR.accent, checkColor: JR.accentInk, value: _terms, onChanged: (v) => setState(() => _terms = v ?? false), title: Text(t('reg.terms_accept'), style: const TextStyle(fontSize: 14))),
           ])),
           const SizedBox(height: 20),
-          FilledButton(key: const Key('register'), onPressed: ok && !_busy ? _submit : null, child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('reg.submit'))),
+          FilledButton(key: const Key('register'), onPressed: ok && !_busy ? _submit : null, child: _busy ? SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('reg.submit'))),
           const SizedBox(height: 12),
           Center(child: Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            Text(t('m.au_have_account'), style: const TextStyle(color: JR.muted)),
+            Text(t('m.au_have_account'), style: TextStyle(color: JR.muted)),
             TextButton(key: const Key('back-to-login'), onPressed: _busy ? null : () => context.go('/login'), child: Text(t('m.au_sign_in'))),
           ])),
         ]),

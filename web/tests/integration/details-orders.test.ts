@@ -229,7 +229,7 @@ describe("GET /admin/requests/:id/money", () => {
 describe("GET /admin/requests/:id/communication", () => {
   it("groups the chat per driver offer and lists messages and notifications about the order", async () => {
     const { admin, r, off, biz, parcels } = await scenario();
-    await db.insert(messages).values([{ requestId: r.id, offerId: off.id, senderId: biz.id, senderRole: "business", body: "Please call me" }, { requestId: r.id, offerId: off.id, senderId: off.driverId, senderRole: "driver", body: "OK" }]);
+    await db.insert(messages).values([{ requestId: r.id, offerId: off.id, senderId: biz.id, senderRole: "business", body: "Please call me", createdAt: new Date(Date.now() - 2000) }, { requestId: r.id, offerId: off.id, senderId: off.driverId, senderRole: "driver", body: "OK", createdAt: new Date(Date.now() - 1000) }]); // one INSERT gives both rows the same now(): the order asserted below needs distinct times (it failed on a tie)
     await logMessage({ channel: "sms", type: "recipient_code", recipient: "•••• 0001", requestId: r.id, shipmentId: parcels[0].id, status: "sent" });
     await logMessage({ channel: "sms", type: "recipient_code", recipient: "•••• 0002", requestId: r.id, shipmentId: parcels[1].id, status: "failed", error: "provider down" });
     const c = (await get(admin, `/admin/requests/${r.id}/communication`)).json;

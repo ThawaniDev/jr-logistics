@@ -53,7 +53,7 @@ class PasswordChecklist extends StatelessWidget {
           ]))),
         );
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(t('m.au_pw_rules'), style: const TextStyle(color: JR.muted, fontSize: 13)),
+      Text(t('m.au_pw_rules'), style: TextStyle(color: JR.muted, fontSize: 13)),
       row('pw-rule-len', c.long, t('m.au_pw_len')),
       row('pw-rule-letter', c.letter, t('m.au_pw_letter')),
       row('pw-rule-digit', c.digit, t('m.au_pw_digit')),

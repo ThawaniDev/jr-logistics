@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'data/api_client.dart';
@@ -39,5 +40,11 @@ final unreadTicketRefsProvider = Provider.autoDispose<Set<String>>((ref) {
   return {for (final n in list) if (n.type.startsWith('ticket_') && n.ref != null) n.ref!};
 });
 
-/// Attachment bytes are fetched once per id and kept (thumbnails scroll in and out of view).
-final attachmentBytesProvider = FutureProvider.family<Uint8List, String>((ref, id) => ref.watch(extraApiProvider).attachmentBytes(id));
+/// Attachment bytes are fetched once per id and kept for a few minutes (thumbnails scroll in and out of view) — not for the whole session: a photo is up to
+/// several hundred KB and a driver's tickets can hold many.
+final attachmentBytesProvider = FutureProvider.autoDispose.family<Uint8List, String>((ref, id) {
+  final keep = ref.keepAlive();
+  final timer = Timer(const Duration(minutes: 3), keep.close);
+  ref.onDispose(timer.cancel);
+  return ref.watch(extraApiProvider).attachmentBytes(id);
+});

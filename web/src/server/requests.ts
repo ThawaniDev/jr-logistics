@@ -6,6 +6,7 @@ import { SERVICE_MAP, TEMPERATURE_VEHICLES, VEHICLE_TYPES, REQUEST_TERMINAL, OFF
 import { getSettings } from "./settings";
 import { buildQuote, resolveRule, expectedUnitsFor, publicQuote } from "./pricing";
 import { ensureAccount, post } from "./wallet";
+import { escrowStillNeeded } from "./settlement";
 import { nextRef } from "./counters";
 import { logEvent } from "./events";
 import { audit } from "./audit";
@@ -218,7 +219,8 @@ export async function publishRequest(business: User, id: string, opts: PublishOp
 export async function releaseReserve(tx: Exec, r: Request, amountCents: number, key: string, actorId?: string | null) {
   if (amountCents <= 0) return;
   const acct = await ensureAccount(r.businessId, tx);
-  await post(tx, { accountId: acct.id, kind: "release_reserve", reserved: -amountCents, available: amountCents, idempotencyKey: key, requestId: r.id, actorId: actorId ?? null });
+  const { applied } = await post(tx, { accountId: acct.id, kind: "release_reserve", reserved: -amountCents, available: amountCents, idempotencyKey: key, requestId: r.id, actorId: actorId ?? null });
+  if (!applied) return; // a replayed key moved no money, so the request's own escrow counter must not move either (wallet and requests would drift apart)
   await tx.update(requests).set({ reservedCents: sql`${requests.reservedCents} - ${amountCents}` }).where(eq(requests.id, r.id));
 }
 
@@ -235,6 +237,12 @@ export async function cancelRequest(actor: User, id: string, reason: string) {
     // Finished work awaiting confirmation/settlement must be settled first: cancelling now would silently drop what drivers already earned.
     if (live.some((o) => ["delivered_reported", "qty_disputed", "pending_settlement"].includes(o.status))) throw err("INVALID_TRANSITION", "Deliveries are awaiting confirmation or settlement — resolve them before cancelling");
     const toCancel = live.filter((o) => !(OFFER_DEAD as string[]).includes(o.status) && o.status !== "completed");
+    // A driver who already delivered parcels cannot simply be cancelled: those stops were done and must be billed and paid. Ending his route does exactly that
+    // (delivered stops are settled, what is still on board comes back as returns) — the same rule as replacing a driver mid-route.
+    if (toCancel.length) {
+      const [{ n: worked }] = await tx.select({ n: sql<number>`count(*)::int` }).from(shipments).where(and(inArray(shipments.offerId, toCancel.map((o) => o.id)), eq(shipments.status, "delivered")));
+      if (worked > 0) throw err("INVALID_TRANSITION", "A driver has already delivered parcels on this request — end his route instead so the delivered stops stay paid", { deliveredParcels: worked });
+    }
     if (toCancel.length) {
       await tx.update(offers).set({ status: "cancelled", cancelReason: "request_cancelled", cancelledAt: new Date(), updatedAt: new Date() }).where(inArray(offers.id, toCancel.map((o) => o.id)));
       await notifyMany(toCancel.map((o) => o.driverId), "request_cancelled", { ref: r.ref }, tx);
@@ -243,9 +251,10 @@ export async function cancelRequest(actor: User, id: string, reason: string) {
     const withdrawn = await tx.update(shipments).set({ status: sql`case when ${shipments.status} = 'loaded' then 'failed' else 'cancelled' end`, failReason: sql`case when ${shipments.status} = 'loaded' then 'request_cancelled' else ${shipments.failReason} end`, offerId: sql`case when ${shipments.status} = 'loaded' then ${shipments.offerId} else null end`, updatedAt: new Date() })
       .where(and(eq(shipments.requestId, id), inArray(shipments.status, ["pending", "loaded"]))).returning({ id: shipments.id, status: shipments.status, offerId: shipments.offerId });
     await recordShipmentEvents(tx, withdrawn.map((w) => ({ shipmentId: w.id, requestId: id, offerId: w.offerId, type: w.status === "failed" ? "failed" as const : "cancelled" as const, actor: { id: actor.id, name: actor.name, role: actor.role }, payload: { reason: "request_cancelled", cancelReason: reason } })));
-    // Funds still reserved (nothing has settled) go back to the business.
-    const settledShare = live.filter((o) => o.status === "completed").reduce((a, o) => a + (r.unitPriceCents ?? 0) * o.expectedUnits, 0);
-    await releaseReserve(tx, r, Math.max(0, r.reservedCents - settledShare), `cancel-release:${r.id}`, actor.id);
+    // Everything still reserved goes back to the business, except the share of a finished offer whose payment is held by a complaint. A PAID offer already took its share off
+    // `r.reservedCents` when it was paid; taking it off again here left that much stuck in escrow for ever.
+    const heldShare = await escrowStillNeeded(tx, r, live.filter((o) => o.status === "completed"));
+    await releaseReserve(tx, r, Math.max(0, r.reservedCents - heldShare), `cancel-release:${r.id}`, actor.id);
     const [u] = await tx.update(requests).set({ status: "cancelled", cancelReason: reason, cancelledBy: actor.id, cancelledAt: new Date(), updatedAt: new Date(), version: r.version + 1 }).where(eq(requests.id, id)).returning();
     await logEvent(tx, { requestId: id, actor, type: "request_cancelled", oldStatus: r.status, newStatus: "cancelled", payload: { reason } });
     await audit(actor, "request.cancel", "request", id, { reason }, tx);

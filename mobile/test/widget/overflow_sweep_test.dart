@@ -62,7 +62,18 @@ Future<void> sweep(WidgetTester t, Widget screen, {required FakeApi api, require
   expect(errors.toSet().toList(), isEmpty, reason: '${screen.runtimeType} / $lang / ${api.jobResult?.status}');
 }
 
+/// Every case runs once per mode: the layout must hold in light and in dark (the palette changes colours only, but a colour can hide or reveal text).
 void main() {
+  for (final mode in Brightness.values) {
+    group('${mode.name} mode', () {
+      setUp(() => useBrightness(mode));
+      tearDown(() => useBrightness(Brightness.dark));
+      _suite();
+    });
+  }
+}
+
+void _suite() {
   final offered = mkJob(status: 'offered', actions: ['accept', 'reject'], extra: {'pickup': null, 'delivery': null, 'recipient': null, 'earningHidden': false});
   final jobs = [
     mkJob(status: 'accepted', actions: ['checkin', 'cancel']),

@@ -2,7 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { User } from "@/db/schema";
 import { err } from "@/lib/errors";
 import { audit } from "../audit";
-import { toCsv } from "../ops";
+import { rawCsv, tableCsv } from "../export/drill-csv";
 import { localeOf, translator } from "../export/context";
 import { tableXlsx, XLSX_MIME } from "../export/table-export";
 import { MAX_CSV_ROWS, MAX_PAGE_SIZE, isoValue, pageAll, type DrillColumn } from "./registry";
@@ -60,14 +60,18 @@ export async function runPortalTable(user: User, role: PortalRole, name: string,
   const format = query.get("format") ?? "json";
   if (format !== "json" && format !== "csv" && format !== "xlsx") throw err("VALIDATION", "format must be json, csv or xlsx", { field: "format" });
   if (format === "csv" || format === "xlsx") {
-    const tr = format === "xlsx" ? translator(localeOf(query, user)) : null;
+    const rawKeys = format === "csv" && query.get("headers") === "keys"; // `headers=keys`: the machine form (column keys, money in halalas)
+    const tr = rawKeys ? null : translator(localeOf(query, user));
     const { rows: out, truncated } = await pageAll(async (limit, offset) => strip((await def.query({ c, limit, offset, order, sort })).rows));
     await audit(user, "report.export", "report", `${role}/${name}`, { rows: out.length, truncated, filters: c.f.canonical, ...(format === "xlsx" ? { format: "xlsx" } : {}) });
+    if (tr && format === "csv") {
+      return new Response("\uFEFF" + (await tableCsv(tr, def.columns, out)), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${role}-${name}.csv"`, "cache-control": "no-store" } });
+    }
     if (tr) {
       const file = await tableXlsx({ tr, report: `portal-${role}`, table: name, titleKey: def.title, columns: def.columns, rows: out, truncated, max: MAX_CSV_ROWS, filters: c.f, skipFilters: ["company", "office"] });
       return new Response(new Uint8Array(file), { headers: { "content-type": XLSX_MIME, "content-disposition": `attachment; filename="${role}-${name}-${c.f.cur.from}_${c.f.cur.to}.xlsx"`, "cache-control": "no-store" } });
     }
-    const body = toCsv(def.columns.map((x) => x.key), out);
+    const body = rawCsv(def.columns, out);
     return new Response("\uFEFF" + body, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${role}-${name}.csv"`, "cache-control": "no-store" } });
   }
   const page = intParam(query, "page", 1, 1, 100_000), pageSize = intParam(query, "pageSize", 25, 1, MAX_PAGE_SIZE);

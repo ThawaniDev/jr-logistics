@@ -100,13 +100,13 @@ class _ManifestPanelState extends ConsumerState<ManifestPanel> {
       if (cur != null) {
         children.add(CurrentStopCard(key: ValueKey(cur.id), job: j, stop: cur, number: s.done + 1, total: s.total));
       } else {
-        children.add(const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: JR.accent))));
+        children.add(Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: JR.accent))));
       }
       if (summary != null) children..add(const SizedBox(height: 16))..add(summary);
       final upcoming = [for (final x in stops) if (x.open && !x.current) x];
       if (upcoming.isNotEmpty) children..add(const SizedBox(height: 16))..add(_UpcomingList(job: j, stops: upcoming, firstId: firstId));
       if (j.can('end_route')) {
-        children..add(const SizedBox(height: 16))..add(OutlinedButton.icon(key: const Key('end-route'), style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: const BorderSide(color: JR.danger)), onPressed: busy ? null : _endRoute, icon: const Icon(Icons.stop_circle_outlined), label: Text(t('ms.end_route'))));
+        children..add(const SizedBox(height: 16))..add(OutlinedButton.icon(key: const Key('end-route'), style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: BorderSide(color: JR.danger)), onPressed: busy ? null : _endRoute, icon: const Icon(Icons.stop_circle_outlined), label: Text(t('ms.end_route'))));
       }
     } else if (j.can('report_delivered')) {
       children.add(_FinishCard(summary: s, busy: busy, onFinish: () => runStopAction(context, ref, j.offerId, () async { await ref.read(apiProvider).delivered(j.offerId); }, success: 'fma.finish_ok', verify: (f) => !f.can('report_delivered'))));
@@ -120,7 +120,7 @@ class _ManifestPanelState extends ConsumerState<ManifestPanel> {
 
 String _cityName(BuildContext c, String? city) => cityLabel(c, city);
 
-Widget _typeBadge(BuildContext c, Stop s) => Pill(c.tr('rtype.${s.recipientType}'), tone: s.isBusiness ? Tone.info : Tone.neutral);
+Widget _typeBadge(BuildContext c, Stop s) => Pill(c.tr.val('rtype', s.recipientType), tone: s.isBusiness ? Tone.info : Tone.neutral);
 
 /// With business shipments switched off by the platform every parcel is a consumer one: the "Consumer" tag says nothing then (an existing business parcel keeps its tag).
 bool _showType(Job j, Stop s) => j.b2bShipmentsEnabled || s.isBusiness;
@@ -148,7 +148,7 @@ class _ReorderToggle extends StatelessWidget {
     final t = context.tr;
     if (editing) return const SizedBox.shrink();
     if (job.canReorder && movableStops(job).length >= minMovable) return Padding(padding: const EdgeInsets.only(bottom: 12), child: OutlinedButton.icon(key: const Key('reorder-edit'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)), onPressed: onEdit, icon: const Icon(Icons.swap_vert), label: Text(t('fma.change_order'), textAlign: TextAlign.center)));
-    if (!job.canReorder && job.policy != null && !job.policy!.canReorderRoute) return Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(key: const Key('reorder-off'), crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.lock_outline, size: 16, color: JR.muted), const SizedBox(width: 6), Expanded(child: Text(t('fma.reorder_off'), style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.4)))]));
+    if (!job.canReorder && job.policy != null && !job.policy!.canReorderRoute) return Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(key: const Key('reorder-off'), crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.lock_outline, size: 16, color: JR.muted), const SizedBox(width: 6), Expanded(child: Text(t('fma.reorder_off'), style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.4)))]));
     return const SizedBox.shrink();
   }
 }
@@ -174,30 +174,30 @@ class _RouteReviewState extends State<_RouteReview> {
     return SectionCard(key: const Key('route-review'), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(t('ms.route_review_title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
       const SizedBox(height: 4),
-      Text(t('ms.parcels_count', {'n': stops.length}), style: const TextStyle(color: JR.muted)),
+      Text(t('ms.parcels_count', {'n': stops.length}), style: TextStyle(color: JR.muted)),
       const SizedBox(height: 10),
       Banner2(text: t('rm.review_note')),
       const SizedBox(height: 12),
       _ReorderToggle(job: job, editing: _editing, onEdit: () => setState(() => _editing = true)),
-      if (stops.isEmpty) Text(t('ms.no_stops'), style: const TextStyle(color: JR.muted)),
+      if (stops.isEmpty) Text(t('ms.no_stops'), style: TextStyle(color: JR.muted)),
       if (_editing)
         StopOrderEditor(job: job, stops: movableStops(job), fallbackCity: job.deliveryCity, onClose: () { if (mounted) setState(() => _editing = false); })
       else
         for (final (i, s) in stops.indexed) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          CircleAvatar(radius: 14, backgroundColor: JR.accent.withValues(alpha: 0.15), child: Text('${i + 1}', style: const TextStyle(color: JR.accent, fontSize: 12, fontWeight: FontWeight.w800))),
+          CircleAvatar(radius: 14, backgroundColor: JR.accent.withValues(alpha: 0.15), child: Text('${i + 1}', style: TextStyle(color: JR.accent, fontSize: 12, fontWeight: FontWeight.w800))),
           const SizedBox(width: 12),
           Expanded(child: Column(key: Key('route-stop-${i + 1}'), crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(s.address, style: const TextStyle(fontWeight: FontWeight.w700)),
-            Text(_cityName(context, s.city ?? job.deliveryCity), style: const TextStyle(color: JR.muted, fontSize: 13)),
-            if (s.contents != null) Text(s.contents!, style: const TextStyle(color: JR.muted, fontSize: 13)),
-            if (s.notes != null) Text(s.notes!, style: const TextStyle(color: JR.gold, fontSize: 13)),
+            Text(_cityName(context, s.city ?? job.deliveryCity), style: TextStyle(color: JR.muted, fontSize: 13)),
+            if (s.contents != null) Text(s.contents!, style: TextStyle(color: JR.muted, fontSize: 13)),
+            if (s.notes != null) Text(s.notes!, style: TextStyle(color: JR.gold, fontSize: 13)),
             if (s.hasCod) Padding(padding: const EdgeInsets.only(top: 4), child: Pill(t('fma.cod_pill', {'amount': fmtMoney(s.codCents, t.code)}), tone: Tone.warn)),
             StopRouteMeta(stop: s, fromStart: i == 0, lead: [if (_showType(job, s)) _typeBadge(context, s)]),
           ])),
         ])),
       const SizedBox(height: 12),
       FilledButton.icon(key: const Key('approve-route'), onPressed: widget.busy || _editing ? null : widget.onApprove, icon: busyIcon(widget.busy, Icons.check_circle_outline), label: Text(t('ms.approve_route'))),
-      if (_editing) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('fma.save_before_approve'), key: const Key('approve-blocked-hint'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35))),
+      if (_editing) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('fma.save_before_approve'), key: const Key('approve-blocked-hint'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.35))),
     ]));
   }
 }
@@ -236,12 +236,12 @@ class _UpcomingListState extends ConsumerState<_UpcomingList> {
       else ...[
         // Jump to a parcel: type or scan its code / order reference / address, the list narrows to it.
         if (all.length >= 3) Padding(padding: const EdgeInsets.only(bottom: 8), child: ScanField(fieldKey: const Key('find-parcel'), controller: _find, label: t('fma.find_parcel'), scanTitle: t('fma.find_parcel'), textInputAction: TextInputAction.search, onChanged: (_) => setState(() {}))),
-        if (shown.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Text(t('fma.find_none'), key: const Key('find-none'), style: const TextStyle(color: JR.muted))),
+        if (shown.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Text(t('fma.find_none'), key: const Key('find-none'), style: TextStyle(color: JR.muted))),
         for (final s in shown) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Padding(padding: EdgeInsets.only(top: 2), child: Icon(Icons.radio_button_unchecked, size: 18, color: JR.muted)),
+          Padding(padding: EdgeInsets.only(top: 2), child: Icon(Icons.radio_button_unchecked, size: 18, color: JR.muted)),
           const SizedBox(width: 10),
           Expanded(child: Column(key: Key('upcoming-${s.id}'), crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${s.address}${s.city != null ? ' · ${_cityName(context, s.city)}' : ''}', style: const TextStyle(color: JR.muted)),
+            Text('${s.address}${s.city != null ? ' · ${_cityName(context, s.city)}' : ''}', style: TextStyle(color: JR.muted)),
             if (s.hasCod) Padding(padding: const EdgeInsets.only(top: 4), child: Pill(t('fma.cod_pill', {'amount': fmtMoney(s.codCents, t.code)}), tone: Tone.warn)),
             StopRouteMeta(stop: s, fromStart: s.id == widget.firstId),
             if (canMakeNext(job, s)) TextButton.icon(key: Key('make-next-${s.id}'), style: TextButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 4)), onPressed: busy ? null : () => StopActions.makeNext(context, ref, job, s), icon: const Icon(Icons.vertical_align_top, size: 18), label: Text(t('fma.make_next'))),
@@ -266,10 +266,10 @@ class _DoneList extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(s.recipientName != null ? '${s.recipientName} · ${s.address}' : s.address),
-          if (s.status != 'delivered' && s.failReason != null) Text(t('stopfail.${s.failReason}'), style: const TextStyle(color: JR.danger, fontSize: 12)),
+          if (s.status != 'delivered' && s.failReason != null) Text(t.val('stopfail', s.failReason), style: TextStyle(color: JR.danger, fontSize: 12)),
           const SizedBox(height: 4),
           Wrap(spacing: 6, runSpacing: 4, children: [
-            Pill(t('shipstatus.${s.status}'), tone: s.status == 'delivered' ? Tone.success : Tone.danger),
+            Pill(t.val('shipstatus', s.status), tone: s.status == 'delivered' ? Tone.success : Tone.danger),
             if (s.status == 'delivered' && s.hasCod) Pill(t('fma.cod_collected_pill', {'amount': fmtMoney(s.codCollectedCents > 0 ? s.codCollectedCents : s.codCents, t.code)}), tone: Tone.info),
           ]),
         ])),
@@ -294,7 +294,7 @@ class _FinishCard extends StatelessWidget {
       Text(t('ms.finish_summary', {'delivered': summary.delivered, 'failed': summary.notDelivered}), key: const Key('finish-summary'), style: const TextStyle(fontSize: 16)),
       if (summary.notDelivered > 0) ...[const SizedBox(height: 10), Banner2(key: const Key('return-warning'), tone: Tone.warn, text: t('fma.finish_return_warning', {'n': summary.notDelivered}))],
       const SizedBox(height: 10),
-      Text(t('fma.finish_paid_note'), key: const Key('finish-paid-note'), style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
+      Text(t('fma.finish_paid_note'), key: const Key('finish-paid-note'), style: TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
       const SizedBox(height: 14),
       FilledButton.icon(key: const Key('finish'), onPressed: busy ? null : onFinish, icon: busyIcon(busy, Icons.flag_outlined), label: Text(t('ms.finish_btn'))),
     ]));
@@ -348,16 +348,16 @@ class _CurrentStopCardState extends ConsumerState<CurrentStopCard> {
     final phone = s.recipientPhone;
     return SectionCard(key: const Key('current-stop'), border: JR.accent, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Expanded(child: Text(t('ms.stop_n_of', {'n': widget.number, 'total': widget.total}), key: const Key('stop-title'), style: const TextStyle(color: JR.accent, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
+        Expanded(child: Text(t('ms.stop_n_of', {'n': widget.number, 'total': widget.total}), key: const Key('stop-title'), style: TextStyle(color: JR.accent, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5))),
         const SizedBox(width: 8),
         if (_showType(job, s)) Flexible(child: _typeBadge(context, s)),
       ]),
       const SizedBox(height: 8),
       Text(s.recipientName ?? '—', key: const Key('stop-recipient'), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
-      if (phone != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(phone, textDirection: TextDirection.ltr, style: const TextStyle(color: JR.muted, fontSize: 15))),
+      if (phone != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(phone, textDirection: TextDirection.ltr, style: TextStyle(color: JR.muted, fontSize: 15))),
       const SizedBox(height: 12),
       Text(s.address, key: const Key('stop-address'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, height: 1.3)),
-      if (s.city != null) Text(_cityName(context, s.city), style: const TextStyle(color: JR.muted, fontSize: 15)),
+      if (s.city != null) Text(_cityName(context, s.city), style: TextStyle(color: JR.muted, fontSize: 15)),
       StopRouteMeta(stop: s, fromStart: job.stops.isNotEmpty && job.stops.first.id == s.id),
       const SizedBox(height: 10),
       // The parcel to take out of the vehicle, in the exact form to type below.
@@ -365,13 +365,13 @@ class _CurrentStopCardState extends ConsumerState<CurrentStopCard> {
         key: const Key('stop-parcel'), width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(color: JR.bg2, borderRadius: BorderRadius.circular(10), border: Border.all(color: JR.line)),
         child: Row(children: [
-          const Icon(Icons.inventory_2_outlined, size: 20, color: JR.cyan), const SizedBox(width: 10),
+          Icon(Icons.inventory_2_outlined, size: 20, color: JR.cyan), const SizedBox(width: 10),
           Expanded(child: Text(t('um.parcel_n', {'n': s.seq}), style: const TextStyle(fontWeight: FontWeight.w700))),
-          if (s.code.isNotEmpty) Flexible(child: Text(s.code, textDirection: TextDirection.ltr, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JR.muted, fontSize: 13))),
+          if (s.code.isNotEmpty) Flexible(child: Text(s.code, textDirection: TextDirection.ltr, overflow: TextOverflow.ellipsis, style: TextStyle(color: JR.muted, fontSize: 13))),
         ]),
       ),
-      if (s.contents != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${t('wizard.contents')}: ${s.contents}', style: const TextStyle(color: JR.muted))),
-      if (s.notes != null) Padding(padding: const EdgeInsets.only(top: 6), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.sticky_note_2_outlined, size: 18, color: JR.gold), const SizedBox(width: 6), Expanded(child: Text(s.notes!, style: const TextStyle(color: JR.gold, fontWeight: FontWeight.w600, height: 1.3)))])),
+      if (s.contents != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${t('wizard.contents')}: ${s.contents}', style: TextStyle(color: JR.muted))),
+      if (s.notes != null) Padding(padding: const EdgeInsets.only(top: 6), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.sticky_note_2_outlined, size: 18, color: JR.gold), const SizedBox(width: 6), Expanded(child: Text(s.notes!, style: TextStyle(color: JR.gold, fontWeight: FontWeight.w600, height: 1.3)))])),
       if (s.hasCod && !s.arrived) ...[const SizedBox(height: 10), CodBox(cents: s.codCents)], // the cash to collect is known before the door
       const SizedBox(height: 14),
       // One tap each, thumb-sized, icon above label so no translation truncates.
@@ -384,7 +384,7 @@ class _CurrentStopCardState extends ConsumerState<CurrentStopCard> {
       ]),
       const Divider(height: 28),
       if (!s.arrived) ...[
-        Text(t('ms.arrive_first'), style: const TextStyle(color: JR.muted, height: 1.4)),
+        Text(t('ms.arrive_first'), style: TextStyle(color: JR.muted, height: 1.4)),
         const SizedBox(height: 12),
         FilledButton.icon(key: const Key('arrive'), onPressed: working ? null : _arrive, icon: busyIcon(working, Icons.my_location), label: Text(t('act.checkin'))),
       ] else ...[
@@ -393,11 +393,11 @@ class _CurrentStopCardState extends ConsumerState<CurrentStopCard> {
         DeliverForm(key: ValueKey('form-${s.id}'), job: job, stop: s),
       ],
       const SizedBox(height: 12),
-      OutlinedButton.icon(key: const Key('cant-deliver'), style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: const BorderSide(color: JR.danger), minimumSize: const Size.fromHeight(52)), onPressed: working ? null : () => StopActions.cantDeliver(context, ref, job, s), icon: const Icon(Icons.report_gmailerrorred), label: Text(t('ms.cant_deliver'))),
+      OutlinedButton.icon(key: const Key('cant-deliver'), style: OutlinedButton.styleFrom(foregroundColor: JR.danger, side: BorderSide(color: JR.danger), minimumSize: const Size.fromHeight(52)), onPressed: working ? null : () => StopActions.cantDeliver(context, ref, job, s), icon: const Icon(Icons.report_gmailerrorred), label: Text(t('ms.cant_deliver'))),
       if (s.canDefer) ...[
         const SizedBox(height: 8),
         OutlinedButton.icon(key: const Key('postpone'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)), onPressed: working ? null : () => StopActions.postpone(context, ref, job, s), icon: const Icon(Icons.schedule), label: Text(t('ms.postpone'))),
-        Padding(padding: const EdgeInsets.only(top: 4), child: Text(t('ms.postpone_hint'), style: const TextStyle(color: JR.muted, fontSize: 12, height: 1.4))),
+        Padding(padding: const EdgeInsets.only(top: 4), child: Text(t('ms.postpone_hint'), style: TextStyle(color: JR.muted, fontSize: 12, height: 1.4))),
       ],
     ]));
   }

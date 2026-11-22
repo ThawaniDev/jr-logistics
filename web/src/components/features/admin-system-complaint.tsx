@@ -2,9 +2,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, UserCheck, WalletCards } from "lucide-react";
-import { Avatar, Badge, Breadcrumbs, Button, Checkbox, DetailHeader, ErrorState, Notice, PageLoading, Section, Select, StatusBadge, Textarea, useAction } from "@/components/ui";
+import { Avatar, Badge, Breadcrumbs, Button, Checkbox, DetailHeader, ErrorState, Notice, PageLoading, Section, Select, StatusBadge, Textarea, useAction, NoAccess } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
-import { ApiError, patch, post } from "@/lib/api";
+import { patch, post } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/i18n/provider";
@@ -36,7 +36,7 @@ export function ComplaintDetail({ id }: { id: string }) {
   const people = useAssignees("complaints");
   const [res, setRes] = useState(""); const [note, setNote] = useState(""); const [assignee, setAssignee] = useState("");
   const crumbs = (last?: string) => [{ label: t("nav.complaints"), href: "/admin/complaints" }, ...(last ? [{ label: last }] : [])];
-  if (!allowed) return <ErrorState error={new ApiError("FORBIDDEN", "Forbidden", 403)} />;
+  if (!allowed) return <NoAccess />;
   if (error && !data) return <><Breadcrumbs items={crumbs()} /><ErrorState error={error} retry={() => mutate()} /><div className="mt-4"><Link href="/admin/complaints" className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"><ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />{t("nav.complaints")}</Link></div></>;
   if (!data) return <PageLoading />;
 
@@ -108,7 +108,7 @@ export function ComplaintDetail({ id }: { id: string }) {
                       options={people.people.filter((s) => s.id !== c.handlerId).map((s) => ({ value: s.id, label: s.name }))} />
                     <Button data-testid="complaints-assign" size="sm" loading={a.is("u")} disabled={!assignee} onClick={() => { void upd({ assignTo: assignee }); setAssignee(""); }}>{t("adm.assign")}</Button>
                   </div>)}
-                {c.status !== "resolved" && <Checkbox data-testid="complaints-hold" checked={!!c.holdsSettlement} disabled={a.is("u")} onChange={(e) => upd({ holdsSettlement: e.target.checked })} label={<><span className="font-medium text-ink">{t("adm.hold_settlement")}</span><span className="mt-0.5 block text-xs text-muted">{t("rdb.cmp_hold_hint")}</span></>} />}
+                {c.status !== "resolved" && <Checkbox data-testid="complaints-hold" checked={!!c.holdsSettlement} disabled={a.is("u") || (!c.holdsSettlement && !c.requestId && !c.offerId)} onChange={(e) => upd({ holdsSettlement: e.target.checked })} label={<><span className="font-medium text-ink">{t("adm.hold_settlement")}</span><span className="mt-0.5 block text-xs text-muted">{t(!c.holdsSettlement && !c.requestId && !c.offerId ? "k.cmp_hold_needs_order" : "rdb.cmp_hold_hint")}</span></>} />}
               </div>
             </Section>)}
           {next.length > 0 && (

@@ -30,14 +30,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   @override
-  void dispose() { _t?.cancel(); super.dispose(); }
+  void dispose() { _t?.cancel(); _c.dispose(); _scroll.dispose(); super.dispose(); }
 
-  Future<void> _load({bool silent = false}) async {
+  /// The list is scrolled to (or within a few lines of) its end: new messages may pull it along.
+  bool get _atBottom => !_scroll.hasClients || _scroll.position.maxScrollExtent - _scroll.offset < 80;
+
+  /// Reloads the conversation. The view follows the newest message only when that is what the driver is looking at (first load, he just sent one, or he
+  /// was already at the end) — a poll every 8 s must never throw someone who scrolled up to read an earlier message back to the bottom.
+  Future<void> _load({bool silent = false, bool toBottom = false}) async {
     try {
       final m = await ref.read(apiProvider).messages(widget.offerId);
       if (!mounted) return;
+      final follow = _loading || toBottom || (m.length > _msgs.length && _atBottom);
       setState(() { _msgs = m; _error = null; _loading = false; });
-      WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent); });
+      if (follow) WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent); });
     } catch (e) {
       if (mounted && !silent) setState(() { _error = e; _loading = false; });
     }
@@ -47,8 +53,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final text = _c.text.trim();
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
-    final ok = await guarded(context, () async { await ref.read(apiProvider).sendMessage(widget.offerId, text); return true; });
-    if (ok == true) { _c.clear(); await _load(); }
+    final ok = await guarded(context, () async { await ref.read(apiProvider).sendMessage(widget.offerId, text); return true; }, maybeApplied: true);
+    if (ok == true) { _c.clear(); await _load(toBottom: true); } else { await _load(silent: true); } // after a lost answer the list shows whether the message arrived
     if (mounted) setState(() => _sending = false);
   }
 
@@ -59,15 +65,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(t('chat.title'))),
       body: Column(children: [
-        Expanded(child: _loading ? const Center(child: CircularProgressIndicator(color: JR.accent)) : _error != null ? ErrorView(error: _error!, onRetry: _load) : _msgs.isEmpty ? EmptyView(title: t('chat.empty'), icon: Icons.chat_bubble_outline) : ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _msgs.length, itemBuilder: (_, i) {
+        Expanded(child: _loading ? Center(child: CircularProgressIndicator(color: JR.accent)) : _error != null ? ErrorView(error: _error!, onRetry: _load) : _msgs.isEmpty ? EmptyView(title: t('chat.empty'), icon: Icons.chat_bubble_outline) : ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _msgs.length, itemBuilder: (_, i) {
           final m = _msgs[i]; final mine = m['senderId'] == me;
           return Align(alignment: mine ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart, child: Container(
             margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
             decoration: BoxDecoration(color: mine ? JR.accent.withValues(alpha: 0.18) : JR.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: mine ? JR.accent.withValues(alpha: 0.4) : JR.line)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (!mine) Text('${m['senderName'] ?? ''} · ${t.has('role.${m['senderRole']}') ? t('role.${m['senderRole']}') : ''}', style: const TextStyle(color: JR.muted, fontSize: 11)),
+              if (!mine) Text('${m['senderName'] ?? ''} · ${t.has('role.${m['senderRole']}') ? t('role.${m['senderRole']}') : ''}', style: TextStyle(color: JR.muted, fontSize: 11)),
               Text('${m['body']}', style: const TextStyle(fontSize: 15, height: 1.35)),
-              Align(alignment: AlignmentDirectional.centerEnd, child: Text(fmtTime('${m['createdAt'] ?? ''}'), style: const TextStyle(color: JR.muted, fontSize: 10))),
+              Align(alignment: AlignmentDirectional.centerEnd, child: Text(fmtTime('${m['createdAt'] ?? ''}'), style: TextStyle(color: JR.muted, fontSize: 10))),
             ]),
           ));
         })),

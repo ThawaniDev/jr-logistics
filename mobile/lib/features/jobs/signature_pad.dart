@@ -35,8 +35,8 @@ class SignatureController extends ChangeNotifier {
     final height = (_size.height * scale).round();
     final rec = ui.PictureRecorder();
     final canvas = Canvas(rec, Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()));
-    canvas.drawRect(Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), Paint()..color = Colors.white);
-    paintSignature(canvas, _strokes, scale: scale, color: const Color(0xFF0B132B));
+    canvas.drawRect(Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), Paint()..color = JR.paper);
+    paintSignature(canvas, _strokes, scale: scale, color: JR.ink);
     final img = await rec.endRecording().toImage(width, height);
     final data = await img.toByteData(format: ui.ImageByteFormat.png);
     img.dispose();
@@ -92,7 +92,7 @@ class _SignaturePadState extends State<SignaturePad> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Container(
         key: const Key('signature-pad'), height: widget.height,
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: c.hasSignature ? JR.accent : JR.line, width: c.hasSignature ? 2 : 1)),
+        decoration: BoxDecoration(color: JR.paper, borderRadius: BorderRadius.circular(12), border: Border.all(color: c.hasSignature ? JR.accent : JR.line, width: c.hasSignature ? 2 : 1)),
         child: ClipRRect(borderRadius: BorderRadius.circular(11), child: LayoutBuilder(builder: (context, box) {
           c.setSize(box.biggest);
           return RawGestureDetector(
@@ -105,8 +105,8 @@ class _SignaturePadState extends State<SignaturePad> {
               onPointerCancel: (e) { if (e.pointer == _pointer) { _pointer = null; c.end(); } },
               child: Stack(fit: StackFit.expand, children: [
                 CustomPaint(painter: _PadPainter(c.strokes)),
-                if (c.strokes.isEmpty) Center(child: Padding(padding: const EdgeInsets.all(12), child: Text(t('fma.sign_here'), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 18)))),
-                PositionedDirectional(start: 16, end: 16, bottom: 34, child: Container(height: 1, color: const Color(0xFFCBD5E1))),
+                if (c.strokes.isEmpty) Center(child: Padding(padding: const EdgeInsets.all(12), child: Text(t('fma.sign_here'), textAlign: TextAlign.center, style: const TextStyle(color: JR.paperHint, fontSize: 18)))),
+                PositionedDirectional(start: 16, end: 16, bottom: 34, child: Container(height: 1, color: JR.paperRule)),
               ]),
             ),
           );
@@ -125,7 +125,7 @@ class _PadPainter extends CustomPainter {
   _PadPainter(List<List<Offset>> strokes) : strokes = [for (final s in strokes) List<Offset>.of(s)];
   final List<List<Offset>> strokes;
   @override
-  void paint(Canvas canvas, Size size) => paintSignature(canvas, strokes, color: const Color(0xFF0B132B));
+  void paint(Canvas canvas, Size size) => paintSignature(canvas, strokes, color: JR.ink);
   @override
   bool shouldRepaint(_PadPainter old) => true;
 }

@@ -8,10 +8,10 @@ import { db } from "@/db";
 import { users, type User } from "@/db/schema";
 import { err } from "@/lib/errors";
 import { audit } from "./audit";
-import { requirePerm } from "./auth/permissions";
+import { can, requirePerm } from "./auth/permissions";
 import { generatePassword, hashPassword, passwordProblem } from "./auth/password";
 import { revokeAllSessions } from "./auth/session";
-import { normalizeUsername, usernameProblem, usernameTaken } from "./auth/username";
+import { maskPhoneUsername, normalizeUsername, usernameProblem, usernameTaken } from "./auth/username";
 import { assertCanManage, conflictField } from "./accounts";
 import { isAccountKind } from "./account-admin-rules";
 
@@ -28,11 +28,14 @@ async function target(staff: User, id: string): Promise<User> {
   return t;
 }
 
+/** A username that is the phone number (`u9665…`) is shown masked to staff without `drivers.sensitive`, like the phone itself. */
+const shownUsername = (staff: User, username: string | null) => (can(staff, "drivers.sensitive") ? username : maskPhoneUsername(username) ?? null);
+
 /** The sign-in facts staff see on an account: its username and whether a password is set, temporary or locked. Never the hash. */
 export async function credentialsOf(staff: User, id: string) {
   const t = await target(staff, id);
   return {
-    id: t.id, role: t.role, username: t.username, hasPassword: !!t.passwordHash, mustChangePassword: t.mustChangePassword,
+    id: t.id, role: t.role, username: shownUsername(staff, t.username), hasPassword: !!t.passwordHash, mustChangePassword: t.mustChangePassword,
     failedLogins: t.failedLogins, lockedUntil: t.lockedUntil && t.lockedUntil.getTime() > Date.now() ? t.lockedUntil : null, status: t.status,
     lastLoginAt: t.lastLoginAt, lastLoginClient: t.lastLoginClient,
   };
@@ -53,7 +56,7 @@ export async function resetUserPassword(staff: User, id: string, password?: stri
     await audit(staff, "user.password_reset", "user", t.id, { role: t.role, generated: !typed }, tx, meta);
   });
   await revokeAllSessions(t.id, "password_reset");
-  return { id: t.id, username: t.username, mustChangePassword: true as const, generated: !typed, ...(typed ? {} : { password: next }) };
+  return { id: t.id, username: shownUsername(staff, t.username), mustChangePassword: true as const, generated: !typed, ...(typed ? {} : { password: next }) };
 }
 
 /** Renames an account. Same rules as registration (lower-case, 3–30 characters, not reserved) and always unique; the person is not signed out. */

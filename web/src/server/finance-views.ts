@@ -26,15 +26,15 @@ async function codDriverRows(f: { businessId?: string; q?: string }): Promise<Co
   const q = f.q?.trim() ? contains(f.q.trim()) : null;
   const res = await db.execute(sql`
     with col as (
-      select sh.offer_id, sum(sh.cod_collected_cents)::int as collected, max(sh.cod_collected_at) as last_at
+      select sh.offer_id, sum(sh.cod_collected_cents)::float8 as collected, max(sh.cod_collected_at) as last_at
       from shipments sh where sh.status = 'delivered' and sh.cod_collected_cents is not null and sh.offer_id is not null group by sh.offer_id
     ), rec as (
-      select offer_id, sum(amount_cents)::int as received from cod_remittances group by offer_id
+      select offer_id, sum(amount_cents)::float8 as received from cod_remittances group by offer_id
     )
     select o.driver_id as "driverId", u.name as "driverName", count(*)::int as "orders",
       (count(*) filter (where col.collected > coalesce(rec.received, 0)))::int as "openOrders",
-      coalesce(sum(col.collected), 0)::int as "collectedCents", coalesce(sum(coalesce(rec.received, 0)), 0)::int as "receivedCents",
-      coalesce(sum(greatest(col.collected - coalesce(rec.received, 0), 0)), 0)::int as "outstandingCents", max(col.last_at) as "lastCollectedAt"
+      coalesce(sum(col.collected), 0)::float8 as "collectedCents", coalesce(sum(coalesce(rec.received, 0)), 0)::float8 as "receivedCents",
+      coalesce(sum(greatest(col.collected - coalesce(rec.received, 0), 0)), 0)::float8 as "outstandingCents", max(col.last_at) as "lastCollectedAt"
     from col
     join offers o on o.id = col.offer_id join requests r on r.id = o.request_id join users u on u.id = o.driver_id
     left join business_profiles bp on bp.user_id = r.business_id left join users bu on bu.id = r.business_id

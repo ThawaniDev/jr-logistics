@@ -213,3 +213,14 @@ New fields on the job view:
 
 ## E.10 Events added (timeline i18n `event.*`)
 `attendance_confirmed` (payload `auto`), `arrival_unverified`, `loading_scanned`, `loading_unscanned`, `loading_finished`, `route_reordered`, `stop_deferred` (+ note/mediaId), `cod_received`, `warehouse_location_updated`, `delivery_confirmed` (payload `auto:true`).
+
+
+---
+# Audit A3 additions (2026-11-21, `memory/audit/lifecycle.md`)
+- `POST /offers/:id/loading-ack` answers **once per recording**: an exact repeat of the answer already given is a replay (`200`); the other answer (or any answer after the route started / after the load was confirmed by scanning) is `409 INVALID_TRANSITION {answered}`. The warehouse re-recording the hand-over (`POST /offers/:id/loading`) resets it.
+- `POST /offers/:id/returns` is also allowed on a **cancelled** offer (parcels that were on the vehicle when the request was cancelled / called off are `failed(request_cancelled)`); the business `actions[]` then contain `confirm_returns`.
+- `POST /requests/:id/cancel` by staff is refused with `409 INVALID_TRANSITION {deliveredParcels}` while a driver being cancelled has already delivered parcels — `POST /offers/:id/end-route` (ops: `replacements.manage`) settles the delivered stops and returns the rest.
+- `POST /requests/:id/reship` is idempotent: parcels already re-shipped into a live order (draft, or any order not cancelled / expired) are skipped; the same call again returns the existing draft; nothing left → `409 NOTHING_TO_DO`.
+- `POST /offers/:id/stops/:sid/resend-code`: the cap of 3 counts requests (not delivered SMS) → `429 RATE_LIMITED` from the 4th.
+- Staff with `attendance.edit` (without `requests.edit`) may call `POST /offers/:id/attendance` (confirm / no-show); their request-detail `actions[]` hold only `confirm_attendance` / `mark_no_show`.
+- `POST /cron/tick` runs every step on its own: a failing step answers `{ "error": "<step>" }`, the others still run; `maintenance.errors[]` lists failed rows.

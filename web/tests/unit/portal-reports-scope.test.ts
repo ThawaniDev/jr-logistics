@@ -9,7 +9,7 @@ const dialect = new PgDialect();
 const executed: Array<{ sql: string; params: unknown[] }> = [];
 let answer: (q: { sql: string; params: unknown[] }) => Array<Record<string, unknown>> = () => [];
 const tx = { execute: vi.fn(async (q: Parameters<PgDialect["sqlToQuery"]>[0]) => { const r = dialect.sqlToQuery(q); if (!/set_config/.test(r.sql)) executed.push(r); return { rows: answer(r) }; }) };
-vi.mock("@/db", () => ({ db: { transaction: async (cb: (t: typeof tx) => unknown) => cb(tx) } }));
+vi.mock("@/db", () => ({ db: { transaction: async (cb: (t: typeof tx) => unknown) => cb(tx) }, getReportDb: () => ({ transaction: async (cb: (t: typeof tx) => unknown) => cb(tx) }) })); // reports run on their own pool
 vi.mock("@/server/settings", () => ({ getSettings: async () => ({ lateGraceMin: 15, cities: [{ key: "riyadh", ar: "الرياض", en: "Riyadh", ur: "ریاض" }] }) }));
 vi.mock("@/server/office", () => ({ officeReport: async () => ({ jobs: { total: 0, completed: 0, inProgress: 0, cancelled: 0, noShow: 0, replaced: 0 }, shipmentsDelivered: 0, completionRate: null, money: { paidCents: 0, approvedCents: 0, pendingCents: 0, failedCents: 0, rejectedCents: 0 }, byStatus: [] }) }));
 const audit = vi.fn(async () => {});

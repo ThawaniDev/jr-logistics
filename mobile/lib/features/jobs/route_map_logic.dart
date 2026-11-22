@@ -6,6 +6,7 @@ import '../../data/models_extra.dart';
 /// quick actions the popup of a stop may offer. No widgets here, so all of it is unit-tested.
 
 /// Leg / marker colours, cycled per leg. All light enough for the dark ink on the markers, distinct from the map's own greens and blues.
+/// Drawn on the always-light OSM tiles, so identical in light and dark mode (not part of the UI palette); marker letters use `JR.ink`.
 const legPalette = [Color(0xFF00C5D5), Color(0xFF05E5A3), Color(0xFFF59E0B), Color(0xFFA78BFA), Color(0xFFF472B6), Color(0xFF60A5FA)];
 Color legColor(int index) => legPalette[index % legPalette.length];
 

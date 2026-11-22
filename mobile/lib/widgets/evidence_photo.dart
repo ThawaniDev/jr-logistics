@@ -75,7 +75,7 @@ class _EvidencePhotoFieldState extends ConsumerState<EvidencePhotoField> {
       const SizedBox(height: 8),
       if (photo != null) ...[
         Stack(children: [
-          ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(height: 160, width: double.infinity, child: Image.file(File(photo.path), key: Key('$k-preview'), fit: BoxFit.cover, cacheWidth: 900, errorBuilder: (_, _, _) => Container(color: JR.bg2, alignment: Alignment.center, child: const Icon(Icons.image_outlined, size: 48, color: JR.muted))))),
+          ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(height: 160, width: double.infinity, child: Image.file(File(photo.path), key: Key('$k-preview'), fit: BoxFit.cover, cacheWidth: 900, errorBuilder: (_, _, _) => Container(color: JR.bg2, alignment: Alignment.center, child: Icon(Icons.image_outlined, size: 48, color: JR.muted))))),
           PositionedDirectional(top: 6, end: 6, child: IconButton.filled(key: Key('$k-remove'), tooltip: t('fma.photo_remove'), style: IconButton.styleFrom(backgroundColor: JR.bg.withValues(alpha: 0.8), foregroundColor: JR.text, minimumSize: const Size(44, 44)), onPressed: widget.enabled ? () => widget.onChanged(null) : null, icon: const Icon(Icons.close))),
         ]),
         const SizedBox(height: 8),

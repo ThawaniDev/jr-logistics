@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ExternalLink, ImageIcon, RotateCcw, UserCheck } from "lucide-react";
-import { Avatar, Badge, Breadcrumbs, Button, DetailHeader, EmptyState, ErrorState, KV, Notice, PageLoading, Section, Select, StatusBadge, useAction } from "@/components/ui";
+import { Avatar, Badge, Breadcrumbs, Button, DetailHeader, EmptyState, ErrorState, KV, Notice, PageLoading, Section, Select, StatusBadge, useAction, NoAccess } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
-import { ApiError, patch } from "@/lib/api";
+import { patch } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
@@ -45,7 +45,7 @@ export function CaseDetail({ id }: { id: string }) {
   const ctx = useApi<Context>(canView ? `/admin/tickets/${id}/context` : null, { refreshInterval: 60000, shouldRetryOnError: false });
   const people = useAssignees("tickets");
   const crumbs = (last?: string) => [{ label: t("nav.cases"), href: "/admin/cases" }, ...(last ? [{ label: last }] : [])];
-  if (!canView) return <ErrorState error={new ApiError("FORBIDDEN", "Forbidden", 403)} />;
+  if (!canView) return <NoAccess />;
   if (error && !data) return <><Breadcrumbs items={crumbs()} /><ErrorState error={error} retry={() => mutate()} /><div className="mt-4"><Link href="/admin/cases" className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"><ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />{t("nav.cases")}</Link></div></>;
   if (!data) return <PageLoading />;
 

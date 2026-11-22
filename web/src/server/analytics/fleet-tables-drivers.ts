@@ -60,6 +60,7 @@ defineTable({
 
 defineTable({
   report: "drivers", name: "perf_daily", title: "fr.tbl_drivers_perf_daily",
+  exportPage: 25_000, // the driver × day chain costs ~2.6 s per query on a year of data whatever the page: two big pages instead of fifty small ones
   columns: [dateCol, { ...driverCol, key: "driver" }, officeNameCol, ...metricCols(PERF_DAILY, ["jobs", "delivered"])],
   sorts: { date: sql`"date"`, driver: sql`lower(driver)`, office: sql`lower(office)`, ...metricSorts(PERF_DAILY) }, defaultSort: { key: "date", dir: "desc" }, tiebreak: sql`"driverId"`,
   async query(q) { const w = await who(q); return driverDayPage(w, (keys) => opsDailyChain(w.f, w.grace, keys, "drivers", "driver"), PERF_DAILY, q.order, q.limit, q.offset); },

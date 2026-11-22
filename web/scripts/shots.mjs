@@ -1,28 +1,31 @@
-// Dev tool: log in as demo users and screenshot key pages. Usage: node scripts/shots.mjs <outDir> [locale]
+// Dev tool: sign in as the demo accounts and screenshot key pages of a RUNNING dev server (demo mode, `npm run db:seed` done).
+// Usage: node scripts/shots.mjs <outDir> [locale=ar] [baseUrl=http://localhost:3000]
+// The super admin signs in as `admin` with SUPER_ADMIN_PASSWORD from .env.local (skipped when that password was changed); every other account uses the published demo password.
 import { chromium } from "playwright";
-const out = process.argv[2], locale = process.argv[3] ?? "ar", base = "http://localhost:3000";
+import { config } from "dotenv";
+import { mkdirSync } from "node:fs";
+config({ path: ".env.local", quiet: true });
+const out = process.argv[2], locale = process.argv[3] ?? "ar", base = process.argv[4] ?? "http://localhost:3000";
+if (!out) { console.error("usage: node scripts/shots.mjs <outDir> [locale] [baseUrl]"); process.exit(2); }
+mkdirSync(out, { recursive: true });
+const DEMO = "Demo#Pass2026";
 const browser = await chromium.launch();
-async function ctxFor(login) {
+const shots = {
+  public: [null, ["/", "/login", "/register", "/track"]],
+  business: [["demo.business", DEMO], ["/business", "/business/requests", "/business/wallet", "/business/cash", "/business/api"]],
+  driver: [["demo.driver", DEMO], ["/driver", "/driver/opportunities", "/driver/jobs", "/driver/wallet", "/driver/documents"]],
+  office: [["demo.office", DEMO], ["/office", "/office/drivers", "/office/opportunities", "/office/settlements"]],
+  staff: [["demo.ops", DEMO], ["/admin", "/admin/operations", "/admin/requests", "/admin/verification"]],
+  admin: [["admin", process.env.SUPER_ADMIN_PASSWORD ?? ""], ["/admin", "/admin/finance", "/admin/reports", "/admin/pricing", "/admin/settings", "/admin/roles"]],
+};
+for (const [name, [login, paths]] of Object.entries(shots)) {
   const ctx = await browser.newContext({ viewport: { width: 1360, height: 860 } });
   await ctx.addCookies([{ name: "jr_lang", value: locale, url: base }]);
   const page = await ctx.newPage();
-  const origin = { origin: base };
-  if (login.phone) {
-    const s = await (await page.request.post(`${base}/api/v1/auth/otp/send`, { data: { phone: login.phone }, headers: origin })).json();
-    await page.request.post(`${base}/api/v1/auth/otp/verify`, { data: { phone: login.phone, code: s.demoCode }, headers: origin });
-  } else await page.request.post(`${base}/api/v1/auth/staff/login`, { data: login, headers: origin });
-  return page;
-}
-const shots = {
-  public: [[null, ["/", "/login", "/staff/login"]]],
-  business: [[{ phone: "+966500000001" }, ["/business", "/business/requests/new", "/business/requests", "/business/wallet", "/business/api"]]],
-  driver: [[{ phone: "+966500000011" }, ["/driver", "/driver/opportunities", "/driver/jobs", "/driver/documents"]]],
-  office: [[{ phone: "+966500000002" }, ["/office", "/office/drivers", "/office/opportunities"]]],
-  admin: [[{ email: "admin@jrlogistics.local", password: "ChangeMe!2026" }, ["/admin", "/admin/operations", "/admin/pricing", "/admin/finance", "/admin/verification", "/admin/settings", "/admin/staff"]]],
-};
-for (const [name, [[login, paths]]] of Object.entries(shots)) {
-  const page = login ? await ctxFor(login) : await (await browser.newContext({ viewport: { width: 1360, height: 860 } })).newPage();
-  if (!login) await page.context().addCookies([{ name: "jr_lang", value: locale, url: base }]);
+  if (login) {
+    const r = await page.request.post(`${base}/api/v1/auth/login`, { data: { username: login[0], password: login[1] }, headers: { origin: base } });
+    if (!r.ok()) { console.log(name, "SKIPPED: sign-in answered", r.status()); await ctx.close(); continue; }
+  }
   for (const p of paths) {
     const errors = [];
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
@@ -32,5 +35,6 @@ for (const [name, [[login, paths]]] of Object.entries(shots)) {
     console.log(name, p, page.url().replace(base, ""), errors.length ? "ERR: " + errors.slice(0, 2).join(" | ") : "ok");
     page.removeAllListeners("console");
   }
+  await ctx.close();
 }
 await browser.close();

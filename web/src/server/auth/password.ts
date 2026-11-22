@@ -1,8 +1,18 @@
 import bcrypt from "bcryptjs";
-import { randomInt } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 const ROUNDS = process.env.NODE_ENV === "test" ? 4 : 11;
 export const hashPassword = (pw: string) => bcrypt.hash(pw, ROUNDS);
 export const verifyPassword = (pw: string, hash: string | null) => (hash ? bcrypt.compare(pw, hash) : Promise.resolve(false));
+
+/**
+ * A real bcrypt hash (same cost as every stored password) of a random value nobody knows. A sign-in for a name that does not exist — or an account that has no
+ * password yet — compares against it, so "unknown user" costs the same ~100 ms as "wrong password" and timing does not reveal which usernames exist.
+ * (The constant that used to stand here was 67 characters long, not a valid bcrypt hash, so `compare` returned at once and the difference was measurable.)
+ */
+let dummyHash: Promise<string> | null = null;
+export const dummyPasswordHash = () => (dummyHash ??= hashPassword(randomBytes(24).toString("base64url")));
+/** Burns the time of one password check and answers `false`. */
+export const verifyAgainstDummy = async (pw: string) => { await bcrypt.compare(pw, await dummyPasswordHash()); return false; };
 export function passwordProblem(pw: string): string | null {
   if (pw.length < 10) return "PASSWORD_TOO_SHORT";
   if (!/[a-z]/i.test(pw) || !/\d/.test(pw)) return "PASSWORD_WEAK";

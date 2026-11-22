@@ -298,7 +298,7 @@ describe("snapshots + retention", () => {
     expect(second.capture).toMatchObject({ hourly: false, daily: false, pruned: null });
     expect(await db.select().from(driverLocationHistory)).toHaveLength(1);
     expect(await db.select().from(metricSnapshots).where(eq(metricSnapshots.scope, "hour"))).not.toHaveLength(0);
-    expect(await pruneCaptureData()).toEqual({ locations: 0, logins: 0, messages: 0 });
+    expect(await pruneCaptureData()).toEqual({ locations: 0, logins: 0, messages: 0, notifications: 0 });
     void runCaptureTick; void desc; void staffLogin;
   });
 });

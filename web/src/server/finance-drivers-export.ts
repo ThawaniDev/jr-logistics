@@ -4,6 +4,7 @@ import { audit } from "./audit";
 import { requirePerm } from "./auth/permissions";
 import { MAX_CSV_ROWS, pageAll, type DrillColumn } from "./analytics/registry";
 import { localeOf, riyadhStamp, translator, type Tr } from "./export/context";
+import { drillCsv } from "./export/drill-csv";
 import { drillSheet } from "./export/drill-sheet";
 import { buildXlsx, XLSX_MIME, type SheetSpec, type TableSheet, type TextSheet } from "./export/xlsx";
 import { toCsv } from "./ops";
@@ -26,7 +27,8 @@ export const formatOf = (query: URLSearchParams): ExportFormat | null => {
 export function exportGuard(user: User, query: URLSearchParams, format: ExportFormat): Tr | null {
   requirePerm(user, "finance.view");
   requirePerm(user, "reports.export");
-  return format === "xlsx" ? translator(localeOf(query, user)) : null;
+  // Excel and the readable CSV speak the viewer's language; `headers=keys` keeps the raw machine CSV (column keys, money in halalas).
+  return format === "csv" && query.get("headers") === "keys" ? null : translator(localeOf(query, user));
 }
 export { pageAll, MAX_CSV_ROWS };
 
@@ -79,6 +81,7 @@ export async function respond(j: ExportJob): Promise<Response> {
   const name = `${j.scope.replace(/\//g, "-")}-${stamp(j.period)}`;
   const no = { "cache-control": "no-store" };
   if (j.format === "csv") {
+    if (j.tr) return new Response("\uFEFF" + drillCsv(j.tr, { columns: j.columns, rows: j.rows }), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${name}.csv"`, ...no } });
     const body = toCsv(j.columns.map((c) => (c.key === "typeLabel" ? "kind" : c.key)), j.rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v !== null && typeof v === "object" ? JSON.stringify(v) : v]))));
     return new Response("﻿" + body, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${name}.csv"`, ...no } });
   }

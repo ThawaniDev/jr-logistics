@@ -67,7 +67,7 @@ describe("the list as CSV", () => {
   it("UTF-8 BOM, the column keys as header, one line per driver, phone masked without drivers.sensitive, audited", async () => {
     const w = await seedFinanceDriversWorld();
     const plain = await staff("finance.view", "reports.export");
-    const r = await bin(plain, `${BASE}?${PERIOD}&format=csv`);
+    const r = await bin(plain, `${BASE}?${PERIOD}&format=csv&headers=keys`); // the machine form: column keys, raw halalas
     expect(r.headers.get("content-type")).toContain("text/csv");
     expect(r.headers.get("content-disposition")).toContain("finance-drivers-2026-05-10_2026-05-12.csv");
     const rows = csv(r.text);
@@ -78,7 +78,7 @@ describe("the list as CSV", () => {
     expect(d1[idx("earnedCents")]).toBe("3500");
     expect(d1[idx("walletAvailableCents")]).toBe(""); // an office driver has no wallet
     expect(d1[idx("paidViaOffice")]).toBe("true");
-    const sensitive = csv((await bin(await staff("finance.view", "reports.export", "drivers.sensitive"), `${BASE}?${PERIOD}&format=csv`)).text);
+    const sensitive = csv((await bin(await staff("finance.view", "reports.export", "drivers.sensitive"), `${BASE}?${PERIOD}&format=csv&headers=keys`)).text);
     expect(sensitive.find((x) => x[0] === "Driver One")![idx("phone")]).toBe(`'${w.d1.phone}`); // a leading "+" is neutralised like any formula start (toCsv)
     const a = (await exports())[0];
     expect(a).toMatchObject({ actorId: expect.any(String), entity: "report", entityId: "finance/drivers" });
@@ -143,7 +143,7 @@ describe("one driver's tables", () => {
     for (const table of ["statement", "settlements", "ledger", "withdrawals", "cash"] as const) {
       const screen = (await call("GET", `${BASE}/${id}/${table}?${q}`, { token: await tok(w.admin) })).json;
       expect(screen.total, table).toBe(expectRows[table]);
-      const c = csv((await bin(w.admin, `${BASE}/${id}/${table}?${q}&format=csv${table === "statement" ? "&scope=table" : ""}`)).text);
+      const c = csv((await bin(w.admin, `${BASE}/${id}/${table}?${q}&format=csv&headers=keys${table === "statement" ? "&scope=table" : ""}`)).text);
       expect(c[0], table).toEqual(tableColumns(table).map((x) => (x.key === "typeLabel" ? "kind" : x.key)));
       expect(c.length - 1, table).toBe(expectRows[table]);
       const x = await sheets(w.admin, `${BASE}/${id}/${table}?${q}&format=xlsx&lang=en${table === "statement" ? "&scope=table" : ""}`);
@@ -158,7 +158,7 @@ describe("one driver's tables", () => {
 
   it("signed amounts are two non-negative columns; the ledger keeps the running balance; no full IBAN leaves the server", async () => {
     const w = await seedFinanceDriversWorld();
-    const ledger = csv((await bin(w.admin, `${BASE}/${w.d3.id}/ledger?period=all&format=csv`)).text);
+    const ledger = csv((await bin(w.admin, `${BASE}/${w.d3.id}/ledger?period=all&format=csv&headers=keys`)).text);
     const [h, ...rows] = ledger;
     expect(rows.flat().some((c) => c.startsWith("-") || c.startsWith("'-"))).toBe(false);
     const bal = rows.map((r) => Number(r[h.indexOf("balanceCents")]));

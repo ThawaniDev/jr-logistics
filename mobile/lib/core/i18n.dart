@@ -21,6 +21,18 @@ class Strings {
 
   bool has(String key) => _dict.containsKey(key);
 
+  /// The key exists in the active language or in the English fallback (a key that exists nowhere would be shown as itself).
+  bool knows(String key) => _dict.containsKey(key) || _fallback.containsKey(key);
+
+  /// `t('<ns>.<value>')` for a [value] the SERVER chose (a status, a reason, a type…). A value this app has no text for yet (a newer server added one)
+  /// reads as the value itself ("new status"), never as a raw dictionary key ("jobstatus.new_status").
+  String val(String ns, Object? value, [Map<String, Object?>? vars]) {
+    final v = '${value ?? ''}';
+    if (v.isEmpty) return '';
+    final key = '$ns.$v';
+    return knows(key) ? call(key, vars) : v.replaceAll('_', ' ');
+  }
+
   static Future<Map<String, String>> _load(String code, [AssetBundle? bundle]) async {
     final raw = await (bundle ?? rootBundle).loadString('assets/i18n/$code.json');
     return (jsonDecode(raw) as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String));

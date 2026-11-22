@@ -11,8 +11,8 @@ import { logEvent } from "./events";
 import { notify, notifyMany, notifyOps } from "./notify";
 import { audit } from "./audit";
 import { lockRequest, releaseReserve } from "./requests";
-import { activeJobs, backfillOffersForDriver, dispatchOffers, driverHasConflict, evaluateCandidates, readyOfficeIds, earningFor } from "./matching";
-import { settleOffer, unpaidOfferIds } from "./settlement";
+import { activeJobs, backfillOffersForDriver, dispatchOffers, driverHasConflict, evaluateCandidates, notifyOffers, readyOfficeIds, earningFor } from "./matching";
+import { escrowStillNeeded, issueInvoice, settleOffer } from "./settlement";
 import { assertAtWarehouse, effectiveOps } from "./warehouse";
 import { isManifestJob, allocateToOffer, markLoaded, markRouteFinished, releaseOfferShipments, currentStopOf, sendRecipientCodes } from "./shipments";
 import { isRoutingOn, autoStartRoute } from "./routing-mode";
@@ -55,6 +55,9 @@ export async function authorizeBusinessSide(tx: Exec, u: User, o: Offer): Promis
 /** Shared by accept & apply. Serialises on the request row so exactly N drivers win N slots. */
 async function fillSlot(tx: Exec, driver: User, o: Offer, termsAccepted: boolean) {
   const r = await lockRequest(tx, o.requestId);
+  // The "one active job" / no-overlap guards below read the driver's OTHER offers, which the request lock does not protect: two accepts of two different requests
+  // at the same instant would both see "nothing active" and both win. One transaction-scoped lock per driver (taken after the request lock, so no cycle) serialises them.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"driver-accept:" + driver.id}, 0))`);
   const s = await getSettings(tx);
   if (!termsAccepted) throw err("TERMS_REQUIRED", "You must accept the terms to take this job");
   if (!["published", "filling"].includes(r.status) || r.slotsFilled >= r.quantity) {
@@ -174,7 +177,8 @@ async function markAttendance(tx: Exec, r: Request, o: Offer, by: User | null, o
 export async function confirmAttendance(actor: User, offerId: string, present: boolean, reason?: string) {
   return db.transaction(async (tx) => {
     const o = await lockOffer(tx, offerId);
-    const r = await authorizeBusinessSide(tx, actor, o);
+    // Attendance is also what the `attendance.edit` permission ("correct the arrival and attendance records of drivers") is for — without `requests.edit`.
+    const r = can(actor, "attendance.edit") && actor.role !== "business" ? await lockRequest(tx, o.requestId) : await authorizeBusinessSide(tx, actor, o);
     expect(o, "accepted", "arrived");
     if (present) return markAttendance(tx, r, o, actor);
     if (!reason?.trim()) throw err("VALIDATION", "A reason is required to record a no-show", { field: "reason" });
@@ -238,6 +242,12 @@ export async function acknowledgeLoading(driver: User, offerId: string, ok: bool
     forDriver(driver, o);
     expect(o, "attendance_confirmed");
     if (o.loadedUnits == null) throw err("INVALID_TRANSITION", "No loaded quantity to confirm yet");
+    // The count is answered once per recording (the warehouse's re-recording resets it). An exact repeat is a harmless replay; a different answer after the route
+    // started (or after the load was already confirmed by scanning) would strand the driver's own action list and open a bogus dispute.
+    if (o.loadedAckByDriver != null) {
+      if (o.loadedAckByDriver === ok) return o;
+      throw err("INVALID_TRANSITION", "The loaded quantity was already answered", { answered: o.loadedAckByDriver });
+    }
     const r = await lockRequest(tx, o.requestId);
     let u = await setOffer(tx, offerId, { loadedAckByDriver: ok });
     await logEvent(tx, { requestId: r.id, offerId, actor: actorOf(driver), type: ok ? "loading_confirmed" : "loading_disputed", payload: { units: o.loadedUnits, note } });
@@ -382,9 +392,9 @@ export async function resolveDispute(staff: User, offerId: string, finalUnits: n
 
 /**
  * Auto-complete: when every filled slot is pending settlement and all slots are filled,
- * create exactly one settlement per offer and close the request.
+ * create exactly one settlement per offer and close the request. (Also used by the housekeeping tick after it closes the open slots of a partly staffed request.)
  */
-async function completeIfReady(tx: Exec, requestId: string, actor: User | null) {
+export async function completeIfReady(tx: Exec, requestId: string, actor: User | null) {
   const r = await lockRequest(tx, requestId);
   if (["completed", "cancelled", "expired"].includes(r.status)) return false;
   const all = await tx.select().from(offers).where(eq(offers.requestId, requestId));
@@ -403,9 +413,7 @@ async function finalizeRequest(tx: Exec, r0: Request, live: Offer[], actor: User
   // Parcels nobody carried are withdrawn (their share of the escrow goes back below) and can be re-shipped in one click.
   const unfulfilled = await tx.update(shipments).set({ status: "cancelled", failReason: "unfulfilled", updatedAt: new Date() }).where(and(eq(shipments.requestId, r.id), eq(shipments.status, "pending"), sql`${shipments.offerId} is null`)).returning({ id: shipments.id });
   await recordShipmentEvents(tx, batchOf(unfulfilled.map((m) => m.id), r.id, "cancelled", { payload: { reason: "unfulfilled" } }));
-  const unitPrice = r.unitPriceCents ?? 0;
-  const unpaid = await unpaidOfferIds(tx, live.map((o) => o.id)); // only shares whose settlement is not paid yet (held by a complaint) stay escrowed
-  const held = live.filter((o) => unpaid.has(o.id)).reduce((a, o) => a + unitPrice * o.expectedUnits, 0);
+  const held = await escrowStillNeeded(tx, r, live); // only shares whose settlement is not paid yet (held by a complaint) stay escrowed
   await releaseReserve(tx, r, Math.max(0, r.reservedCents - held), `complete-release:${r.id}`, actor?.id);
   await tx.update(offers).set({ status: "expired", updatedAt: new Date() }).where(and(eq(offers.requestId, r.id), eq(offers.status, "offered")));
   await tx.update(requests).set({ status: "completed", completedAt: new Date(), updatedAt: new Date() }).where(eq(requests.id, r.id));
@@ -440,6 +448,7 @@ export async function fulfilRental(staff: User, requestId: string) {
     const total = r.reservedCents;
     await post(tx, { accountId: biz.id, kind: "charge", reserved: -total, idempotencyKey: `rental:${r.id}:charge`, requestId: r.id, actorId: staff.id });
     await post(tx, { accountId: plat.id, kind: "platform_fee", available: total, idempotencyKey: `rental:${r.id}:fee`, requestId: r.id, actorId: staff.id });
+    if (total > 0) await issueInvoice(tx, { requestId: r.id, settlementId: null, businessId: r.businessId, totalCents: total }); // the company is charged: it gets its VAT invoice like any other order
     const [u] = await tx.update(requests).set({ status: "completed", completedAt: new Date(), reservedCents: 0, updatedAt: new Date() }).where(eq(requests.id, r.id)).returning();
     await logEvent(tx, { requestId: r.id, actor: actorOf(staff), type: "request_completed", oldStatus: "confirmed", newStatus: "completed" });
     await audit(staff, "rental.fulfil", "request", r.id, { total }, tx);
@@ -548,7 +557,7 @@ export async function assignDriver(actor: User, requestId: string, driverId: str
     }).returning();
     await logEvent(tx, { requestId, offerId: o.id, actor: actorOf(actor), type: "driver_assigned", newStatus: "offered", payload: { source, reason } });
     if (source === "manual") await audit(actor, "request.manual_assign", "request", requestId, { driverId, reason }, tx);
-    await notify(driverId, "offer_new", { requestId, ref: r.ref }, tx);
+    await notifyOffers(tx, r, snap, [{ offerId: o.id, driverId, officeId: c.officeId }], "offer_new"); // same payload as every other offer: parcels, cities, earning (none for an office driver)
     return o;
   });
 }
@@ -582,11 +591,12 @@ export async function rate(user: User, offerId: string, stars: number, comment?:
   return db.transaction(async (tx) => {
     const o = await lockOffer(tx, offerId);
     const r = await lockRequest(tx, o.requestId);
-    if (o.status !== "completed") throw err("INVALID_TRANSITION", "Only completed jobs can be rated");
+    // Who may rate is decided BEFORE anything about the job is said (an outsider must not learn whether an offer exists or is completed).
     let rateeId: string;
     if (user.id === r.businessId) rateeId = o.driverId;
     else if (user.id === o.driverId) rateeId = r.businessId;
     else throw err("NOT_FOUND");
+    if (o.status !== "completed") throw err("INVALID_TRANSITION", "Only completed jobs can be rated");
     const ins = await tx.insert(ratings).values({ offerId, raterId: user.id, rateeId, stars, comment: comment ?? null }).onConflictDoNothing().returning();
     if (!ins.length) throw err("CONFLICT", "You already rated this job");
     if (rateeId === o.driverId) await tx.update(driverProfiles).set({ ratingSum: sql`${driverProfiles.ratingSum} + ${stars}`, ratingCount: sql`${driverProfiles.ratingCount} + 1` }).where(eq(driverProfiles.userId, rateeId));

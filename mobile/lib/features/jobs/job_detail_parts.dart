@@ -20,10 +20,10 @@ class CompletedCard extends StatelessWidget {
     final t = context.tr;
     final router = GoRouter.maybeOf(context);
     return SectionCard(key: const Key('job-completed'), border: JR.accent, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [const Icon(Icons.check_circle, color: JR.accent, size: 28), const SizedBox(width: 10), Expanded(child: Text(t('fma.job_completed_title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)))]),
+      Row(children: [Icon(Icons.check_circle, color: JR.accent, size: 28), const SizedBox(width: 10), Expanded(child: Text(t('fma.job_completed_title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)))]),
       const SizedBox(height: 6),
       // A driver of an office is not paid into a wallet: the office is. No earnings wording for him.
-      Text(t(job.earningHidden ? 'drs.completed_body_office' : 'fma.job_completed_body'), key: const Key('job-completed-body'), style: const TextStyle(color: JR.muted, height: 1.4)),
+      Text(t(job.earningHidden ? 'drs.completed_body_office' : 'fma.job_completed_body'), key: const Key('job-completed-body'), style: TextStyle(color: JR.muted, height: 1.4)),
       if (job.manifest && job.stopsSummary.notDelivered > 0) ...[const SizedBox(height: 10), Banner2(tone: Tone.warn, text: t('fma.finish_return_warning', {'n': job.stopsSummary.notDelivered}))],
       if (router != null) ...[const SizedBox(height: 12), OutlinedButton.icon(key: const Key('view-wallet'), onPressed: () => context.go('/wallet'), icon: const Icon(Icons.account_balance_wallet_outlined), label: Text(t(job.earningHidden ? 'nav.cash_with_me' : 'fma.view_wallet')))],
     ]));
@@ -42,6 +42,8 @@ class QtySheet extends StatefulWidget {
 
 class QtySheetState extends State<QtySheet> {
   late final _c = TextEditingController(text: '${widget.initial}');
+  @override
+  void dispose() { _c.dispose(); super.dispose(); }
   int get _v => int.tryParse(_c.text) ?? 0;
   void _set(int v) => setState(() => _c.text = '${v.clamp(0, widget.max)}');
   @override
@@ -55,7 +57,7 @@ class QtySheetState extends State<QtySheet> {
             Expanded(child: TextField(key: const Key('qty'), controller: _c, onChanged: (_) => setState(() {}), textAlign: TextAlign.center, keyboardType: TextInputType.number, inputFormatters: digitsOnly(max: 6), textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800), decoration: const InputDecoration(border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none, fillColor: Colors.transparent))),
             IconButton.filledTonal(key: const Key('qty-plus'), tooltip: context.tr('um.increase'), iconSize: 32, onPressed: _v < widget.max ? () => _set(_v + 1) : null, icon: const Icon(Icons.add)),
           ]),
-          if (widget.hint != null) Center(child: Text(widget.hint!, style: const TextStyle(color: JR.muted))),
+          if (widget.hint != null) Center(child: Text(widget.hint!, style: TextStyle(color: JR.muted))),
           const SizedBox(height: 16),
           FilledButton(key: const Key('qty-submit'), onPressed: _c.text.isNotEmpty && _v <= widget.max ? () => Navigator.pop(context, _v) : null, child: Text(widget.cta)),
         ]),
@@ -74,6 +76,8 @@ class ReasonSheet extends StatefulWidget {
 class ReasonSheetState extends State<ReasonSheet> {
   final _c = TextEditingController();
   @override
+  void dispose() { _c.dispose(); super.dispose(); }
+  @override
   Widget build(BuildContext context) => SafeArea(child: Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, 16 + MediaQuery.of(context).viewInsets.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -83,7 +87,7 @@ class ReasonSheetState extends State<ReasonSheet> {
           const SizedBox(height: 12),
           TextField(key: const Key('reason'), controller: _c, onChanged: (_) => setState(() {}), maxLines: 3, decoration: InputDecoration(labelText: widget.label ?? context.tr('req.reason'))),
           const SizedBox(height: 16),
-          FilledButton(key: const Key('reason-submit'), style: widget.danger ? FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.bg) : null, onPressed: (widget.allowEmpty || _c.text.trim().length >= 3) ? () => Navigator.pop(context, _c.text.trim()) : null, child: Text(widget.cta)),
+          FilledButton(key: const Key('reason-submit'), style: widget.danger ? FilledButton.styleFrom(backgroundColor: JR.danger, foregroundColor: JR.dangerInk) : null, onPressed: (widget.allowEmpty || _c.text.trim().length >= 3) ? () => Navigator.pop(context, _c.text.trim()) : null, child: Text(widget.cta)),
         ]),
       ));
 }
@@ -116,14 +120,14 @@ class CustodyCardState extends ConsumerState<CustodyCard> {
       // One item per block: title (+ status) on top, the acknowledge button full width below — a long label never fights the text for room.
       for (final i in items) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: Text('${t('custody.${i['itemType']}')} × ${i['qty']}', style: const TextStyle(fontWeight: FontWeight.w700))),
-          if (i['status'] != 'handed_over') ...[const SizedBox(width: 8), Flexible(child: Pill(t('status.${i['status']}'), tone: i['status'] == 'acknowledged' ? Tone.info : i['status'] == 'returned' ? Tone.success : Tone.danger))],
+          Expanded(child: Text('${t.val('custody', i['itemType'])} × ${i['qty']}', style: const TextStyle(fontWeight: FontWeight.w700))),
+          if (i['status'] != 'handed_over') ...[const SizedBox(width: 8), Flexible(child: Pill(t.val('status', i['status']), tone: i['status'] == 'acknowledged' ? Tone.info : i['status'] == 'returned' ? Tone.success : Tone.danger))],
         ]),
-        if (i['description'] != null) Text('${i['description']}', style: const TextStyle(color: JR.muted, fontSize: 12)),
+        if (i['description'] != null) Text('${i['description']}', style: TextStyle(color: JR.muted, fontSize: 12)),
         if (i['status'] == 'handed_over') Padding(padding: const EdgeInsets.only(top: 8), child: FilledButton(key: Key('ack-custody-${i['id']}'), style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)), onPressed: _busyId != null ? null : () => _ack('${i['id']}'), child: Text(t('custody.ack')))),
       ])),
       const SizedBox(height: 4),
-      Text(t('custody.return_note'), style: const TextStyle(color: JR.muted, fontSize: 12, height: 1.4)),
+      Text(t('custody.return_note'), style: TextStyle(color: JR.muted, fontSize: 12, height: 1.4)),
     ])));
   }
 }
@@ -159,8 +163,8 @@ class RatingCardState extends State<RatingCard> {
     return SectionCard(key: const Key('rating'), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(t('job.rate_title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
       const SizedBox(height: 8),
-      if (widget.done) Text(t('job.rated_ok'), key: const Key('rated-ok'), style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w600)) else ...[
-        Text(t('job.rate_hint'), style: const TextStyle(color: JR.muted)),
+      if (widget.done) Text(t('job.rated_ok'), key: const Key('rated-ok'), style: TextStyle(color: JR.accent, fontWeight: FontWeight.w600)) else ...[
+        Text(t('job.rate_hint'), style: TextStyle(color: JR.muted)),
         const SizedBox(height: 8),
         Row(children: [for (var n = 1; n <= 5; n++) Expanded(child: IconButton(key: Key('star-$n'), tooltip: t('rate.star', {'n': n}), iconSize: 36, onPressed: () => setState(() => _stars = n), icon: Icon(n <= _stars ? Icons.star_rounded : Icons.star_outline_rounded, color: n <= _stars ? JR.gold : JR.line)))]), // share the card width: five fixed 52 dp buttons overflow a 320 dp phone
         TextField(key: const Key('rate-comment'), controller: _c, maxLines: 2, maxLength: 500, decoration: InputDecoration(labelText: t('rate.comment'))),

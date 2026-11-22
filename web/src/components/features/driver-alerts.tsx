@@ -6,6 +6,7 @@ import { BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Card } from "@/components/ui";
 import { fetcher } from "@/lib/api";
+import { notificationText } from "@/lib/notif-text";
 import { useI18n } from "@/i18n/provider";
 import { pickNewOffers, trimSeen } from "./driver-fieldops-utils";
 import { signal, unlockAudio } from "./driver-feedback";
@@ -43,8 +44,7 @@ export function DriverAlerts() {
 
   const announce = (rows: NotifRow[]) => {
     const tt = tRef.current; const go = () => routerRef.current.push(OFFERS_HREF);
-    const city = (k: unknown) => { const key = String(k ?? ""); const v = tt(`city.${key}`); return v.startsWith("city.") ? key : v; };
-    const text = (n: NotifRow) => { const d = n.data ?? {}; return tt("notif.offer_new", { ref: String(d.ref ?? ""), parcels: String(d.parcels ?? ""), pickupCity: city(d.pickupCity), deliveryCity: city(d.deliveryCity) }); };
+    const text = (n: NotifRow) => notificationText(tt, { type: "offer_new", data: n.data }); // short variant / cut text when a param is missing — never a raw {placeholder}
     signal("alert");
     if (rows.length === 1) toast(text(rows[0]), { id: `offer-${rows[0].id}`, duration: 20_000, action: { label: tt("fod.alert_view"), onClick: go } });
     else toast(tt("fod.alert_many", { n: rows.length }), { id: "offer-many", duration: 20_000, action: { label: tt("fod.alert_view"), onClick: go } });

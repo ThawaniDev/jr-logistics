@@ -162,6 +162,48 @@
       "when": 1795900000000,
       "tag": "0022_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1796000000000,
+      "tag": "0023_data_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1796100000000,
+      "tag": "0024_wallet_bigint_ledger_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1796200000000,
+      "tag": "0025_offers_driver_accepted_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1796300000000,
+      "tag": "0026_payout_batch_total_bigint",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1796400000000,
+      "tag": "0027_drop_email_lower_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1796500000000,
+      "tag": "0028_notifications_created_index",
+      "breakpoints": true
     }
   ]
 }

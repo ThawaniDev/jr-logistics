@@ -3,6 +3,13 @@ import 'token_store.dart';
 
 typedef Json = Map<String, dynamic>;
 
+/// A number read from JSON the tolerant way: a number, or a numeric string; anything else is null (an `as num?` cast would throw on a string).
+num? numOf(Object? v) => v is num ? v : (v is String ? num.tryParse(v) : null);
+/// Safe readers for JSON of unknown shape (catalog, profile): the wrong type is "absent", never a `TypeError` in the middle of a screen.
+Json? mapOf(Object? v) => v is Map ? v.cast<String, dynamic>() : null;
+List<Object?> listOf(Object? v) => v is List ? v.cast<Object?>() : const [];
+String? strOf(Object? v) => v is String ? v : null;
+
 /// Stable server error codes (see web src/lib/errors.ts). The UI localizes `err.<code>`.
 /// Client-side codes (never sent by the server): NETWORK (no connection), TIMEOUT (too slow), UNAVAILABLE (502/503/504 from a proxy,
 /// no JSON envelope), BAD_RESPONSE (a 2xx that is not JSON, e.g. a captive portal), FILE_TOO_LARGE (413).
@@ -22,11 +29,14 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({required String baseUrl, required this.tokens, Dio? dio, this.onUnauthorized, this.onConnectivity, this.retryDelays = const [Duration(milliseconds: 500), Duration(milliseconds: 1500)]})
+  ApiClient({required String baseUrl, required this.tokens, Dio? dio, this.onUnauthorized, this.onPasswordChange, this.onConnectivity, this.retryDelays = const [Duration(milliseconds: 500), Duration(milliseconds: 1500)]})
       : dio = dio ?? Dio(BaseOptions(baseUrl: '$baseUrl/api/v1', connectTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 30), receiveTimeout: const Duration(seconds: 25), headers: {'X-Client': 'mobile', 'Accept': 'application/json'})) {
     this.dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) async {
-      final t = await tokens.read();
-      if (t != null) o.headers['Authorization'] = 'Bearer $t';
+      // An explicit Authorization header (revoking a session that was never stored, see [revokeSession]) is never replaced by the stored token.
+      if (!o.headers.containsKey('Authorization')) {
+        final t = await tokens.read();
+        if (t != null) o.headers['Authorization'] = 'Bearer $t';
+      }
       h.next(o);
     }));
   }
@@ -34,6 +44,9 @@ class ApiClient {
   final Dio dio;
   final TokenStore tokens;
   final void Function()? onUnauthorized;
+  /// Called when the server answers `403 PASSWORD_CHANGE_REQUIRED` (a temporary password: every call but change-password / me / logout is refused).
+  /// The app then sends the driver to "choose a new password" instead of showing an error on every action.
+  final void Function()? onPasswordChange;
   /// Called with `false` when a request fails for lack of connectivity and `true` as soon as the server answers anything.
   final void Function(bool online)? onConnectivity;
   /// Reads (GET) are retried after these delays when the connection drops or a proxy answers 502/503/504. Writes never are:
@@ -70,6 +83,7 @@ class ApiClient {
         final det = er['details'];
         final ex = ApiException('${er['code']}', '${er['message']}', status: status, details: det is Map ? det.cast<String, dynamic>() : const {});
         if (ex.isAuth && !(e.requestOptions.path.contains('/auth/'))) onUnauthorized?.call();
+        if (ex.code == 'PASSWORD_CHANGE_REQUIRED') onPasswordChange?.call();
         throw ex;
       }
       switch (e.type) {
@@ -88,6 +102,14 @@ class ApiClient {
           throw ApiException('NETWORK', e.message ?? 'network error');
       }
     }
+  }
+
+  /// Ends the server session behind [token] without touching the stored one (a sign-in this app refuses, e.g. a business account typed into the driver app).
+  /// Best effort with a short leash: the answer is never needed and a failure is harmless (the session simply expires on its own).
+  Future<void> revokeSession(String token) async {
+    try {
+      await dio.post('/auth/logout', data: <String, dynamic>{}, options: Options(headers: {'Authorization': 'Bearer $token'}, sendTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 5)));
+    } catch (_) {/* nothing to do */}
   }
 
   Future<Json> get(String path, {Json? query}) => _run<Json>(() => dio.get(path, queryParameters: query), idempotent: true);

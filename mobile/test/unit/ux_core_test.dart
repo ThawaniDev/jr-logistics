@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jr_driver/core/format.dart';
 import 'package:jr_driver/data/api_client.dart';
 import 'package:jr_driver/data/driver_api.dart';
@@ -138,12 +139,17 @@ void main() {
   });
 
   group('session handling', () {
-    ProviderContainer container(FakeApi api, MemoryTokenStore store) => ProviderContainer(retry: (_, _) => null, overrides: [apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(store)]);
+    /// [fresh] = a first launch of the app (no install marker yet).
+    Future<ProviderContainer> container(FakeApi api, MemoryTokenStore store, {bool fresh = false}) async {
+      SharedPreferences.setMockInitialValues({if (!fresh) installMarkerKey: '1'});
+      final prefs = await SharedPreferences.getInstance();
+      return ProviderContainer(retry: (_, _) => null, overrides: [apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(store), prefsProvider.overrideWithValue(prefs)]);
+    }
 
     test('a server error (500) or no signal on app start keeps the session — only a 401 signs out', () async {
       final store = MemoryTokenStore()..write('tok');
       final api = FakeApi()..meError = ApiException('INTERNAL', 'boom', status: 500);
-      final c = container(api, store);
+      final c = await container(api, store);
       addTearDown(c.dispose);
       await expectLater(c.read(authProvider.future), throwsA(isA<ApiException>()));
       expect(await store.read(), 'tok', reason: 'a blip on the server must not log every driver out');
@@ -164,7 +170,7 @@ void main() {
     test('a 401 on app start clears the token and lands on signed-out (no crash)', () async {
       final store = MemoryTokenStore()..write('tok');
       final api = FakeApi()..meError = ApiException('UNAUTHENTICATED', 'expired', status: 401);
-      final c = container(api, store);
+      final c = await container(api, store);
       addTearDown(c.dispose);
       final s = await c.read(authProvider.future);
       expect(s.signedIn, isFalse);
@@ -173,7 +179,7 @@ void main() {
 
     test('expire() (a 401 mid-session) clears the token and flags the session as expired for the sign-in banner', () async {
       final store = MemoryTokenStore()..write('tok');
-      final c = container(FakeApi(), store);
+      final c = await container(FakeApi(), store);
       addTearDown(c.dispose);
       expect((await c.read(authProvider.future)).signedIn, isTrue);
       c.read(authProvider.notifier).expire();
@@ -181,6 +187,49 @@ void main() {
       expect(c.read(authProvider).value!.expired, isTrue);
       await Future<void>.delayed(Duration.zero);
       expect(await store.read(), isNull);
+    });
+
+    test('a straggling 401 after a deliberate sign-out does not turn the sign-in screen into "session expired"', () async {
+      final store = MemoryTokenStore()..write('tok');
+      final api = FakeApi();
+      final c = await container(api, store);
+      addTearDown(c.dispose);
+      await c.read(authProvider.future);
+      await c.read(authProvider.notifier).signOut();
+      expect(c.read(authProvider).value!.signedIn, isFalse);
+      c.read(authProvider.notifier).expire(); // the late answer of a request that was in flight
+      expect(c.read(authProvider).value!.expired, isFalse);
+    });
+
+    test('signing out takes the driver offline first (decision D2), then ends the session and forgets the token', () async {
+      final store = MemoryTokenStore()..write('tok');
+      final api = FakeApi();
+      final c = await container(api, store);
+      addTearDown(c.dispose);
+      await c.read(authProvider.future);
+      await c.read(authProvider.notifier).signOut();
+      expect(api.calls.where((x) => x == 'goOffline' || x == 'logout'), ['goOffline', 'logout'], reason: 'offline while the session still works, then logout');
+      expect(await store.read(), isNull);
+    });
+
+    test('a fresh install drops a session token left in the keychain by an earlier install (iOS keeps the keychain, not the preferences)', () async {
+      final store = MemoryTokenStore()..write('stale-token-of-the-previous-install');
+      final c = await container(FakeApi(), store, fresh: true);
+      addTearDown(c.dispose);
+      expect((await c.read(authProvider.future)).signedIn, isFalse);
+      expect(await store.read(), isNull);
+      expect(c.read(prefsProvider).getString(installMarkerKey), isNotNull, reason: 'next launches keep the session');
+    });
+
+    test('403 PASSWORD_CHANGE_REQUIRED sends a signed-in driver to "choose a new password" (defence in depth)', () async {
+      final store = MemoryTokenStore()..write('tok');
+      final c = await container(FakeApi(), store);
+      addTearDown(c.dispose);
+      await c.read(authProvider.future);
+      expect(c.read(authProvider).value!.user?['mustChangePassword'], isNot(true));
+      c.read(authProvider.notifier).requirePasswordChange();
+      expect(c.read(authProvider).value!.user?['mustChangePassword'], isTrue);
+      expect(c.read(authProvider).value!.signedIn, isTrue, reason: 'the session itself stays');
     });
   });
 

@@ -48,10 +48,10 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
     final text = _reply.text.trim();
     if (_sending || text.isEmpty || _att.uploading || _att.hasFailed) return;
     setState(() => _sending = true);
-    final ok = await guarded(context, () async { await ref.read(extraApiProvider).replyTicket(widget.ticketId, text, attachmentIds: _att.ids); return true; });
+    final ok = await guarded(context, () async { await ref.read(extraApiProvider).replyTicket(widget.ticketId, text, attachmentIds: _att.ids); return true; }, maybeApplied: true);
     if (!mounted) return;
     setState(() => _sending = false);
-    if (ok != true) return;
+    if (ok != true) { _reload(); return; } // after a lost answer the thread shows whether the reply arrived
     _reply.clear();
     _att.clear();
     _reload();
@@ -101,7 +101,7 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
             key: const Key('ticket-thread'), controller: _scroll, physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [
               _Header(ticket: tk, lang: lang, busy: _acting, onResolve: _resolve),
               const SizedBox(height: 16),
-              if (replies.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Text(t('fmb.ticket_no_messages'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted)))
+              if (replies.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Text(t('fmb.ticket_no_messages'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted)))
               else for (final m in replies) Padding(padding: const EdgeInsets.only(bottom: 12), child: _Bubble(message: m, lang: lang)),
             ],
           ))),
@@ -131,7 +131,7 @@ class _Header extends StatelessWidget {
       const SizedBox(height: 10),
       Text(x.subject, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, height: 1.3)),
       const SizedBox(height: 6),
-      Text('${ticketCategoryLabel(t, x.category)} · ${fmtDateTime(x.createdAt, lang)}', style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.3)),
+      Text('${ticketCategoryLabel(t, x.category)} · ${fmtDateTime(x.createdAt, lang)}', style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.3)),
       if (!x.resolved) ...[
         const SizedBox(height: 12),
         OutlinedButton.icon(key: const Key('ticket-resolve'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)), onPressed: busy ? null : onResolve, icon: busyIcon(busy, Icons.check_circle_outline, color: JR.cyan), label: Text(t('bz.resolve_ticket'), textAlign: TextAlign.center)),
@@ -159,7 +159,7 @@ class _Bubble extends StatelessWidget {
           Row(mainAxisSize: MainAxisSize.min, children: [
             Flexible(child: Pill(mine ? t('fmb.role_you') : t('fmb.role_support'), key: Key('role-${m.id}'), tone: mine ? Tone.success : Tone.info)),
             const SizedBox(width: 8),
-            Flexible(child: Text(fmtDateTime(m.createdAt, lang), style: const TextStyle(color: JR.muted, fontSize: 12), overflow: TextOverflow.ellipsis)),
+            Flexible(child: Text(fmtDateTime(m.createdAt, lang), style: TextStyle(color: JR.muted, fontSize: 12), overflow: TextOverflow.ellipsis)),
           ]),
           if (m.body.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: SelectableText(m.body, style: const TextStyle(height: 1.4))),
           if (atts.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 10), child: Wrap(spacing: 8, runSpacing: 8, children: [for (final a in atts) AttachmentThumb(attachment: a)])),
@@ -206,7 +206,7 @@ class _ResolvedBar extends StatelessWidget {
     final t = context.tr;
     final can = ticket.canReopen();
     return Material(color: JR.bg2, child: SafeArea(top: false, child: Padding(padding: const EdgeInsets.all(14), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(can ? t('fmb.ticket_resolved_can_reopen') : t('fmb.ticket_resolved_closed'), key: const Key('ticket-resolved-note'), style: const TextStyle(color: JR.muted, height: 1.4)),
+      Text(can ? t('fmb.ticket_resolved_can_reopen') : t('fmb.ticket_resolved_closed'), key: const Key('ticket-resolved-note'), style: TextStyle(color: JR.muted, height: 1.4)),
       const SizedBox(height: 10),
       if (can) FilledButton.icon(key: const Key('ticket-reopen'), onPressed: busy ? null : onReopen, icon: busyIcon(busy, Icons.replay), label: Text(t('fmb.ticket_reopen')))
       else OutlinedButton.icon(key: const Key('ticket-new-instead'), onPressed: onNew, icon: const Icon(Icons.add), label: Text(t('support.new_ticket'))),
@@ -233,7 +233,7 @@ class _ReopenSheetState extends State<_ReopenSheet> {
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(b.tr('fmb.ticket_reopen'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        Text(b.tr('fmb.ticket_reopen_hint'), style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
+        Text(b.tr('fmb.ticket_reopen_hint'), style: TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
         const SizedBox(height: 14),
         TextField(key: const Key('reopen-body'), controller: _c, minLines: 2, maxLines: 5, maxLength: 2000, decoration: InputDecoration(labelText: b.tr('fmb.ticket_reopen_note'))),
         const SizedBox(height: 10),

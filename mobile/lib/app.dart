@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/i18n.dart';
 import 'core/theme.dart';
+import 'core/theme_mode.dart';
 import 'features/home/notify_host.dart';
 import 'providers.dart';
 import 'router.dart';
@@ -16,26 +17,30 @@ class JrApp extends ConsumerWidget {
     final code = ref.watch(localeProvider);
     final strings = ref.watch(stringsProvider);
     final auth = ref.watch(authProvider);
+    final mode = ref.watch(themeModeProvider);
     return MaterialApp.router(
       title: 'JR Logistics',
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(),
+      theme: buildTheme(Brightness.light), darkTheme: buildTheme(Brightness.dark), themeMode: mode, themeAnimationDuration: Duration.zero, // JR.* colours switch instantly, so the Material theme must too
       locale: Locale(code),
       supportedLocales: [for (final c in supportedCodes) Locale(c)],
       localizationsDelegates: const [GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
       routerConfig: ref.watch(routerProvider),
       scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider), // lets a new-offer alert show its banner on whichever screen is open
-      builder: (context, child) => Directionality(
-        textDirection: isRtl(code) ? TextDirection.rtl : TextDirection.ltr,
-        // Large system fonts are honoured up to 1.4x: beyond that Arabic/Urdu labels (tabs, buttons) start to clip on small phones.
-        child: MediaQuery.withClampedTextScaling(
-          maxScaleFactor: 1.4,
-          // NotifyHost sits at a constant place in the tree (new-offer alerts for the whole session); it never changes the shape of what is below it.
-          child: NotifyHost(child: strings.when(
-            data: (s) => StringsScope(strings: s, child: auth.isLoading ? const _Splash() : (auth.hasError && auth.value == null ? _BootError(error: auth.error ?? 'network', onRetry: () => ref.invalidate(authProvider)) : _withBanner(context, ref, child ?? const SizedBox()))),
-            loading: () => const _Splash(),
-            error: (e, _) => Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('$e', textAlign: TextAlign.center)))),
-          )),
+      builder: (context, child) => PaletteHost(
+        brightness: Theme.of(context).brightness, // already resolved by MaterialApp: the choice, or the phone's setting in `system` mode
+        child: Directionality(
+          textDirection: isRtl(code) ? TextDirection.rtl : TextDirection.ltr,
+          // Large system fonts are honoured up to 1.4x: beyond that Arabic/Urdu labels (tabs, buttons) start to clip on small phones.
+          child: MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.4,
+            // NotifyHost sits at a constant place in the tree (new-offer alerts for the whole session); it never changes the shape of what is below it.
+            child: NotifyHost(child: strings.when(
+              data: (s) => StringsScope(strings: s, child: auth.isLoading ? const _Splash() : (auth.hasError && auth.value == null ? _BootError(error: auth.error ?? 'network', onRetry: () => ref.invalidate(authProvider)) : _withBanner(context, ref, child ?? const SizedBox()))),
+              loading: () => const _Splash(),
+              error: (e, _) => Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('$e', textAlign: TextAlign.center)))),
+            )),
+          ),
         ),
       ),
     );
@@ -62,7 +67,7 @@ class _Splash extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         ClipRRect(borderRadius: BorderRadius.circular(18), child: Image.asset('assets/logo.png', width: 84, height: 84)),
-        const SizedBox(height: 24), const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3, color: JR.accent)),
+        const SizedBox(height: 24), SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3, color: JR.accent)),
       ])));
 }
 

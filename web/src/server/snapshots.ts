@@ -111,12 +111,46 @@ async function prune(table: string, col: string, olderThanDays: number, now: Dat
   return total;
 }
 export const RETENTION_DAYS = { driver_location_history: 90, login_events: 400, message_log: 400 } as const;
+/**
+ * A failed sign-in that matched NO account (`user_id is null`) stores what was typed in the username box in `identifier` — very often a mistyped PASSWORD — so after this many
+ * days the text is erased (audit K, A4). The row stays (counts by day, device and reason feed the Growth report's sign-in failure rate); only the free text goes. Bounded batches.
+ */
+export const UNKNOWN_LOGIN_IDENTIFIER_DAYS = 30;
+export async function redactUnknownLoginIdentifiers(now = new Date()): Promise<number> {
+  let total = 0;
+  const cutoff = new Date(now.getTime() - UNKNOWN_LOGIN_IDENTIFIER_DAYS * DAY_MS);
+  for (let i = 0; i < 20; i++) {
+    const r = await db.execute(sql`update login_events set identifier = null where id in (select id from login_events where success = false and user_id is null and identifier is not null and created_at < ${cutoff} limit 10000)`);
+    total += r.rowCount ?? 0;
+    if ((r.rowCount ?? 0) < 10000) break;
+  }
+  return total;
+}
+/**
+ * In-app notifications are a mailbox, not a record: a read one is noise after 90 days, any one is after 12 months (an unread one older than that was never going to be read). Every new request
+ * pushes an `offer_new` notification to each eligible driver, so this is the fastest-growing business table (14 rows per request, 344 000 rows / 154 MB on a 365-day scratch database).
+ * The request activity timeline reads `notifications` too: it shows notifications of the last 90 days (read) / 12 months (unread). One constant, in days.
+ */
+export const NOTIFICATION_RETENTION = { readDays: 90, anyDays: 365 } as const;
+export async function pruneNotifications(now = new Date()): Promise<number> {
+  let total = 0;
+  const readBefore = new Date(now.getTime() - NOTIFICATION_RETENTION.readDays * DAY_MS), anyBefore = new Date(now.getTime() - NOTIFICATION_RETENTION.anyDays * DAY_MS);
+  for (let i = 0; i < 20; i++) {
+    const r = await db.execute(sql`delete from notifications where id in (select id from notifications where created_at < ${readBefore} and (read_at is not null or created_at < ${anyBefore}) limit 10000)`);
+    total += r.rowCount ?? 0;
+    if ((r.rowCount ?? 0) < 10000) break;
+  }
+  return total;
+}
 export async function pruneCaptureData(now = new Date()) {
-  return {
+  const out = {
     locations: await prune("driver_location_history", "recorded_at", RETENTION_DAYS.driver_location_history, now),
     logins: await prune("login_events", "created_at", RETENTION_DAYS.login_events, now),
     messages: await prune("message_log", "created_at", RETENTION_DAYS.message_log, now),
+    notifications: await pruneNotifications(now),
   };
+  await redactUnknownLoginIdentifiers(now);
+  return out;
 }
 
 /**

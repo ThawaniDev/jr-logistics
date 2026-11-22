@@ -95,7 +95,7 @@ test.describe("company portal", () => {
       await expect(t.getByRole("button", { name: /^Parcel, sorted ascending/ })).toBeVisible();
       const href = await page.getByTestId("drill-parcels-csv").getAttribute("href");
       expect(href).toContain("/api/v1/business/analytics/table/parcels"); expect(href).toContain("format=csv");
-      const csv = await getJson(biz, href!.replace("/api/v1", ""));
+      const csv = await getJson(biz, href!.replace("/api/v1", "") + "&headers=keys"); // the machine form keeps the column keys; the default CSV has readable headers
       expect(csv.status).toBe(200); expect(csv.type).toContain("text/csv");
       expect(csv.text.split("\n")[0]).toContain("code,"); expect(csv.text.split("\n").length - 1).toBe(probe.total);
       expect(csv.text).not.toMatch(/recipient|phone/i);

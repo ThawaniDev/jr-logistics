@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (can opt-in for committing if needed). The two templates ARE committed: without them a fresh clone has no idea what to configure.
 .env*
+!.env.example
+!.env.test.example
 
 # vercel
 .vercel
@@ -47,3 +49,6 @@ next-env.d.ts
 /.next-e2e
 /.next-live
 e2e/.auth/
+
+# UI crawl results (e2e/crawl.spec.ts)
+/.crawl/

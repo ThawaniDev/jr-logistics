@@ -23,6 +23,7 @@ import {
 import { getT } from "@/i18n/server";
 import { getCurrentUser, homeFor } from "@/server/auth/current";
 import { Logo, LanguageSwitcher } from "@/components/layout/shell";
+import { ThemeMenu } from "@/components/theme/theme-menu";
 import { CostCalculator } from "@/components/features/cost-calculator";
 
 export default async function Landing() {
@@ -95,7 +96,7 @@ export default async function Landing() {
       cta: t("landing.join_biz_btn"),
       href: "/login?role=business",
       tagTone: "border-accent/40 bg-accent/10 text-accent",
-      btnClass: "bg-accent text-accent-ink hover:brightness-110 shadow-[0_0_20px_rgba(5,229,163,0.3)]",
+      btnClass: "bg-accent text-accent-ink hover:brightness-110 shadow-[0_0_20px_color-mix(in_srgb,var(--jr-accent)_30%,transparent)]",
     },
     {
       k: "driver",
@@ -124,8 +125,8 @@ export default async function Landing() {
       {/* ── Top Navigation Bar ── */}
       <header className="sticky top-0 z-40 border-b border-line/60 bg-bg/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:h-20 sm:px-8">
-          <Link href="/" aria-label="JR Logistics">
-            <Logo size={36} />
+          <Link href="/" aria-label="JR Logistics" className="shrink-0">
+            <Logo size={36} compact />
           </Link>
 
           <nav aria-label={t("a11y.main_nav")} className="hidden items-center gap-8 text-sm font-medium text-muted lg:flex">
@@ -147,16 +148,11 @@ export default async function Landing() {
             <Link href="/track" className="transition hover:text-accent">
               {t("bs.land_track_link")}
             </Link>
-            <Link
-              href="/scenarios"
-              className="flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-3.5 py-1 text-xs font-semibold text-accent transition hover:bg-accent hover:text-accent-ink"
-            >
-              <span>{t("nav.scenarios")}</span>
-            </Link>
           </nav>
 
           <div className="flex items-center gap-3">
             <LanguageSwitcher compact />
+            <ThemeMenu />
             {!user && (
               <Link
                 href="/login"
@@ -167,7 +163,7 @@ export default async function Landing() {
             )}
             <Link
               href={cta.href}
-              className="rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-accent-ink hover:brightness-110 shadow-[0_0_20px_rgba(5,229,163,0.35)] transition-all"
+              className="rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-accent-ink hover:brightness-110 shadow-[0_0_20px_color-mix(in_srgb,var(--jr-accent)_35%,transparent)] transition-all"
             >
               {cta.label}
             </Link>
@@ -188,16 +184,9 @@ export default async function Landing() {
               {/* Saudi Platform Pill Badge & Scenarios Bank Link */}
               <div className="mb-6 flex flex-wrap items-center gap-2.5">
                 <div className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-xs font-semibold text-accent backdrop-blur-sm shadow-sm">
-                  <span className="size-2 rounded-full bg-accent shadow-[0_0_8px_#05e5a3] animate-pulse" />
+                  <span className="size-2 rounded-full bg-accent shadow-[0_0_8px_var(--jr-accent)] animate-pulse" />
                   <span>{t("landing.badge")}</span>
                 </div>
-                <Link
-                  href="/scenarios"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-cyan/40 bg-cyan/10 px-3.5 py-1.5 text-xs font-semibold text-cyan hover:bg-cyan/20 transition backdrop-blur-sm shadow-sm"
-                >
-                  <Sparkles className="size-3.5 text-cyan" />
-                  <span>{t("ux.d_land_scenarios")}</span>
-                </Link>
               </div>
 
               {/* Main Headline */}
@@ -205,14 +194,14 @@ export default async function Landing() {
                 {t("landing.h1_a")}{" "}
                 <span className="block mt-1 sm:mt-2">
                   {t("landing.h1_b")}{" "}
-                  <span className="text-accent drop-shadow-[0_0_25px_rgba(5,229,163,0.4)]">
+                  <span className="text-accent drop-shadow-[0_0_25px_color-mix(in_srgb,var(--jr-accent)_40%,transparent)]">
                     {t("landing.h1_c")}
                   </span>
                 </span>
               </h1>
 
               {/* Subtitle */}
-              <p className="mt-6 max-w-xl text-base sm:text-lg text-muted/90 leading-relaxed">
+              <p className="mt-6 max-w-xl text-base sm:text-lg text-muted/90 light:text-muted leading-relaxed">
                 {t("landing.sub")}
               </p>
 
@@ -222,7 +211,7 @@ export default async function Landing() {
                   {/* Primary - Business */}
                   <Link
                     href="/login?role=business"
-                    className="group flex flex-1 min-w-[240px] items-center justify-between gap-3 rounded-2xl bg-accent px-6 py-3.5 text-sm sm:text-base font-bold text-accent-ink hover:brightness-110 shadow-[0_0_25px_rgba(5,229,163,0.3)] transition-all"
+                    className="group flex flex-1 min-w-[240px] items-center justify-between gap-3 rounded-2xl bg-accent px-6 py-3.5 text-sm sm:text-base font-bold text-accent-ink hover:brightness-110 shadow-[0_0_25px_color-mix(in_srgb,var(--jr-accent)_30%,transparent)] transition-all"
                   >
                     <div className="flex items-center gap-2.5">
                       <Store className="size-5" aria-hidden />
@@ -295,8 +284,8 @@ export default async function Landing() {
               <div className="pointer-events-none absolute -inset-6 rounded-[2.5rem] bg-gradient-to-tr from-cyan/25 to-accent/25 opacity-40 blur-3xl -z-10" />
 
               {/* Floating Badge 1 - Top Start (Amber Escrow Protection) */}
-              <div className="absolute -top-5 start-4 sm:-start-4 z-20 flex items-center gap-3 rounded-2xl border border-amber-500/35 bg-[#0b132b]/95 px-4 py-3 shadow-2xl backdrop-blur-md">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/15 text-amber-400">
+              <div className="absolute -top-5 start-4 sm:-start-4 z-20 flex items-center gap-3 rounded-2xl border border-gold/35 bg-bg/95 px-4 py-3 shadow-2xl backdrop-blur-md">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-gold/30 bg-gold/15 text-gold">
                   <ShieldCheck className="size-5" aria-hidden />
                 </div>
                 <div>
@@ -320,7 +309,7 @@ export default async function Landing() {
               </div>
 
               {/* Floating Badge 2 - Bottom End (Cyan Instant Match) */}
-              <div className="absolute -bottom-5 end-4 sm:-end-4 z-20 flex items-center gap-3 rounded-2xl border border-accent/40 bg-[#0b132b]/95 px-4 py-3 shadow-2xl backdrop-blur-md">
+              <div className="absolute -bottom-5 end-4 sm:-end-4 z-20 flex items-center gap-3 rounded-2xl border border-accent/40 bg-bg/95 px-4 py-3 shadow-2xl backdrop-blur-md">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-accent/30 bg-accent/15 text-accent">
                   <Zap className="size-5" aria-hidden />
                 </div>
@@ -401,11 +390,11 @@ export default async function Landing() {
               {comingSoonServices.map(({ name, icon: SIcon }) => (
                 <span
                   key={name}
-                  className="inline-flex items-center gap-2 rounded-full border border-line/80 bg-card/60 px-4 py-2 text-xs font-medium text-muted/80 opacity-80"
+                  className="inline-flex items-center gap-2 rounded-full border border-line/80 bg-card/60 px-4 py-2 text-xs font-medium text-muted/80 light:text-muted opacity-80 light:opacity-100"
                 >
-                  <SIcon className="size-3.5 text-muted/60" aria-hidden />
+                  <SIcon className="size-3.5 text-muted/60 light:text-muted" aria-hidden />
                   <span>{name}</span>
-                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-400">
+                  <span className="rounded bg-gold/15 px-1.5 py-0.5 text-[9px] font-bold text-gold">
                     {t("landing.coming_soon")}
                   </span>
                 </span>
@@ -486,7 +475,7 @@ export default async function Landing() {
         {/* ── Trust & Security Section ── */}
         <section id="trust" className="mx-auto max-w-7xl px-5 py-20 sm:px-8 border-t border-line/60">
           <div className="text-center">
-            <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1 text-xs font-semibold text-amber-400">
+            <span className="inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/10 px-4 py-1 text-xs font-semibold text-gold">
               {t("landing.trust_eyebrow")}
             </span>
             <h2 className="mt-3 text-3xl font-extrabold sm:text-4xl text-ink">
@@ -498,7 +487,7 @@ export default async function Landing() {
             {trust.map(({ I, title, desc, tone }) => {
               const colorClasses =
                 tone === "gold"
-                  ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                  ? "border-gold/30 bg-gold/10 text-gold"
                   : tone === "cyan"
                   ? "border-cyan/30 bg-cyan/10 text-cyan"
                   : "border-accent/30 bg-accent/10 text-accent";
@@ -574,7 +563,7 @@ export default async function Landing() {
               <p className="mt-3 text-xs sm:text-sm text-muted max-w-md leading-relaxed">
                 {t("landing.footer")}
               </p>
-              <p className="mt-2 text-xs text-muted/70">
+              <p className="mt-2 text-xs text-muted/70 light:text-muted">
                 {t("landing.footer_coverage")}
               </p>
             </div>
@@ -612,7 +601,7 @@ export default async function Landing() {
             </div>
           </div>
 
-          <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted/70">
+          <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted/70 light:text-muted">
             <p>© {new Date().getFullYear()} JR Logistics. {t("landing.rights")}</p>
             <p className="text-[11px]">{t("landing.footer_disclaimer")}</p>
           </div>

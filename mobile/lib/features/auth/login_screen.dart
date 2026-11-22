@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show TextInput;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,12 +37,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.read(passwordChangedNoticeProvider.notifier).set(false);
     setState(() { _busy = true; _error = null; });
     try {
-      final r = await ref.read(apiProvider).login(_user, _password.text);
+      final api = ref.read(apiProvider);
+      final r = await api.login(_user, _password.text);
       final token = r['token'], user = r['user'];
       // Staff / admin with two-step verification answer `mfaRequired` and have no session: like every non-driver account they belong on the web portal.
       if (r['mfaRequired'] == true) { if (mounted) setState(() => _error = context.tr('m.driver_only')); return; }
       if (token is! String || user is! Map) throw ApiException('BAD_RESPONSE', 'login: missing token/user');
-      if (user['role'] != 'driver') { if (mounted) setState(() => _error = context.tr('m.driver_only')); return; }
+      if (user['role'] != 'driver') {
+        // The server opened a session for this account: end it now (best effort, in the background) — nobody holds this token and it would live for 30 days.
+        unawaited(api.revokeSession(token));
+        if (mounted) setState(() => _error = context.tr('m.driver_only'));
+        return;
+      }
       await ref.read(prefsProvider).setString(lastUsernameKey, _user);
       TextInput.finishAutofillContext();
       await ref.read(authProvider.notifier).signIn(token, user.cast<String, dynamic>());
@@ -76,7 +83,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 32),
                   Text(t('m.au_login_title'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
-                  Text(t('m.au_login_sub'), style: const TextStyle(color: JR.muted, height: 1.4)),
+                  Text(t('m.au_login_sub'), style: TextStyle(color: JR.muted, height: 1.4)),
                   if (auth?.expired == true) ...[const SizedBox(height: 16), Banner2(text: t('auth.session_expired'), tone: Tone.warn)],
                   if (changed) ...[const SizedBox(height: 16), Banner2(key: const Key('password-changed'), text: t('m.au_password_changed'), tone: Tone.success)],
                   const SizedBox(height: 24),
@@ -87,13 +94,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 14),
                   PasswordField(id: 'password', controller: _password, label: t('m.au_password'), readOnly: _busy, action: TextInputAction.done, onChanged: (_) => setState(() {}), onSubmitted: (_) => _submit()),
-                  if (_error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Semantics(liveRegion: true, child: Text(_error!, key: const Key('login-error'), style: const TextStyle(color: JR.danger, height: 1.4)))),
+                  if (_error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Semantics(liveRegion: true, child: Text(_error!, key: const Key('login-error'), style: TextStyle(color: JR.danger, height: 1.4)))),
                   const SizedBox(height: 16),
-                  FilledButton(key: const Key('submit'), onPressed: _busy || !_canSubmit ? null : _submit, child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('m.au_sign_in'))),
+                  FilledButton(key: const Key('submit'), onPressed: _busy || !_canSubmit ? null : _submit, child: _busy ? SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('m.au_sign_in'))),
                   const SizedBox(height: 14),
-                  Text(t('m.au_forgot'), key: const Key('forgot-hint'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
+                  Text(t('m.au_forgot'), key: const Key('forgot-hint'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
                   const SizedBox(height: 28),
-                  Text(t('m.au_no_account'), textAlign: TextAlign.center, style: const TextStyle(color: JR.muted)),
+                  Text(t('m.au_no_account'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted)),
                   const SizedBox(height: 8),
                   OutlinedButton(key: const Key('create-account'), onPressed: _busy ? null : () => context.go('/register'), child: Text(t('m.au_create_account'))),
                 ]),

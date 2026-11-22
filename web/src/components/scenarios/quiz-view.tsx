@@ -17,7 +17,6 @@ import {
   ChevronUp,
   Cpu,
   Coins,
-  ShieldCheck,
   Award,
   Sparkles,
   ArrowRight,
@@ -30,6 +29,7 @@ import {
 } from "lucide-react";
 import type { ScenarioMcq } from "@/db/schema";
 import { Logo } from "@/components/layout/shell";
+import { ThemeMenu } from "@/components/theme/theme-menu";
 
 interface QuizViewProps {
   initialItems: ScenarioMcq[];
@@ -181,7 +181,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
       setTimeout(() => {
         setCustomSuccessMessage((prev) => ({ ...prev, [flowNumber]: "" }));
       }, 3000);
-    } catch (err) {
+    } catch {
       alert("تعذر حفظ الإجابة المخصصة. يرجى المحاولة مرة أخرى.");
     } finally {
       setIsSavingCustom((prev) => ({ ...prev, [flowNumber]: false }));
@@ -197,7 +197,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4">
             <Link href="/" aria-label="JR Logistics Home">
-              <Logo size={34} />
+              <Logo size={34} compact />
             </Link>
             <div className="hidden sm:block h-6 w-px bg-line/80" />
             <div className="hidden sm:flex items-center gap-2">
@@ -210,12 +210,13 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <ThemeMenu />
             {/* Export CSV */}
             <a
               href="/api/v1/scenarios/export?format=csv"
               download="jr-logistics-scenarios-78.csv"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-card/80 px-3.5 py-2 text-xs font-medium text-ink transition hover:border-accent hover:text-accent hover:bg-card"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-card/80 px-2.5 py-2 sm:px-3.5 text-xs font-medium text-ink transition hover:border-accent hover:text-accent hover:bg-card"
               title="تصدير جميع الأسئلة والسيناريوهات والإجابات المخصصة كملف إكسل CSV مع دعم كامل للغة العربية UTF-8"
             >
               <FileSpreadsheet className="size-4 text-accent" />
@@ -226,7 +227,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
             <a
               href="/api/v1/scenarios/export?format=md"
               download="jr-logistics-scenarios-78.md"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-card/80 px-3.5 py-2 text-xs font-medium text-ink transition hover:border-cyan hover:text-cyan hover:bg-card"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-card/80 px-2.5 py-2 sm:px-3.5 text-xs font-medium text-ink transition hover:border-cyan hover:text-cyan hover:bg-card"
               title="تصدير كملف توثيقي بتنسيق Markdown"
             >
               <FileCode2 className="size-4 text-cyan" />
@@ -238,7 +239,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
               href="/flows-ar.html"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gold/40 bg-gold/10 px-3.5 py-2 text-xs font-medium text-gold transition hover:bg-gold/20"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gold/40 bg-gold/10 px-2.5 py-2 sm:px-3.5 text-xs font-medium text-gold transition hover:bg-gold/20"
               title="فتح لوحة المخططات والتدفقات المرئية التفاعلية"
             >
               <ExternalLink className="size-4" />
@@ -247,7 +248,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
 
             <Link
               href="/"
-              className="inline-flex items-center gap-1 rounded-lg bg-accent px-3.5 py-2 text-xs font-bold text-accent-ink transition hover:brightness-110 shadow-[0_0_15px_rgba(5,229,163,0.3)]"
+              className="inline-flex items-center gap-1 rounded-lg bg-accent px-2.5 py-2 sm:px-3.5 text-xs font-bold text-accent-ink transition hover:brightness-110 shadow-[0_0_15px_color-mix(in_srgb,var(--jr-accent)_30%,transparent)]"
             >
               <span className="hidden sm:inline">الرئيسية</span>
               <ArrowRight className="size-3.5 rotate-180" />
@@ -365,7 +366,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                   placeholder="ابحث برقم السيناريو (#60)، كلمة مفتاحية، السؤال أو الإجابة المخصصة..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-card/90 py-2.5 pr-10 pl-4 text-xs text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none transition"
+                  className="w-full rounded-xl border border-line-strong bg-card/90 py-2.5 pr-10 pl-4 text-xs text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none transition"
                 />
                 {searchQuery && (
                   <button
@@ -406,7 +407,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
               onClick={() => setSelectedCategory("all")}
               className={`shrink-0 rounded-lg px-3 py-1.5 font-medium transition ${
                 selectedCategory === "all"
-                  ? "bg-accent/20 border border-accent/50 text-accent font-bold"
+                  ? "bg-accent/20 light:bg-accent/10 border border-accent/50 text-accent font-bold"
                   : "bg-card border border-line/60 text-muted hover:text-ink hover:border-line"
               }`}
             >
@@ -419,7 +420,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                 onClick={() => setSelectedCategory(c.key)}
                 className={`shrink-0 rounded-lg px-3 py-1.5 font-medium transition ${
                   selectedCategory === c.key
-                    ? "bg-accent/20 border border-accent/50 text-accent font-bold"
+                    ? "bg-accent/20 light:bg-accent/10 border border-accent/50 text-accent font-bold"
                     : "bg-card border border-line/60 text-muted hover:text-ink hover:border-line"
                 }`}
               >
@@ -465,7 +466,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                     <span
                       className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
                         item.badgeClass === "badge-auto"
-                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                          ? "bg-accent/15 text-accent border border-accent/30"
                           : item.badgeClass === "badge-dispatch"
                           ? "bg-cyan/15 text-cyan border border-cyan/30"
                           : item.badgeClass === "badge-claim"
@@ -501,7 +502,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                     <BookOpen className="size-3.5 text-cyan" />
                     السياق التشغيلي الميداني:
                   </div>
-                  <p className="text-muted/95 leading-relaxed">{item.scenario}</p>
+                  <p className="text-muted/95 light:text-muted leading-relaxed">{item.scenario}</p>
                 </div>
 
                 {/* MCQ Question Box */}
@@ -529,15 +530,15 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
 
                     if (mode === "review") {
                       if (isOptionCorrect) {
-                        btnStyle = "border-emerald-500 bg-emerald-500/15 text-emerald-300 font-semibold ring-1 ring-emerald-500";
+                        btnStyle = "border-accent bg-accent/15 text-accent font-semibold ring-1 ring-accent";
                       }
                     } else if (hasAnswered) {
                       if (isOptionCorrect) {
-                        btnStyle = "border-emerald-500 bg-emerald-500/20 text-emerald-300 font-semibold ring-1 ring-emerald-500";
+                        btnStyle = "border-accent bg-accent/20 light:bg-accent/10 text-accent font-semibold ring-1 ring-accent";
                       } else if (isOptionSelected) {
                         btnStyle = "border-danger bg-danger/20 text-danger font-semibold ring-1 ring-danger";
                       } else {
-                        btnStyle = "border-line/40 bg-bg2/40 text-muted/60 opacity-60";
+                        btnStyle = "border-line/40 bg-bg2/40 text-muted/60 light:text-muted opacity-60";
                       }
                     }
 
@@ -552,9 +553,9 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                         <span
                           className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                             (mode === "review" && isOptionCorrect) || (hasAnswered && isOptionCorrect)
-                              ? "bg-emerald-500 text-black font-extrabold"
+                              ? "bg-accent text-accent-ink font-extrabold"
                               : hasAnswered && isOptionSelected
-                              ? "bg-danger text-white font-extrabold"
+                              ? "bg-danger text-accent-ink font-extrabold"
                               : "bg-card border border-line text-muted"
                           }`}
                         >
@@ -577,16 +578,16 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                   <div
                     className={`rounded-xl border p-4 mb-4 transition ${
                       isCorrect || mode === "review"
-                        ? "border-emerald-500/40 bg-emerald-950/20"
-                        : "border-danger/40 bg-rose-950/20"
+                        ? "border-accent/40 bg-accent/5"
+                        : "border-danger/40 bg-danger/5"
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
                       {mode === "quiz" ? (
                         isCorrect ? (
                           <>
-                            <CheckCircle2 className="size-4 text-emerald-400" />
-                            <span className="text-xs font-bold text-emerald-400">إجابة صحيحة ومطابقة للنظام!</span>
+                            <CheckCircle2 className="size-4 text-accent" />
+                            <span className="text-xs font-bold text-accent">إجابة صحيحة ومطابقة للنظام!</span>
                           </>
                         ) : (
                           <>
@@ -596,8 +597,8 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                         )
                       ) : (
                         <>
-                          <CheckCircle2 className="size-4 text-emerald-400" />
-                          <span className="text-xs font-bold text-emerald-400">الإجابة الصحيحة المعتمدة من منصة JR:</span>
+                          <CheckCircle2 className="size-4 text-accent" />
+                          <span className="text-xs font-bold text-accent">الإجابة الصحيحة المعتمدة من منصة JR:</span>
                         </>
                       )}
                     </div>
@@ -663,7 +664,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                           </p>
                         </div>
                       ) : (
-                        <p className="text-xs text-muted/70 italic">
+                        <p className="text-xs text-muted/70 light:text-muted italic">
                           لم يتم تسجيل مقترح مخصص لهذا السيناريو بعد. انقر على &quot;كتابة إجابة مخصصة&quot; لتدوين تحليلك أو حلك المقترح وتخزينه في قاعدة البيانات.
                         </p>
                       )}
@@ -706,7 +707,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                             type="button"
                             onClick={() => saveCustomResponse(item.flowNumber)}
                             disabled={isSavingCustom[item.flowNumber]}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-cyan px-4 py-1.5 text-xs font-bold text-black hover:brightness-110 transition disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-cyan px-4 py-1.5 text-xs font-bold text-accent-ink hover:brightness-110 transition disabled:opacity-50"
                           >
                             <Save className="size-3.5" />
                             <span>{isSavingCustom[item.flowNumber] ? "جاري الحفظ..." : "حفظ المقترح"}</span>
@@ -740,7 +741,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                   )}
 
                   {customSuccessMessage[item.flowNumber] && (
-                    <div className="mt-2 text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                    <div className="mt-2 text-xs font-semibold text-accent flex items-center gap-1">
                       <CheckCircle2 className="size-3.5" />
                       <span>{customSuccessMessage[item.flowNumber]}</span>
                     </div>
@@ -798,7 +799,7 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
                       {/* API Call */}
                       <div>
                         <div className="font-bold text-ink mb-1.5 flex items-center gap-1">
-                          <span className="size-2 rounded-full bg-emerald-400" />
+                          <span className="size-2 rounded-full bg-accent" />
                           استدعاء الواجهة البرمجية (API Call):
                         </div>
                         <div className="rounded-lg bg-bg border border-line p-2.5 font-mono text-[11px] text-accent whitespace-pre-wrap ltr-num text-left">
@@ -847,11 +848,11 @@ export function ScenarioQuizView({ initialItems }: QuizViewProps) {
         <div className="mx-auto max-w-7xl px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© 2026 منصة JR Logistics. كافة الحقوق محفوظة وموثقة في قاعدة البيانات.</p>
           <div className="flex items-center gap-4">
-            <a href="/api/v1/scenarios/export?format=csv" className="hover:text-accent transition">
+            <a href="/api/v1/scenarios/export?format=csv" download className="hover:text-accent transition">
               تصدير CSV (78 سيناريو)
             </a>
             <span>•</span>
-            <a href="/api/v1/scenarios/export?format=md" className="hover:text-cyan transition">
+            <a href="/api/v1/scenarios/export?format=md" download className="hover:text-cyan transition">
               تصدير Markdown
             </a>
             <span>•</span>

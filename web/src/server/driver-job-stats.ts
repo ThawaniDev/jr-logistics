@@ -53,7 +53,7 @@ export async function driverJobStats(jobs: JobLike[], x: Exec = db): Promise<Map
   if (!manifestIds.length) { for (const j of jobs) out.set(j.offerId, buildStats(j)); return out; }
   const [counts, cod, cash] = await Promise.all([
     offerShipmentStats(x, manifestIds), offerCodMap(x, manifestIds),
-    x.select({ o: shipments.offerId, parcels: sql<number>`count(*) filter (where ${shipments.codCents} > 0)::int`, toCollect: sql<number>`coalesce(sum(${shipments.codCents}) filter (where ${shipments.status} in ('pending','loaded')),0)::int` })
+    x.select({ o: shipments.offerId, parcels: sql<number>`count(*) filter (where ${shipments.codCents} > 0)::int`, toCollect: sql<number>`coalesce(sum(${shipments.codCents}) filter (where ${shipments.status} in ('pending','loaded')),0)::float8` })
       .from(shipments).where(inArray(shipments.offerId, manifestIds)).groupBy(shipments.offerId),
   ]);
   const parcels = new Map(cash.map((c) => [c.o!, c]));

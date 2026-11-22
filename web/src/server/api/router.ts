@@ -51,6 +51,9 @@ export function defineRoutes(defs: RouteDef[]) {
   }
 }
 
+/** Read-only view of the compiled route table (the security tests walk every route and call its handler directly). */
+export const routeTable = (): readonly Readonly<Compiled>[] => table;
+
 const json = (data: unknown, status = 200, headers?: HeadersInit) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...(headers as object) } });
 
@@ -63,7 +66,10 @@ function errorResponse(e: unknown, correlationId: string, req?: Request) {
     const details = Object.fromEntries(e.issues.map((i) => [i.path.join(".") || "_", i.message]));
     return json({ error: { code: "VALIDATION", message: "Invalid input", correlation_id: correlationId, details } }, 422, h);
   }
+  // A warehouse system's webhook URL carries its secret token as a path segment: never write it to the logs.
+  const logCtx = () => ({ correlationId, method: req?.method, path: req ? new URL(req.url).pathname.replace(/(\/integrations\/hooks\/[^/]+\/)[^/]+/, "$1[redacted]") : undefined });
   if (e instanceof AppError) {
+    if (e.status >= 500) logError(e, logCtx()); // a deliberate 5xx (503 storage / secret / database unavailable) would otherwise leave no trace on the server
     // One consistent shape: validation details are keyed by field name (same as schema errors).
     const d = { ...(e.details ?? {}) } as Record<string, unknown>;
     if (e.code === "VALIDATION" && typeof d.field === "string" && !(d.field in d)) d[d.field] = e.message;
@@ -75,8 +81,7 @@ function errorResponse(e: unknown, correlationId: string, req?: Request) {
   if (pg === "23503" || pg === "23514") return fail("CONFLICT", "The change conflicts with related data", 409);
   if (pg === "22P02") return fail("VALIDATION", "Invalid identifier", 422);
   if (pg === "22003" || pg === "22007" || pg === "22008" || pg === "22001") return fail("VALIDATION", "A value is out of range", 422);
-  // A warehouse system's webhook URL carries its secret token as a path segment: never write it to the logs.
-  logError(e, { correlationId, method: req?.method, path: req ? new URL(req.url).pathname.replace(/(\/integrations\/hooks\/[^/]+\/)[^/]+/, "$1[redacted]") : undefined });
+  logError(e, logCtx());
   return json({ error: { code: "INTERNAL", message: "Something went wrong", correlation_id: correlationId, details: {} } }, 500, h);
 }
 
@@ -105,7 +110,11 @@ const safeCorrelationId = (v: string | null) => (v && /^[A-Za-z0-9_.-]{1,64}$/.t
 function readCookie(req: Request, name: string) {
   const c = req.headers.get("cookie");
   if (!c) return null;
-  for (const part of c.split(/;\s*/)) { const i = part.indexOf("="); if (part.slice(0, i) === name) return decodeURIComponent(part.slice(i + 1)); }
+  for (const part of c.split(/;\s*/)) {
+    const i = part.indexOf("=");
+    if (part.slice(0, i) !== name) continue;
+    try { return decodeURIComponent(part.slice(i + 1)); } catch { return null; } // a mangled "%" in the value is just "no session", not a 500 on every route
+  }
   return null;
 }
 
@@ -118,18 +127,21 @@ export async function dispatch(req: Request, basePath = "/api/v1"): Promise<Resp
   try {
     const url = new URL(req.url);
     const path = url.pathname.startsWith(basePath) ? url.pathname.slice(basePath.length) || "/" : url.pathname;
-    let matched: Compiled | undefined; let params: Record<string, string> = {}; let pathExists = false;
+    let matched: Compiled | undefined; let params: Record<string, string> = {}; const allowed = new Set<string>();
     for (const r of table) {
       const m = r.re.exec(path);
       if (!m) continue;
-      pathExists = true;
+      allowed.add(r.method);
       if (r.method !== req.method) continue;
       matched = r;
       try { params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])])); }
       catch { throw err("VALIDATION", "Invalid path", { field: "path" }); }
       break;
     }
-    if (!matched) return json({ error: { code: pathExists ? "METHOD_NOT_ALLOWED" : "NOT_FOUND", message: "Not found", correlation_id: correlationId, details: {} } }, pathExists ? 405 : 404, { "x-correlation-id": correlationId });
+    if (!matched) {
+      const pathExists = allowed.size > 0;
+      return json({ error: { code: pathExists ? "METHOD_NOT_ALLOWED" : "NOT_FOUND", message: pathExists ? "Method not allowed" : "Not found", correlation_id: correlationId, details: {} } }, pathExists ? 405 : 404, { "x-correlation-id": correlationId, ...(pathExists ? { allow: [...allowed].join(", ") } : {}) });
+    }
 
     const bearer = req.headers.get("authorization")?.match(/^Bearer (.+)$/i)?.[1] ?? null;
     const cookieTok = readCookie(req, SESSION_COOKIE);
@@ -154,6 +166,15 @@ export async function dispatch(req: Request, basePath = "/api/v1"): Promise<Resp
       let originHost: string | null = null;
       try { originHost = origin ? new URL(origin).host : null; } catch { originHost = null; } // Origin: null (sandboxed frames, redirects) is simply "not ours"
       if (!originHost || !host || originHost !== host) throw err("FORBIDDEN", "Cross-origin request blocked");
+    } else if (req.method !== "GET" && !bearer && !req.headers.get("x-api-key")) {
+      // No session cookie, but a BROWSER that names an origin which is not ours is still not a legitimate caller of a state-changing route (a page on another site could
+      // otherwise sign the visitor in to the attacker's account, or register accounts from the visitor's address). The app, integrators and warehouse systems are servers: no Origin.
+      const origin = req.headers.get("origin");
+      if (origin) {
+        let originHost: string | null = null;
+        try { originHost = new URL(origin).host; } catch { originHost = null; }
+        if (!originHost || originHost !== req.headers.get("host")) throw err("FORBIDDEN", "Cross-origin request blocked");
+      }
     }
 
     let body: unknown = undefined;

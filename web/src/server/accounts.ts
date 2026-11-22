@@ -1,4 +1,4 @@
-import { and, eq, inArray, desc, ilike, or, count, sql } from "drizzle-orm";
+import { and, eq, inArray, desc, ilike, ne, or, count, sql } from "drizzle-orm";
 import { db, type Exec } from "@/db";
 import {
   users, businessProfiles, driverProfiles, officeProfiles, termsConsents, documents, officeInvites,
@@ -9,10 +9,11 @@ import { normalizePhone } from "@/lib/phone";
 import { randomToken } from "@/lib/ids";
 import { ALL_PERMISSIONS, BUSINESS_DOC_TYPES, DRIVER_DOC_TYPES, OFFICE_DOC_TYPES, TEMPERATURE_VEHICLES, VEHICLE_TYPES, type Permission } from "./catalog";
 import { getSettings } from "./settings";
-import { hashPassword, passwordProblem, verifyPassword } from "./auth/password";
-import { normalizeUsername, uniqueUsername, usernameFromEmail, usernameProblem } from "./auth/username";
+import { hashPassword, passwordProblem, verifyAgainstDummy, verifyPassword } from "./auth/password";
+import { normalizeUsername, uniqueUsername, usernameFromEmail, usernameProblem, USERNAME_RE } from "./auth/username";
 import { env } from "@/lib/env";
-import { hit } from "./auth/ratelimit";
+import { riyadhDay } from "./analytics/time";
+import { hit, isOver } from "./auth/ratelimit";
 import { signMfaToken } from "./auth/mfa";
 import { openSession, revokeAllSessions, revokeOtherSessions } from "./auth/session";
 import { recordLogin, loginFailureReason } from "./data-capture";
@@ -112,7 +113,6 @@ export async function findByPhone(phone: string) {
 }
 
 // ───────── Sign-in (every role) ─────────
-const DUMMY_HASH = "$2a$04$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinva"; // a compare against this takes as long as a real one
 /** Wrong passwords before the account is locked, and for how long. */
 export const MAX_FAILED_LOGINS = 5, LOCK_MINUTES = 15;
 
@@ -123,15 +123,26 @@ export const MAX_FAILED_LOGINS = 5, LOCK_MINUTES = 15;
  */
 export async function loginWithPassword(identifierRaw: string, password: string, ip = "unknown", client: "web" | "mobile" = "web", userAgent?: string) {
   const identifier = normalizeUsername(identifierRaw);
-  const failed = (userId: string | null, failureReason: string) => recordLogin({ userId, identifier, method: "password", success: false, failureReason, ip, userAgent, client });
-  try { await hit(`login:${ip}:${identifier}`, env.demoMode ? 300 : 10, 900); } catch (e) { await failed(null, loginFailureReason(e, "rate_limited")); throw e; }
+  // Only something that can be a username or an e-mail address is written to the sign-in history: people type their PASSWORD into the username box often enough
+  // that storing whatever was typed would keep passwords in a log that staff can search.
+  const loggable = USERNAME_RE.test(identifier) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier) ? identifier : "[invalid]";
+  const failed = (userId: string | null, failureReason: string) => recordLogin({ userId, identifier: loggable, method: "password", success: false, failureReason, ip, userAgent, client });
+  // Per ip AND name (10 / 15 min) stops guessing one account; the per-ip count of FAILED attempts (any name) stops one address from trying a few common passwords on every
+  // account (password spraying) and bounds the CPU a flood of sign-ins can burn. Shared / unknown addresses are not throttled by it (they would lock everybody out).
+  const attributable = ip !== "unknown", FAIL_LIMIT = env.demoMode ? 3000 : 60;
+  try {
+    if (attributable && (await isOver(`login-fail:${ip}`, FAIL_LIMIT, 900))) throw err("RATE_LIMITED", "Too many attempts. Please try again later.");
+    await hit(`login:${ip}:${identifier}`, env.demoMode ? 300 : 10, 900);
+  } catch (e) { await failed(null, loginFailureReason(e, "rate_limited")); throw e; }
+  const countFailure = async () => { if (attributable) await hit(`login-fail:${ip}`, FAIL_LIMIT, 900).catch(() => {}); };
   const [u] = await db.select().from(users).where(identifier.includes("@") ? eq(users.email, identifier) : eq(users.username, identifier));
   const generic = err("UNAUTHENTICATED", "Invalid credentials");
-  if (!u) { await verifyPassword(password, DUMMY_HASH); await failed(null, "unknown_user"); throw generic; }
+  if (!u) { await verifyAgainstDummy(password); await failed(null, "unknown_user"); await countFailure(); throw generic; }
   if (u.lockedUntil && u.lockedUntil > new Date()) { await failed(u.id, "locked"); throw err("RATE_LIMITED", "Account temporarily locked"); }
-  const ok = u.passwordHash ? await verifyPassword(password, u.passwordHash) : (await verifyPassword(password, DUMMY_HASH), false); // no password set yet: nobody can sign in until staff set one
+  const ok = u.passwordHash ? await verifyPassword(password, u.passwordHash) : await verifyAgainstDummy(password); // no password set yet: nobody can sign in until staff set one
   if (!ok) {
     await failed(u.id, "bad_password");
+    await countFailure();
     // One atomic statement: concurrent guesses each count (a read-modify-write here let parallel requests dodge the lockout). A lock that has run out starts a fresh count.
     const fresh = sql`(${users.lockedUntil} is not null and ${users.lockedUntil} <= now())`;
     await db.update(users).set({
@@ -297,7 +308,7 @@ export async function submitDocument(user: User, i: { type: string; fileName: st
   if (!matchesMime(i.data, i.mime)) throw err("VALIDATION", "The file content does not match its type", { field: "file" });
   if (i.expiresOn) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(i.expiresOn) || Number.isNaN(Date.parse(i.expiresOn))) throw err("VALIDATION", "Invalid expiry date", { field: "expiresOn" });
-    if (Date.parse(i.expiresOn) < Date.now() - 864e5) throw err("VALIDATION", "Document is already expired", { field: "expiresOn" });
+    if (i.expiresOn < riyadhDay(new Date())) throw err("VALIDATION", "Document is already expired", { field: "expiresOn" }); // YYYY-MM-DD compares as text; "today" is the Riyadh day
   }
   await hit(`doc-upload:${user.id}`, 30, 3600); // storage is not free: a stuck client or an abuser cannot fill it
   const key = `${kind}/${user.id}/${randomToken(12)}`;
@@ -332,7 +343,7 @@ export async function readDocument(viewer: User, id: string) {
 /** Driver verification is derived: every required type approved and unexpired. */
 export async function recomputeDriverVerification(userId: string, x: Exec = db) {
   const docs = await x.select().from(documents).where(and(eq(documents.ownerId, userId), eq(documents.ownerKind, "driver")));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = riyadhDay(new Date()); // a document that expires ON a date is valid through the end of that Riyadh day (UTC+3), not of the UTC day
   let status = "verified";
   for (const t of DRIVER_DOC_TYPES.filter((d) => d.required)) {
     const mine = docs.filter((d) => d.type === t.key);
@@ -343,7 +354,7 @@ export async function recomputeDriverVerification(userId: string, x: Exec = db) 
       if (status === "expired") break;
     }
   }
-  await x.update(driverProfiles).set({ verificationStatus: status }).where(eq(driverProfiles.userId, userId));
+  await x.update(driverProfiles).set({ verificationStatus: status }).where(and(eq(driverProfiles.userId, userId), ne(driverProfiles.verificationStatus, status))); // no write when nothing changes
   return status;
 }
 
@@ -399,11 +410,13 @@ export async function setUserStatus(staff: User, userId: string, status: "active
   return { userId, status };
 }
 
-export async function listUsers(f: { role?: string; q?: string; status?: string; verification?: string; page?: number; pageSize?: number }) {
+/** `opts.phone`: the viewer may see phone numbers (`drivers.sensitive`). Without it the search must not match the phone — nor a phone-shaped username (`u9665…`): the list masks the number, so searching it would reveal it digit by digit. */
+export async function listUsers(f: { role?: string; q?: string; status?: string; verification?: string; page?: number; pageSize?: number }, opts: { phone?: boolean } = {}) {
+  const phone = opts.phone ?? true;
   const pageSize = Math.min(f.pageSize ?? 25, 100), page = Math.max(f.page ?? 1, 1);
   const where = and(f.role ? eq(users.role, f.role) : undefined, f.status ? eq(users.status, f.status) : undefined,
     f.verification ? sql`coalesce((select verification_status from business_profiles where user_id = ${users.id}), (select verification_status from office_profiles where user_id = ${users.id}), (select verification_status from driver_profiles where user_id = ${users.id})) = ${f.verification}` : undefined,
-    f.q ? or(ilike(users.name, contains(f.q)), ilike(users.phone, contains(f.q)), ilike(users.email, contains(f.q)), ilike(users.username, contains(f.q))) : undefined);
+    f.q ? or(ilike(users.name, contains(f.q)), phone ? ilike(users.phone, contains(f.q)) : undefined, ilike(users.email, contains(f.q)), phone || !/\d{4}/.test(f.q) ? ilike(users.username, contains(f.q)) : undefined) : undefined);
   const [items, [{ total }]] = await Promise.all([
     db.select({
       id: users.id, role: users.role, name: users.name, username: users.username, phone: users.phone, email: users.email, status: users.status, city: users.city, createdAt: users.createdAt,

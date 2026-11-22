@@ -104,7 +104,7 @@ curl $BASE/api/v1/jobs/{id}/shipments -H "X-API-Key: jrk_…"
           {!b2b && <p data-testid="api-b2b-off-doc" className="rounded-xl border border-gold/40 bg-gold/10 p-3 text-gold"><span className="font-medium">{t("jf2.api_b2b_title")}:</span> {t("jf2.api_b2b_off")}</p>}
           <p data-testid="api-cod-doc"><span className="font-medium">{t("fob.api_cod_title")}:</span> <code dir="ltr" className="text-xs text-cyan">shipments[].codCents (integer halalas, 0 – 10000000)</code></p>
           <p className="text-muted">{t("fob.api_cod_note")}</p>
-          <h4 className="pt-2 font-semibold" id="api-details-later">{t("pb.api_later_title")}</h4>
+          <h3 className="pt-2 font-semibold" id="api-details-later">{t("pb.api_later_title")}</h3>
           <p className="text-muted">{t("pb.api_later_note")}</p>
           <pre dir="ltr" aria-labelledby="api-details-later" className="overflow-x-auto rounded-xl bg-bg2 p-4 text-xs leading-relaxed text-cyan">{`curl -X POST $BASE/api/v1/jobs \\
   -H "X-API-Key: jrk_…" -H "Idempotency-Key: order-1002" -H "Content-Type: application/json" \\

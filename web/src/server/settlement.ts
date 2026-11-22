@@ -1,11 +1,12 @@
 import { and, desc, eq, gte, ilike, inArray, lt, or, sql, count, sum } from "drizzle-orm";
 import { contains } from "@/lib/sql";
-import { db, type Exec } from "@/db";
+import { db, type DB, type Exec } from "@/db";
 import {
   settlements, requests, driverProfiles, withdrawals, invoices, complaints, users, walletAccounts, businessProfiles, officeProfiles,
   type Request, type Offer, type User,
 } from "@/db/schema";
 import { err } from "@/lib/errors";
+import { logError } from "@/lib/log";
 import { getSettings } from "./settings";
 import { ensureAccount, platformAccount, post } from "./wallet";
 import { audit } from "./audit";
@@ -15,6 +16,25 @@ import { nextSeq } from "./counters";
 import { requirePerm } from "./auth/permissions";
 
 type Snap = { unitPriceCents: number; providerCostCents: number; expectedUnits: number; ruleVersion: number };
+
+/** What a person should read about a failed payout: the database's own message (drizzle wraps it in "Failed query: …" and keeps the reason in `cause`). */
+const why = (e: unknown) => { const m = (e as { cause?: { message?: string } } | null)?.cause?.message ?? (e instanceof Error ? e.message : "payout error"); return m.slice(0, 200); };
+
+/** VAT extracted from a VAT-inclusive total (decisions #5 / A6) — the one formula for invoices and settlements. Halalas in, halalas out (never a float). */
+export const vatOf = (totalCents: number, vatPct: number) => Math.round((totalCents * vatPct) / (100 + vatPct));
+
+/**
+ * Issues the tax invoice of a charge: a settled job (`settlementId`) or a fulfilled driverless rental (no settlement). The number comes from a counter that shares the caller's
+ * transaction, so numbers are gapless and a rolled-back payout never burns one. VAT is extracted at the rate in force NOW (the tax point is the invoice, not the order).
+ */
+export async function issueInvoice(tx: Exec, i: { requestId: string; settlementId: string | null; businessId: string; totalCents: number }) {
+  const cfg = await getSettings(tx);
+  const pct = Math.round(cfg.vatPct); // `invoices.vat_pct` is an integer column; the API only accepts whole percents, this keeps an older fractional setting from failing every payout
+  const vat = vatOf(i.totalCents, pct);
+  const number = `INV-${String(await nextSeq(tx, "invoice")).padStart(6, "0")}`;
+  const [row] = await tx.insert(invoices).values({ number, requestId: i.requestId, settlementId: i.settlementId, businessId: i.businessId, subtotalCents: i.totalCents - vat, vatCents: vat, totalCents: i.totalCents, vatPct: pct }).onConflictDoNothing().returning();
+  return row ?? null;
+}
 
 /**
  * Create the one-and-only settlement for an offer. Idempotent via UNIQUE(offer_id).
@@ -32,7 +52,7 @@ export async function createSettlement(tx: Exec, r: Request, o: Offer) {
   const [row] = await tx.insert(settlements).values({
     requestId: r.id, offerId: o.id, driverId: o.driverId, officeId: o.officeId, businessId: r.businessId, // office = snapshot from when the offer was made, never re-derived from the driver's current link
     finalUnits: o.finalUnits, reservedCents: reserved, customerCents: customer, providerCents: provider, marginCents: margin,
-    vatCents: Math.round((customer * s.vatPct) / (100 + s.vatPct)), refundCents: reserved - customer, pricingSnapshot: snap as never,
+    vatCents: vatOf(customer, Math.round(s.vatPct)), refundCents: reserved - customer, pricingSnapshot: snap as never,
     status: "approved", approvedAt: new Date(), // no review / approval step (E18): ready to pay the moment it exists
   }).onConflictDoNothing({ target: settlements.offerId }).returning();
   return row ?? null;
@@ -72,12 +92,10 @@ async function payoutCore(tx: Exec, id: string, actor: User | null): Promise<{ r
   await post(tx, { accountId: payee.id, kind: "payout", available: s.providerCents, idempotencyKey: k("payout"), requestId: s.requestId, offerId: s.offerId, settlementId: s.id, actorId: actor?.id });
   await post(tx, { accountId: plat.id, kind: "platform_fee", available: s.marginCents, idempotencyKey: k("fee"), requestId: s.requestId, settlementId: s.id, actorId: actor?.id });
   await tx.update(requests).set({ reservedCents: sql`${requests.reservedCents} - ${s.reservedCents}` }).where(eq(requests.id, s.requestId));
-  const [u] = await tx.update(settlements).set({ status: "paid", paidAt: new Date(), updatedAt: new Date() }).where(eq(settlements.id, id)).returning();
+  const inv = await issueInvoice(tx, { requestId: s.requestId, settlementId: s.id, businessId: s.businessId, totalCents: s.customerCents });
+  // The settlement may have waited for a complaint to clear while the VAT rate changed: the settlement's VAT is the one that was invoiced.
+  const [u] = await tx.update(settlements).set({ status: "paid", paidAt: new Date(), updatedAt: new Date(), ...(inv ? { vatCents: inv.vatCents } : {}) }).where(eq(settlements.id, id)).returning();
   await tx.update(driverProfiles).set({ jobsCompleted: sql`${driverProfiles.jobsCompleted} + 1` }).where(eq(driverProfiles.userId, s.driverId));
-  const cfg = await getSettings(tx);
-  const vat = Math.round((s.customerCents * cfg.vatPct) / (100 + cfg.vatPct)); // prices treated as VAT-inclusive [D]
-  const num = `INV-${String(await nextSeq(tx, "invoice")).padStart(6, "0")}`;
-  await tx.insert(invoices).values({ number: num, requestId: s.requestId, settlementId: s.id, businessId: s.businessId, subtotalCents: s.customerCents - vat, vatCents: vat, totalCents: s.customerCents, vatPct: cfg.vatPct }).onConflictDoNothing();
   await notify(s.officeId ?? s.driverId, "payout_paid", { amountCents: s.providerCents }, tx);
   await logEvent(tx, { requestId: s.requestId, offerId: s.offerId, actor: actor ? { id: actor.id, name: actor.name, role: actor.role } : null, type: "payout_paid", payload: { settlementId: s.id } });
   await audit(actor, "settlement.pay", "settlement", id, { provider: s.providerCents, margin: s.marginCents }, tx);
@@ -95,7 +113,15 @@ export async function settleOffer(tx: Exec, r: Request, o: Offer) {
   if (!row) return null;
   if (row.status === "paid") return row;
   if (await blockingComplaint(tx, row.requestId, row.offerId)) return row; // stays `approved` (= on hold)
-  return payoutTx(tx, row.id, null);
+  // The money moves inside a SAVEPOINT: if anything fails while paying (a lock timeout, a deadlock with another payout, a constraint), the driver's finished work must not be undone —
+  // before this, the error rolled back the whole delivery report and left the job stuck. The settlement is then marked `failed` (its escrow share stays reserved) and the housekeeping
+  // tick retries it; Finance sees it as "waiting" in the overview.
+  try { return await (tx as unknown as DB).transaction((sp) => payoutTx(sp, row.id, null)); }
+  catch (e) {
+    logError(e, { correlationId: `settle:${row.id}` });
+    const [u] = await tx.update(settlements).set({ status: "failed", note: why(e), updatedAt: new Date() }).where(eq(settlements.id, row.id)).returning();
+    return u;
+  }
 }
 
 /** Offers whose settlement has not been paid yet (held, failed, legacy): their escrow share must stay reserved. */
@@ -107,11 +133,24 @@ export async function unpaidOfferIds(tx: Exec, offerIds: string[]) {
 }
 
 /**
+ * Escrow (halalas) that `live` offers of a request still need: the shares of the offers whose settlement is not paid yet. A paid settlement already released its own share from the
+ * request's reserve, so it must NOT be taken off again when the rest of the reserve is returned (cancellation, closing open slots, completion).
+ */
+export async function escrowStillNeeded(tx: Exec, r: Pick<Request, "unitPriceCents">, live: Offer[]) {
+  const unpaid = await unpaidOfferIds(tx, live.map((o) => o.id));
+  return live.filter((o) => unpaid.has(o.id)).reduce((a, o) => a + (r.unitPriceCents ?? 0) * o.expectedUnits, 0);
+}
+
+/**
  * Housekeeping: pays every settlement that is not paid yet and is no longer held (hold released, a transient failure, or a settlement created
  * by the old review/approve flow). Each in its own transaction, so one problem never blocks the rest. Returns how many were paid.
  */
 export async function paySettlementsDue(limit = 100) {
-  const due = await db.select({ id: settlements.id }).from(settlements).where(inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"])).orderBy(settlements.createdAt).limit(limit);
+  // Held settlements (an open complaint) are left out of the window: otherwise `limit` of them would crowd out every payable settlement behind them. Oldest attempt first, so a
+  // settlement that keeps failing moves to the back (its `updatedAt` changes on every failure) instead of starving the rest.
+  const due = await db.select({ id: settlements.id }).from(settlements).where(and(inArray(settlements.status, ["pending_review", "reviewed", "approved", "failed"]),
+    sql`not exists (select 1 from complaints c where c.holds_settlement and c.status in ('open','in_progress') and (c.offer_id = ${settlements.offerId} or (c.offer_id is null and c.request_id = ${settlements.requestId})))`))
+    .orderBy(settlements.updatedAt, settlements.createdAt).limit(limit);
   let paid = 0;
   for (const d of due) {
     try {
@@ -123,8 +162,8 @@ export async function paySettlementsDue(limit = 100) {
       });
       if (applied) paid++;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "error";
-      await db.update(settlements).set({ status: "failed", note: msg.slice(0, 200), updatedAt: new Date() }).where(and(eq(settlements.id, d.id), inArray(settlements.status, ["approved", "pending_review", "reviewed"])));
+      logError(e, { correlationId: `settle:${d.id}` });
+      await db.update(settlements).set({ status: "failed", note: why(e), updatedAt: new Date() }).where(and(eq(settlements.id, d.id), inArray(settlements.status, ["approved", "pending_review", "reviewed", "failed"])));
     }
   }
   return paid;

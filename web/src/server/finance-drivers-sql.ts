@@ -23,7 +23,7 @@ export function whoCte(f: FdFilters, o: WhoOpts = {}): SQL {
   return sql`who as (
     select u.id from users u join driver_profiles dp on dp.user_id = u.id where u.role = 'driver'
       ${id ? sql`and u.id = ${id}` : sql``}
-      ${q ? (phone ? sql`and (u.name ilike ${q} or u.username ilike ${q} or u.phone ilike ${q})` : sql`and (u.name ilike ${q} or u.username ilike ${q})`) : sql``}
+      ${q ? (phone ? sql`and (u.name ilike ${q} or u.username ilike ${q} or u.phone ilike ${q})` : sql`and (u.name ilike ${q} or (u.username ilike ${q} and ${/\d{4}/.test(f.q ?? "") ? sql`false` : sql`true`}))`) : sql``}
       ${f.office === "independent" ? sql`and dp.office_id is null` : f.office ? sql`and dp.office_id = ${f.office}` : sql``}
       ${f.city ? sql`and u.city = ${f.city}` : sql``}
       ${f.status ? sql`and u.status = ${f.status}` : sql``}

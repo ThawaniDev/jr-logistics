@@ -8,11 +8,11 @@ import { cn } from "@/lib/cn";
 import { fmtDateTime } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
+import { notificationText } from "@/lib/notif-text";
 import { useTx } from "./admin-common";
 import { useOrder } from "./admin-order-ctx";
 
 const MSG_TONE: Record<string, Tone> = { sent: "success", delivered: "success", queued: "neutral", failed: "danger" };
-const flat = (d: Record<string, unknown> | null) => Object.fromEntries(Object.entries(d ?? {}).map(([k, v]) => [k, typeof v === "object" ? "" : String(v)]));
 
 /** One driver's chat with the business, read-only, oldest first. */
 function Thread({ th }: { th: any }) {
@@ -84,12 +84,12 @@ export function OrderComms() {
         {nt.items.length === 0 ? <div className="p-5"><EmptyState icon={<Bell className="size-9" aria-hidden />} title={t("dv1.notif_none")} /></div> : (
           <Table bare dense stack label={t("dv1.notif_title")} head={[t("common.date"), t("dv1.col_recipient"), t("dv1.col_notification"), t("common.status")]}>
             {nt.items.map((n: any) => {
-              const text = t(`notif.${n.type}`, flat(n.data));
+              const text = notificationText(t, n);
               return (
                 <tr key={n.id} data-testid="dv1-notif-row">
                   <Td label={t("common.date")} className="whitespace-nowrap text-muted">{fmtDateTime(n.createdAt, locale)}</Td>
                   <Td label={t("dv1.col_recipient")}>{n.userName} <span className="text-xs text-muted">({tx(`role.${n.userRole}`, n.userRole)})</span></Td>
-                  <Td label={t("dv1.col_notification")}>{text.startsWith("notif.") ? t("ubz.notif_generic") : text}</Td>
+                  <Td label={t("dv1.col_notification")}>{text}</Td>
                   <Td label={t("common.status")}>{n.readAt ? <Badge>{t("dv1.notif_read")}</Badge> : <Badge tone="warn">{t("dv1.notif_unread")}</Badge>}</Td>
                 </tr>
               );

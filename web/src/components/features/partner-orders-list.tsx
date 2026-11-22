@@ -4,9 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Archive, CheckCircle2, ChevronRight, Clock, Download, FilePlus2, Inbox, PackageX, RotateCcw, Truck } from "lucide-react";
 import { toast } from "sonner";
-import { Button, CellPair, EmptyState, ErrorState, PageHeader, PageLoading, Pagination, SearchBox, Segmented, Select, Stat, StatGrid, Table, Td, Toolbar, Badge } from "@/components/ui";
+import { Button, CellPair, EmptyState, ErrorState, PageHeader, PageLoading, Pagination, SearchBox, Segmented, Select, Stat, StatGrid, Table, Td, Toolbar, Badge, NoAccess } from "@/components/ui";
 import { useApi, useUrlPatch, useUrlState } from "@/components/ui/data";
-import { ApiError } from "@/lib/api";
 import { fmtDateTime, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/i18n/provider";
@@ -53,7 +52,7 @@ export function PartnerOrdersList({ apiBase }: { apiBase: string }) {
   const afterAction = () => { setPicked(new Set()); void list.mutate(); };
   const restore = useRestore(apiBase, afterAction);
 
-  if (!perms.view) return <ErrorState error={new ApiError("FORBIDDEN", "Forbidden", 403)} />;
+  if (!perms.view) return <NoAccess />;
 
   const counts = list.data?.counts;
   const connById = new Map(conns.items.map((c) => [c.id, c]));

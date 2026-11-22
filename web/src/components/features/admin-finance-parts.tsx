@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { UserRound, X } from "lucide-react";
-import { Button, EmptyState, ErrorState, Input, Notice, PageHeader, SearchBox, Skeleton } from "@/components/ui";
+import { Button, EmptyState, ErrorState, Input, SearchBox, Skeleton } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
 import { fmtMoney } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -43,11 +43,8 @@ export function partyHref(role: string | null | undefined, id: string | null | u
   return role === "business" ? `/admin/companies/${id}` : role === "office" ? `/admin/offices/${id}` : role === "driver" ? `/admin/drivers/${id}` : undefined;
 }
 
-/** A page the signed-in staff member may not open (the sidebar already hides it; this covers a typed URL). */
-export function NoAccess({ title }: { title: string }) {
-  const { t } = useI18n();
-  return <><PageHeader title={title} /><Notice tone="info">{t("err.FORBIDDEN")}</Notice></>;
-}
+/** A page the signed-in staff member may not open (the shell already blocks the sidebar areas; this covers a typed URL inside one). */
+export { NoAccess } from "@/components/ui";
 
 /** Placeholder rows while a list loads (keeps the toolbar and KPIs in place instead of a full-page spinner). */
 export function ListSkeleton({ rows = 6 }: { rows?: number }) {

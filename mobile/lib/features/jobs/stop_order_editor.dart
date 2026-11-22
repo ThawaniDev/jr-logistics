@@ -100,11 +100,11 @@ class _EditRow extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 4, 8),
       decoration: BoxDecoration(color: JR.bg2, borderRadius: BorderRadius.circular(10), border: Border.all(color: JR.line)),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        CircleAvatar(radius: 14, backgroundColor: JR.accent.withValues(alpha: 0.15), child: Text('${index + 1}', style: const TextStyle(color: JR.accent, fontSize: 12, fontWeight: FontWeight.w800))),
+        CircleAvatar(radius: 14, backgroundColor: JR.accent.withValues(alpha: 0.15), child: Text('${index + 1}', style: TextStyle(color: JR.accent, fontSize: 12, fontWeight: FontWeight.w800))),
         const SizedBox(width: 10),
         Expanded(child: Column(key: Key('order-row-$id'), crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(stop.address, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.25)),
-          Text(cityLabel(context, stop.city ?? fallbackCity), style: const TextStyle(color: JR.muted, fontSize: 13)),
+          Text(cityLabel(context, stop.city ?? fallbackCity), style: TextStyle(color: JR.muted, fontSize: 13)),
           if (next) Padding(padding: const EdgeInsets.only(top: 4), child: Pill(t('fma.stop_next'), tone: Tone.info)),
           Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
             small(Key('order-up-$id'), Icons.keyboard_arrow_up, t('fma.move_up'), index > 0 ? onUp : null),
@@ -112,7 +112,7 @@ class _EditRow extends StatelessWidget {
             if (index > 0) TextButton.icon(key: Key('order-first-$id'), style: TextButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 8)), onPressed: enabled ? onFirst : null, icon: const Icon(Icons.vertical_align_top, size: 18), label: Text(t('fma.make_next'))),
           ]),
         ])),
-        ReorderableDragStartListener(index: index, enabled: enabled, child: Padding(key: Key('order-handle-$id'), padding: const EdgeInsets.all(12), child: const Icon(Icons.drag_handle, color: JR.muted))),
+        ReorderableDragStartListener(index: index, enabled: enabled, child: Padding(key: Key('order-handle-$id'), padding: const EdgeInsets.all(12), child: Icon(Icons.drag_handle, color: JR.muted))),
       ]),
     );
   }

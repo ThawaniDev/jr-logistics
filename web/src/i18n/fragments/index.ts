@@ -60,8 +60,15 @@ import * as rdJF2 from "./rd-j-f2";
 import * as rdJA from "./rd-j-a";
 import * as rdJR from "./rd-j-r";
 import * as rdJFin from "./rd-j-fin";
+import * as rdKL1 from "./rd-k-l1";
+import * as rdKL2 from "./rd-k-l2";
+import * as rdKLead from "./rd-k-lead";
+import * as rdKA6 from "./rd-k-a6";
+import * as rdKA4 from "./rd-k-a4";
+import * as rdKA3 from "./rd-k-a3";
+import * as rdKA5 from "./rd-k-a5";
 
-const parts = [auth, business, driver, office, admin, shipCore, shipBusiness, shipDriver, shipAdmin, shipMobile, partnersCore, partnersBusiness, partnersAdmin, partnersV2Conn, partnersV2Orders, parcelsCore, parcelsBusiness, routeDriver, routeMobile, foCore, foBusiness, foAdmin, foDriver, foMobileA, foMobileB, uxBusiness, uxAdmin, uxDriver, uxMobile, uxServer, rdCore, rdFinance, rdPartners, rdOffices, rdAdminA, rdAdminB, rdBusiness, rdOffice, rdReportsF, rdReportsO, rdReportsD, rdReportsP, rdReportsQ, rdReportsR, rdData, rdCreate, rdDetail1, rdDetail2, rdDetail3, rdInvoice, rdFleetExport, rdFleet, rdFleetUi, rdJMa, rdJD, rdJF1, rdJMj, rdJF2, rdJA, rdJR, rdJFin];
+const parts = [auth, business, driver, office, admin, shipCore, shipBusiness, shipDriver, shipAdmin, shipMobile, partnersCore, partnersBusiness, partnersAdmin, partnersV2Conn, partnersV2Orders, parcelsCore, parcelsBusiness, routeDriver, routeMobile, foCore, foBusiness, foAdmin, foDriver, foMobileA, foMobileB, uxBusiness, uxAdmin, uxDriver, uxMobile, uxServer, rdCore, rdFinance, rdPartners, rdOffices, rdAdminA, rdAdminB, rdBusiness, rdOffice, rdReportsF, rdReportsO, rdReportsD, rdReportsP, rdReportsQ, rdReportsR, rdData, rdCreate, rdDetail1, rdDetail2, rdDetail3, rdInvoice, rdFleetExport, rdFleet, rdFleetUi, rdJMa, rdJD, rdJF1, rdJMj, rdJF2, rdJA, rdJR, rdJFin, rdKL1, rdKL2, rdKLead, rdKA6, rdKA3, rdKA4, rdKA5];
 const dup = new Set<string>();
 const merge = (lang: "en" | "ar" | "ur"): Dict => {
   const out: Dict = {};

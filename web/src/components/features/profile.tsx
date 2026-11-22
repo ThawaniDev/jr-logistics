@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Button, ErrorState, Input, Notice, PageHeader, PageLoading, Section, Select, StatusBadge, useAction } from "@/components/ui";
+import { Button, Card, ErrorState, Input, Notice, PageHeader, PageLoading, Section, Select, StatusBadge, useAction } from "@/components/ui";
+import { ThemeChoice } from "@/components/theme/theme-menu";
 import { useApi } from "@/components/ui/data";
 import { ApiError, patch } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -124,6 +125,7 @@ function ProfileForm({ data, reload, title, subtitle, top, children }: { data: a
           </div>
         </form>
         {children && <div className="min-w-0 space-y-6">{children}</div>}
+        <Card className="min-w-0"><ThemeChoice /></Card>
         <PasswordCard />
       </div>
     </>

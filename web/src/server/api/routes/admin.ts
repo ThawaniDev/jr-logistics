@@ -5,6 +5,7 @@ import { uuid, pageQuery } from "../schemas";
 import { db } from "@/db";
 import { users, driverProfiles, businessProfiles, officeProfiles, tickets, offers, requests } from "@/db/schema";
 import { err } from "@/lib/errors";
+import { maskPhoneUsername } from "@/lib/username";
 import { ALL_PERMISSIONS, STAFF_PRESETS, SERVICES } from "@/server/catalog";
 import { requirePerm, can } from "@/server/auth/permissions";
 import { getSettings, updateSettings } from "@/server/settings";
@@ -35,7 +36,7 @@ defineRoutes([
   // Settings (admin/settings.edit)
   { method: "GET", path: "/admin/settings", auth: bo, handler: async ({ user }) => { requirePerm(user, "settings.view", "settings.edit"); return getSettings(); } },
   { method: "PATCH", path: "/admin/settings", auth: bo, body: z.object({
-    enabledServices: z.array(z.enum(["delivery_driver", "car_with_driver", "car_without_driver"])).min(1).optional(), vatPct: z.number().min(0).max(30).optional(),
+    enabledServices: z.array(z.enum(["delivery_driver", "car_with_driver", "car_without_driver"])).min(1).optional(), vatPct: z.number().int().min(0).max(30).optional(), // whole percent: invoices.vat_pct is an integer column (a 7.5 here made every payout fail)
     settlementPeriod: z.enum(["weekly", "monthly"]).optional(), cancelPolicyEnabled: z.boolean().optional(), cancelWarnAt: z.number().int().min(1).max(20).optional(),
     cancelSuspendAt: z.number().int().min(1).max(30).optional(), cancelWindowDays: z.number().int().min(1).max(90).optional(), cancelSuspendDays: z.number().int().min(1).max(90).optional(),
     lateGraceMin: z.number().int().min(0).max(240).optional(), checkinEarlyMin: z.number().int().min(0).max(1440).optional(), officeWindowMin: z.number().int().min(0).max(1440).optional(), stopWaitMin: z.number().int().min(0).max(120).optional(),
@@ -70,7 +71,10 @@ defineRoutes([
   { method: "GET", path: "/admin/cod/remittances", auth: bo, query: z.object({ businessId: uuid.optional(), driverId: uuid.optional(), page: z.coerce.number().int().min(1).optional() }), handler: async ({ user, q }) => { requirePerm(user, "cod.manage", "finance.view"); return listRemittances(q); } },
 
   // Users & verification
-  { method: "GET", path: "/admin/users", auth: bo, query: pageQuery.extend({ role: z.string().optional(), verification: z.string().optional() }), handler: async ({ user, q }) => { if (q.role === "office" || q.role === "business") requirePerm(user, "users.view", "offices.view", "verification.manage"); else requirePerm(user, "users.view"); return listUsers(q); } },
+  { method: "GET", path: "/admin/users", auth: bo, query: pageQuery.extend({ role: z.string().optional(), verification: z.string().optional() }), handler: async ({ user, q }) => { if (q.role === "office" || q.role === "business") requirePerm(user, "users.view", "offices.view", "verification.manage"); else requirePerm(user, "users.view");
+    // The list used to return every phone number as stored: the same masking rule as the single-user view and the driver directory applies (decision A8).
+    const sensitive = can(user, "drivers.sensitive"); const r = await listUsers(q, { phone: sensitive });
+    return sensitive ? r : { ...r, items: r.items.map((i) => ({ ...i, phone: maskPhone(i.phone), username: maskPhoneUsername(i.username) })) }; } },
   { method: "GET", path: "/admin/users/:id", auth: bo, handler: async ({ user, params }) => {
     requirePerm(user, "users.view");
     const [u] = await db.select().from(users).where(eq(users.id, params.id)); if (!u) throw err("NOT_FOUND");
@@ -121,7 +125,7 @@ defineRoutes([
     const ids = [...new Set(r.items.map((x) => x.businessId))];
     const biz = ids.length ? await db.select({ id: users.id, name: users.name, phone: users.phone, company: businessProfiles.companyName }).from(users).leftJoin(businessProfiles, eq(businessProfiles.userId, users.id)).where(inArray(users.id, ids)) : [];
     const nm = new Map(biz.map((b) => [b.id, b]));
-    return { ...r, items: r.items.map((x) => ({ ...viewRequest(x, user), businessName: nm.get(x.businessId)?.company ?? nm.get(x.businessId)?.name ?? null, businessPhone: nm.get(x.businessId)?.phone ?? null })) }; } },
+    return { ...r, items: r.items.map((x) => ({ ...viewRequest(x, user), businessName: nm.get(x.businessId)?.company ?? nm.get(x.businessId)?.name ?? null, businessPhone: can(user, "drivers.sensitive") ? nm.get(x.businessId)?.phone ?? null : maskPhone(nm.get(x.businessId)?.phone ?? null) })) }; } },
   { method: "GET", path: "/admin/shipments/search", auth: bo, query: z.object({ q: z.string().max(80), status: z.string().max(20).optional(), page: z.coerce.number().int().min(1).optional(), pageSize: z.coerce.number().int().min(1).max(100).optional() }), handler: ({ user, q }) => stops.searchShipments(user, q) },
   { method: "GET", path: "/admin/ops/today", auth: bo, handler: async ({ user }) => { requirePerm(user, "requests.view"); return opsToday(); } },
   { method: "GET", path: "/admin/ops/alerts", auth: bo, handler: async ({ user }) => { requirePerm(user, "requests.view"); return { items: await opsAlerts() }; } },
@@ -153,10 +157,12 @@ defineRoutes([
     requirePerm(user, "finance.view", "withdrawals.manage");
     const size = q.pageSize ?? 25, p = q.page ?? 1, where = q.status ? eq(wd.status, q.status) : undefined;
     const [rows, [{ n }]] = await Promise.all([
-      db.select({ w: wd, name: users.name, role: users.role, balance: sql<number>`(select available_cents from wallet_accounts where owner_id = ${wd.userId})` }).from(wd).innerJoin(users, eq(users.id, wd.userId)).where(where).orderBy(desc(wd.createdAt)).limit(size).offset((p - 1) * size),
+      db.select({ w: wd, name: users.name, role: users.role, balance: sql<number>`(select available_cents::float8 from wallet_accounts where owner_id = ${wd.userId})` }).from(wd).innerJoin(users, eq(users.id, wd.userId)).where(where).orderBy(desc(wd.createdAt)).limit(size).offset((p - 1) * size),
       db.select({ n: count() }).from(wd).where(where),
     ]);
-    return { page: p, pageSize: size, total: Number(n), items: rows.map((x) => ({ ...x.w, userName: x.name, userRole: x.role, balanceCents: x.balance })) };
+    // The full IBAN is for the people who pay the withdrawal (and HR with `drivers.sensitive`); anyone else with `finance.view` sees the last four digits (decision A8).
+    const fullIban = can(user, "withdrawals.manage") || can(user, "drivers.sensitive");
+    return { page: p, pageSize: size, total: Number(n), items: rows.map((x) => ({ ...x.w, iban: fullIban ? x.w.iban : `•••• ${x.w.iban.slice(-4)}`, userName: x.name, userRole: x.role, balanceCents: x.balance })) };
   } },
   { method: "POST", path: "/admin/finance/withdrawals/:id/decision", auth: bo, body: z.object({ decision: z.enum(["paid", "rejected"]), paymentRef: z.string().max(80).optional(), note: z.string().max(300).optional() }), handler: ({ user, params, input }) => settle.decideWithdrawal(user, params.id, input.decision, input) },
 

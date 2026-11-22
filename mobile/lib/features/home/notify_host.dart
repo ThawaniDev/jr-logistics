@@ -49,7 +49,7 @@ class _NotifyHostState extends ConsumerState<NotifyHost> {
     final strings = ref.read(stringsProvider).value;
     m..hideCurrentSnackBar()..showSnackBar(SnackBar(
       key: const Key('offer-banner'), duration: const Duration(seconds: 8),
-      content: Semantics(liveRegion: true, child: Row(children: [const Icon(Icons.work, color: JR.cyan, size: 20), const SizedBox(width: 10), Expanded(child: Text(text, maxLines: 3, overflow: TextOverflow.ellipsis))])),
+      content: Semantics(liveRegion: true, child: Row(children: [Icon(Icons.work, color: JR.cyan, size: 20), const SizedBox(width: 10), Expanded(child: Text(text, maxLines: 3, overflow: TextOverflow.ellipsis))])),
       action: SnackBarAction(label: strings?.call('fmb.notify_view') ?? 'View', onPressed: _openOffers),
     ));
   }

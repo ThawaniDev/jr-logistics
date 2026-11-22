@@ -46,7 +46,18 @@ final officeCash = CashSummary({
 const _long = 'Abdulrahman Mohammed Al-Qahtani Al-Dossary bin Abdullah, Villa 12';
 const _address = 'Prince Sultan Bin Abdulaziz Road, Al Olaya District, Building 4, Floor 2, Apartment 205, near the Kingdom Centre tower';
 
+/// Every case runs once per mode: the layout must hold in light and in dark (the palette changes colours only, but a colour can hide or reveal text).
 void main() {
+  for (final mode in Brightness.values) {
+    group('${mode.name} mode', () {
+      setUp(() => useBrightness(mode));
+      tearDown(() => useBrightness(Brightness.dark));
+      _suite();
+    });
+  }
+}
+
+void _suite() {
   for (final lang in ['en', 'ar', 'ur']) {
     for (final scale in [1.0, 1.2, 1.4]) {
       group('$lang @ ${scale}x', () {
@@ -117,5 +128,5 @@ class _OfficeApi extends FakeApi {
     overviewResult = Overview({'availability': 'available', 'verificationStatus': 'verified', 'newOffers': 0, 'activeJobs': 0, 'jobsCompleted': 3, 'rating': 4.5, 'officeLinked': true, 'wallet': null, 'walletManagedByOffice': true, 'officeName': 'Al Noor Courier Services and Logistics Company', 'cash': {'outstandingCents': 150000, 'orders': 2}});
   }
   @override
-  Future<Json> wallet() async => {'managedByOffice': true, 'availableCents': null, 'reservedCents': null, 'heldCents': null, 'entries': [], 'total': 0, 'page': 1, 'pageSize': 25};
+  Future<Json> wallet({int page = 1}) async => {'managedByOffice': true, 'availableCents': null, 'reservedCents': null, 'heldCents': null, 'entries': [], 'total': 0, 'page': 1, 'pageSize': 25};
 }

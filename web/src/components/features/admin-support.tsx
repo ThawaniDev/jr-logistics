@@ -2,9 +2,8 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, ChevronRight, Clock, Flame, Inbox, LifeBuoy, UserX } from "lucide-react";
-import { Button, EmptyState, ErrorState, PageHeader, PageLoading, Pagination, SearchBox, Segmented, Select, Stat, StatGrid, StatusBadge, Table, Td, CellPair, Toolbar } from "@/components/ui";
+import { Button, EmptyState, ErrorState, PageHeader, PageLoading, Pagination, SearchBox, Segmented, Select, Stat, StatGrid, StatusBadge, Table, Td, CellPair, Toolbar, NoAccess } from "@/components/ui";
 import { useUrlPatch, useUrlState } from "@/components/ui/data";
-import { ApiError } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
@@ -28,7 +27,7 @@ function CasesList() {
   const patchUrl = useUrlPatch();
   const queue = useQueue("tickets"); const people = useAssignees("tickets");
   const list = useCaseList("tickets", { status, priority, role, assignee, hold: "", q: dq, page }, SIZE);
-  if (!hasPerm(me, "tickets.view")) return <ErrorState error={new ApiError("FORBIDDEN", "Forbidden", 403)} />;
+  if (!hasPerm(me, "tickets.view")) return <NoAccess />;
   const st = queue.data ? caseStats(queue.data) : null; const qd = queue.data;
   const more = (n: number) => (st?.capped ? `${n}+` : n);
   const f = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };

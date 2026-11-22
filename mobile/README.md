@@ -3,12 +3,12 @@
 Driver-facing Android/iOS app. Talks only to the Next.js API (`../web`) — no separate source of truth. UI state is **server-driven** (`actions` on each job), so the web portal and the app can never disagree about the next step.
 Brand tokens (`lib/core/theme.dart`) match the web design tokens; strings come from the web dictionaries (`assets/i18n/*.json`, exported by `npm run i18n:export`), Arabic RTL / English / Urdu RTL.
 
-**Features:** phone-OTP sign-in & registration · online/offline with explicit location consent · offers & open requests with terms · one-clear-next-step job screen (check-in, confirm loaded, report delivered with big stepper) · WhatsApp **hand-off** (prefilled localized message; we never send or read replies) · "can't reach recipient" exception · per-parcel **stops** worked one at a time (best route planned by the server with Google Routes — traffic-aware, or a clearly labelled estimate —, shown as a route summary with distance / driving time / warnings, a per-stop driving leg and location badges; the driver reviews and approves it, can **re-optimise** it from where they are (before and after approving) and open the next stops in **Google Maps**; call / WhatsApp / navigate per stop; delivery code or receipt photo; unreachable wait timer; failure reasons) · in-app chat · earnings, withdrawals · documents (camera/gallery) · notifications.
+**Features:** username + password sign-in & registration (J1; a temporary password must be replaced at first sign-in; no one-time codes) · online/offline with explicit location consent · offers & open requests with terms · one-clear-next-step job screen (check-in, confirm loaded, report delivered with big stepper) · WhatsApp **hand-off** (prefilled localized message; we never send or read replies) · "can't reach recipient" exception · per-parcel **stops** worked one at a time (best route planned by the server with Google Routes — traffic-aware, or a clearly labelled estimate —, shown as a route summary with distance / driving time / warnings, a per-stop driving leg and location badges; the driver reviews and approves it, can **re-optimise** it from where they are (before and after approving) and open the next stops in **Google Maps**; call / WhatsApp / navigate per stop; delivery code or receipt photo; unreachable wait timer; failure reasons) · in-app chat · earnings, withdrawals · documents (camera/gallery) · notifications.
 
 ```bash
 flutter pub get
 flutter run --dart-define=API_BASE_URL=http://localhost:3000       # Android emulator default: http://10.0.2.2:3000
-flutter analyze && flutter test                                    # unit + widget tests (network, double-submit, OTP states, receipt upload, error mapping, RTL / text scale)
+flutter analyze && flutter test                                    # unit + widget tests (network, double-submit, sign-in states, receipt upload, error mapping, RTL / text scale)
 ./tool/live_test.sh                                                # spins up the real server + test DB, runs the live API tests (incl. the best-route one)
 ./tool/live_test.sh --e2e                                          # + full journey on the iOS simulator (DEVICE="iPhone 17 Pro")
 ```
@@ -27,3 +27,12 @@ Release builds require HTTPS (cleartext is only allowed in the Android debug man
 
 Tests for all of this: `test/unit/mobile_b_*.dart`, `test/widget/mobile_b_*.dart` (fakes in `test/helpers_extra.dart`; the route-map, cash, offers, notifications, support and wallet screens, plus a 320 dp × 1.4x text sweep in en/ar/ur). The single live case (`cash with me + support tickets …`) is at the end of `test/integration/live_api_test.dart`.
 
+
+## Platform notes (audit K / A6)
+
+- **Location is foreground-only.** The app reports the driver's position (every 90 s) and measures the arrival distance only while it is open; a phone that is locked or showing Google Maps sends nothing. Background location needs `UIBackgroundModes: location`, `ACCESS_BACKGROUND_LOCATION` + a foreground service and store review — an **owner decision** (memory/audit/mobile.md D1).
+- **Signing out takes the driver offline** (`PUT /driver/availability {available:false}` + `DELETE /driver/location`, best effort, then `/auth/logout`). A session the server already ended (401) cannot do that; ops can still set the driver offline.
+- **Long lists are paged by the server** (finished jobs 100, wallet entries 50, notifications 30): each list ends with "Load more" while the server holds more.
+- **Native launch screens follow the system appearance** (iOS `LaunchBackground` colour asset with a dark variant used by `LaunchScreen.storyboard`; Android `values/colors.xml` + `values-night/colors.xml`, plus the Android 12 splash in `values-v31` / `values-night-v31`). Colours = the app's `bg` in light and dark. When the in-app theme is forced against the system setting the first frame can differ briefly.
+- **Install marker.** `install_marker` in shared_preferences is written on the first launch; when it is missing (fresh install) a session token left in the iOS keychain by an earlier install is dropped. Upgrading from a build that did not have the marker signs the driver in again once.
+- A release build must be given `--dart-define=API_BASE_URL=https://…`; without it the app shows a configuration error instead of silently talking to localhost.

@@ -46,7 +46,7 @@ const _mustChange = {'id': 'u1', 'role': 'driver', 'name': 'Omar Test', 'usernam
 
 /// The whole app (real router + real auth notifier) with the session [token] already stored or not.
 Future<ProviderContainer> pumpApp(WidgetTester t, {required FakeApi api, bool token = false, String lang = 'en', Map<String, Object> prefs = const {}}) async {
-  SharedPreferences.setMockInitialValues({'lang': lang, ...prefs});
+  SharedPreferences.setMockInitialValues({'lang': lang, 'theme': testBrightness.name, installMarkerKey: '1', ...prefs}); // the marker: not a first launch of the install
   final p = await SharedPreferences.getInstance();
   final store = MemoryTokenStore();
   if (token) await store.write('tok');
@@ -129,7 +129,18 @@ Future<void> expectNoOverflow(WidgetTester t) async {
   for (var i = 0; i < 10; i++) { await t.drag(list.first, const Offset(0, -450)); await t.pump(); expect(t.takeException(), isNull, reason: 'after scroll $i'); }
 }
 
+/// Every case runs once per mode: the layout must hold in light and in dark (the palette changes colours only, but a colour can hide or reveal text).
 void main() {
+  for (final mode in Brightness.values) {
+    group('${mode.name} mode', () {
+      setUp(() => useBrightness(mode));
+      tearDown(() => useBrightness(Brightness.dark));
+      _suite();
+    });
+  }
+}
+
+void _suite() {
   group('Login screen', () {
     testWidgets('the last username is remembered; the password never is; Sign in needs both', (t) async {
       await pumpApp(t, api: FakeApi(), prefs: {'last_username': 'demo.driver'});
@@ -377,6 +388,17 @@ void main() {
       await reveal(t, 'phone');
       expect(find.text('An account with this mobile number already exists.'), findsWidgets);
       expect(t.widget<TextField>(find.byKey(const Key('phone'))).controller!.text, '0500000011', reason: 'nothing typed is lost');
+    });
+
+    testWidgets('a lost answer to Create account says the account may exist — sign in — instead of inviting a second try', (t) async {
+      final api = FakeApi();
+      await openRegister(t, api);
+      await fillRegister(t);
+      api.errorOnNext = apiErr('NETWORK', 0);
+      await tapKey(t, 'register');
+      await settle(t);
+      expect(find.text('No connection. Your account may already have been created — try signing in before registering again.'), findsOneWidget);
+      expect(find.text('That username is already taken.'), findsNothing);
     });
 
     testWidgets('the sign-in link goes back to the login screen', (t) async {

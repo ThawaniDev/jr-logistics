@@ -8,7 +8,7 @@ import { OFFER_BUSY, TEMPERATURE_VEHICLES, SERVICE_MAP, type ServiceKey } from "
 import { getSettings, type Settings } from "./settings";
 import { notify } from "./notify";
 import { logEvent } from "./events";
-import { isManifestJob, poolSize } from "./shipments";
+import { isManifestJob, manifestFacts, poolSize } from "./shipments";
 import { touchRequest } from "./data-capture";
 
 export type Reason =
@@ -63,49 +63,69 @@ export async function driverHasConflict(x: Exec, driverId: string, req: Pick<Req
 
 /** Hard eligibility guards + explainable score. Score never overrides a guard. */
 export async function evaluateCandidates(x: Exec, req: Request, opts: { driverIds?: string[]; onlyOfficeId?: string | null } = {}): Promise<Candidate[]> {
+  return (await evaluateCandidatesMany(x, [req], opts)).get(req.id) ?? [];
+}
+
+/**
+ * The same evaluation for MANY requests in a fixed number of statements (6 + settings, however many requests): everything that belongs to the driver (profile, busy windows,
+ * ready offices, active job, recent cancellations) is read once; only "already offered for THIS request" is per request (one grouped query). Lists that show "what could I / my
+ * office take" (driver opportunities, office opportunities, backfill on going online) used to run the whole evaluation once per open request.
+ * Result per request is exactly what `evaluateCandidates` returns for it alone.
+ */
+export async function evaluateCandidatesMany(x: Exec, reqs: Request[], opts: { driverIds?: string[]; onlyOfficeId?: string | null } = {}): Promise<Map<string, Candidate[]>> {
+  const out = new Map<string, Candidate[]>();
+  if (!reqs.length) return out;
   const settings = await getSettings(x);
+  const services = [...new Set(reqs.map((r) => r.service))];
   const rows = await x.select({ u: users, p: driverProfiles }).from(users)
     .innerJoin(driverProfiles, eq(driverProfiles.userId, users.id))
     .where(and(eq(users.role, "driver"), eq(users.status, "active"),
       opts.driverIds ? inArray(users.id, opts.driverIds) : sql`true`,
       opts.onlyOfficeId ? eq(driverProfiles.officeId, opts.onlyOfficeId) : sql`true`,
-      sql`${req.service} = any(${driverProfiles.services})`));
+      or(...services.map((sv) => sql`${sv} = any(${driverProfiles.services})`))));
   const ids = rows.map((r) => r.u.id);
   // Sequential on purpose: `x` may be a single transaction connection (no concurrent queries).
   const busy = await busyWindows(x, ids);
-  const existing = ids.length ? await x.select({ d: offers.driverId }).from(offers).where(and(eq(offers.requestId, req.id), isNotNull(offers.driverId), sql`${offers.status} <> 'expired'`)) : [];
+  const busyBy = new Map<string, Array<{ startsAt: Date; durationDays: number }>>();
+  for (const b of busy) (busyBy.get(b.driverId) ?? busyBy.set(b.driverId, []).get(b.driverId)!).push(b);
+  const existing = ids.length ? await x.select({ r: offers.requestId, d: offers.driverId }).from(offers).where(and(inArray(offers.requestId, reqs.map((r) => r.id)), isNotNull(offers.driverId), sql`${offers.status} <> 'expired'`)) : [];
+  const offeredBy = new Map<string, Set<string>>();
+  for (const e of existing) (offeredBy.get(e.r) ?? offeredBy.set(e.r, new Set()).get(e.r)!).add(e.d);
   const offices = await readyOfficeIds(x, [...new Set(rows.map((r) => r.p.officeId).filter(Boolean) as string[])]);
-  const offered = new Set(existing.map((e) => e.d));
   const active = settings.driverSingleActiveJob ? await activeJobs(x, ids) : new Map<string, ActiveJob>();
-  const w = windowOf(req);
   const recentCancels = await recentCancelCounts(x, ids, settings.cancelWindowDays);
-  const needsTemp = req.vehicleType ? TEMPERATURE_VEHICLES.includes(req.vehicleType) : false;
   const now = new Date();
-  return rows.map(({ u, p }) => {
-    const reasons: Reason[] = [];
-    if (settings.requireDriverVerification && p.verificationStatus !== "verified") reasons.push("not_verified");
-    if (p.availability !== "available") reasons.push("unavailable");
-    if (p.suspendedUntil && p.suspendedUntil > now) reasons.push("suspended");
-    if (req.vehicleType && p.vehicleType !== req.vehicleType && SERVICE_MAP[req.service as ServiceKey]?.needsVehicle) reasons.push("vehicle_mismatch");
-    if (needsTemp && req.temperature && p.vehicleTemperature !== req.temperature) reasons.push("temp_mismatch");
-    if (u.city && req.pickupCity && u.city !== req.pickupCity) reasons.push("city_mismatch");
-    if (p.officeId && !offices.has(p.officeId)) reasons.push("office_ineligible");
-    if (req.preferredOfficeId && p.officeId !== req.preferredOfficeId && opts.onlyOfficeId === undefined) { /* office window handled by caller */ }
-    if (offered.has(u.id)) reasons.push("already_offered");
-    if (active.has(u.id)) reasons.push("busy"); // E11: one active job at a time — no new offers while he is working
-    const mine = busy.filter((b) => b.driverId === u.id);
-    if (settings.overlapPolicy === "single_active" ? mine.length > 0 : mine.some((b) => { const bw = windowOf(b); return bw.start < w.end && w.start < bw.end; })) reasons.push("time_overlap");
-    const factors: Record<string, number> = {};
-    if (!reasons.length) {
-      const avg = p.ratingCount ? p.ratingSum / p.ratingCount : 0;
-      factors.base = 50;
-      factors.rating = Math.min(Math.round(avg * 4), 20);
-      factors.experience = Math.min(p.jobsCompleted, 10);
-      factors.cancellations = -Math.min((recentCancels.get(u.id) ?? 0) * 3, 15);
-    }
-    const score = reasons.length ? 0 : Object.values(factors).reduce((a, b) => a + b, 0);
-    return { driverId: u.id, name: u.name, city: u.city, vehicleType: p.vehicleType, score, reasons, factors, officeId: p.officeId };
-  }).sort((a, b) => b.score - a.score || a.driverId.localeCompare(b.driverId));
+  for (const req of reqs) {
+    const w = windowOf(req);
+    const offered = offeredBy.get(req.id) ?? new Set<string>();
+    const needsTemp = req.vehicleType ? TEMPERATURE_VEHICLES.includes(req.vehicleType) : false;
+    out.set(req.id, rows.filter(({ p }) => p.services.includes(req.service)).map(({ u, p }) => {
+      const reasons: Reason[] = [];
+      if (settings.requireDriverVerification && p.verificationStatus !== "verified") reasons.push("not_verified");
+      if (p.availability !== "available") reasons.push("unavailable");
+      if (p.suspendedUntil && p.suspendedUntil > now) reasons.push("suspended");
+      if (req.vehicleType && p.vehicleType !== req.vehicleType && SERVICE_MAP[req.service as ServiceKey]?.needsVehicle) reasons.push("vehicle_mismatch");
+      if (needsTemp && req.temperature && p.vehicleTemperature !== req.temperature) reasons.push("temp_mismatch");
+      if (u.city && req.pickupCity && u.city !== req.pickupCity) reasons.push("city_mismatch");
+      if (p.officeId && !offices.has(p.officeId)) reasons.push("office_ineligible");
+      if (req.preferredOfficeId && p.officeId !== req.preferredOfficeId && opts.onlyOfficeId === undefined) { /* office window handled by caller */ }
+      if (offered.has(u.id)) reasons.push("already_offered");
+      if (active.has(u.id)) reasons.push("busy"); // E11: one active job at a time — no new offers while he is working
+      const mine = busyBy.get(u.id) ?? [];
+      if (settings.overlapPolicy === "single_active" ? mine.length > 0 : mine.some((b) => { const bw = windowOf(b); return bw.start < w.end && w.start < bw.end; })) reasons.push("time_overlap");
+      const factors: Record<string, number> = {};
+      if (!reasons.length) {
+        const avg = p.ratingCount ? p.ratingSum / p.ratingCount : 0;
+        factors.base = 50;
+        factors.rating = Math.min(Math.round(avg * 4), 20);
+        factors.experience = Math.min(p.jobsCompleted, 10);
+        factors.cancellations = -Math.min((recentCancels.get(u.id) ?? 0) * 3, 15);
+      }
+      const score = reasons.length ? 0 : Object.values(factors).reduce((a, b) => a + b, 0);
+      return { driverId: u.id, name: u.name, city: u.city, vehicleType: p.vehicleType, score, reasons, factors, officeId: p.officeId };
+    }).sort((a, b) => b.score - a.score || a.driverId.localeCompare(b.driverId)));
+  }
+  return out;
 }
 
 export async function recentCancelCounts(x: Exec, driverIds: string[], days: number) {
@@ -151,10 +171,12 @@ export async function dispatchOffers(x: Exec, req: Request, opts: { replacement?
  * E12 — one in-app notification per new offer, carrying what the driver needs to decide at a glance (parcels, cities, earning — hidden for
  * office drivers, whose office is paid). The apps turn it into a device notification + sound.
  */
-async function notifyOffers(x: Exec, req: Request, snap: { providerCostCents: number; expectedUnits: number }, created: Array<{ offerId: string; driverId: string; officeId: string | null }>, type: "offer_new" | "offer_replacement") {
+export async function notifyOffers(x: Exec, req: Request, snap: { providerCostCents: number; expectedUnits: number }, created: Array<{ offerId: string; driverId: string; officeId: string | null }>, type: "offer_new" | "offer_replacement") {
+  // `parcels` only exists for per-parcel delivery jobs; a vehicle-day job has no parcel count (the text then uses the short variant `notif.<type>__short`, without it).
+  const parcels = SERVICE_MAP[req.service as ServiceKey]?.hasShipments ? { parcels: snap.expectedUnits } : {};
   for (const c of created) {
     await notify(c.driverId, type, {
-      requestId: req.id, ref: req.ref, offerId: c.offerId, parcels: snap.expectedUnits, pickupCity: req.pickupCity, deliveryCity: req.deliveryCity,
+      requestId: req.id, ref: req.ref, offerId: c.offerId, ...parcels, pickupCity: req.pickupCity, deliveryCity: req.deliveryCity,
       earningCents: c.officeId ? null : earningFor(snap.providerCostCents, snap.expectedUnits),
     }, x);
   }
@@ -171,13 +193,16 @@ export async function backfillOffersForDriver(driverId: string, max = 10, x: Exe
     inArray(requests.status, ["published", "filling"]), sql`${requests.slotsFilled} < ${requests.quantity}`, sql`${requests.service} <> 'car_without_driver'`,
     sql`${requests.startsAt} > now()`, or(isNull(requests.officeWindowEndsAt), lt(requests.officeWindowEndsAt, new Date())),
   )).orderBy(requests.startsAt).limit(50);
+  // A fixed number of statements for the whole list (the per-request manifest / pool / candidate lookups used to cost ~8 statements EACH, on every "go online" and every finished job).
+  const facts = await manifestFacts(x, open.map((r) => r.id));
+  const worth = open.filter((r) => { const f = facts.get(r.id); return !(f?.manifest && f.pool === 0); }); // nothing left to carry: no point offering
+  const cands = await evaluateCandidatesMany(x, worth.filter((r) => r.pricingSnapshot), { driverIds: [driverId] });
   let created = 0;
-  for (const r of open) {
+  for (const r of worth) {
     if (created >= max) break;
     const snap = r.pricingSnapshot as { providerCostCents: number; expectedUnits: number } | null;
     if (!snap) continue;
-    if ((await isManifestJob(x, r.id)) && (await poolSize(x, r.id)) === 0) continue;
-    const [c] = await evaluateCandidates(x, r, { driverIds: [driverId] });
+    const [c] = cands.get(r.id) ?? [];
     if (!c || c.reasons.length) continue;
     const ins = await x.insert(offers).values({
       requestId: r.id, driverId, officeId: c.officeId, status: "offered", source: "system", expectedUnits: snap.expectedUnits,

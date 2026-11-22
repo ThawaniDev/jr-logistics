@@ -106,7 +106,7 @@ class _ArrivalSectionState extends ConsumerState<ArrivalSection> {
       handle: (e) {
         if (e is! ApiException || !mounted) return false;
         if (e.code == 'TOO_FAR_FROM_WAREHOUSE') {
-          final d = (e.details['distanceM'] as num?)?.toDouble(), r = (e.details['radiusM'] as num?)?.toDouble();
+          final d = numOf(e.details['distanceM'])?.toDouble(), r = numOf(e.details['radiusM'])?.toDouble();
           if (d != null && r != null) { setState(() { _problem = _Problem.tooFar; _tooFar = (dist: d, radius: r); _distanceM = d; }); return true; }
         }
         if (e.code == 'LOCATION_REQUIRED') { setState(() => _problem = _Problem.locationRequired); return true; }
@@ -126,7 +126,7 @@ class _ArrivalSectionState extends ConsumerState<ArrivalSection> {
     Widget? distance;
     if (a.geofence && a.hasWarehouse) {
       distance = d == null
-          ? Text(t('fma.dist_unknown'), key: const Key('arrival-distance'), style: const TextStyle(color: JR.muted, fontSize: 13.5, height: 1.4))
+          ? Text(t('fma.dist_unknown'), key: const Key('arrival-distance'), style: TextStyle(color: JR.muted, fontSize: 13.5, height: 1.4))
           : Row(key: const Key('arrival-distance'), crossAxisAlignment: CrossAxisAlignment.start, children: [
               Icon(inside ? Icons.check_circle : Icons.near_me_outlined, size: 20, color: inside ? JR.accent : JR.gold),
               const SizedBox(width: 8),

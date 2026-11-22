@@ -103,6 +103,8 @@ export async function createRule(actor: User, input: RuleInput) {
   const cityKeys = new Set(settings.cities.map((c) => c.key));
   for (const c of [input.pickupCity, input.deliveryCity]) if (c && !cityKeys.has(c)) throw err("VALIDATION", `Unknown city ${c}`);
   return db.transaction(async (tx) => {
+    // Two admins saving the same scope at once would both retire "the previous version" and both create version n+1 (two approved rules, ties resolved arbitrarily): serialise per scope.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${["pricing", input.service, input.vehicleType ?? "", temperature ?? "", input.pickupCity ?? "", input.deliveryCity ?? "", input.businessId ?? ""].join("|")}))`);
     const same = and(
       eq(pricingRules.service, input.service), eq(pricingRules.status, "approved"),
       input.vehicleType ? eq(pricingRules.vehicleType, input.vehicleType) : isNull(pricingRules.vehicleType),

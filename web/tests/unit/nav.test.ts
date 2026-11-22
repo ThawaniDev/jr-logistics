@@ -48,13 +48,17 @@ describe("sidebar navigation (F-series)", () => {
     expect(NAV.staff).toBe(NAV.admin);
     expect(visibleNav("admin", all).flatMap((g) => g.items).length).toBe(NAV.admin.flatMap((g) => g.items).length);
     const onlyTickets = visibleNav("staff", (p) => p === "tickets.view");
-    expect(flatNav(onlyTickets).map((x) => x.item.href)).toEqual(["/admin/cases", "/scenarios", "/admin/notifications"]);
+    expect(flatNav(onlyTickets).map((x) => x.item.href)).toEqual(["/admin/cases", "/admin/notifications"]);
     expect(onlyTickets.some((g) => g.id === "finance")).toBe(false);
     const reviewer = visibleNav("staff", (p) => p === "settlements.review");
     expect(flatNav(reviewer).map((x) => x.item.href)).toContain("/admin/finance/settlements");
     expect(flatNav(reviewer).map((x) => x.item.href)).not.toContain("/admin/finance");
     expect(visibleNav("nobody", all)).toEqual([]);
-    expect(flatNav(visibleNav("staff", none)).map((x) => x.item.href)).toEqual(["/scenarios", "/admin/notifications"]);
+    expect(flatNav(visibleNav("staff", none)).map((x) => x.item.href)).toEqual(["/admin/notifications"]);
+    // the scenario bank is internal: it needs settings.view or settings.edit (same rule as /api/v1/scenarios)
+    expect(flatNav(visibleNav("staff", (p) => p === "settings.view")).map((x) => x.item.href)).toContain("/scenarios");
+    expect(flatNav(visibleNav("staff", (p) => p === "settings.edit")).map((x) => x.item.href)).toContain("/scenarios");
+    expect(flatNav(visibleNav("staff", (p) => p === "tickets.view")).map((x) => x.item.href)).not.toContain("/scenarios");
   });
 
   it("Incoming orders sits next to Integrations (company and staff); staff need integrations.view or requests.view", () => {
@@ -83,6 +87,13 @@ describe("sidebar navigation (F-series)", () => {
     expect(activeItem(visibleNav("admin", all), "/admin/roles")?.href).toBe("/admin/roles");
     expect(activeItem(visibleNav("admin", all), "/admin/staff")?.href).toBe("/admin/staff");
     expect(en["nav.roles"]).toBeTruthy();
+  });
+
+  it("the parcel search page is in the sidebar for anyone who may view requests (it was reachable only by typing the URL)", () => {
+    const only = (...p: string[]) => flatNav(visibleNav("staff", (x) => p.includes(x))).map((x) => x.item.href);
+    expect(only("requests.view")).toContain("/admin/parcels");
+    expect(only("tickets.view")).not.toContain("/admin/parcels");
+    expect(activeItem(visibleNav("admin", all), "/admin/parcels/some-parcel-id")?.href).toBe("/admin/parcels");
   });
 
   it("the longest matching entry is the active one; dashboards match only themselves", () => {

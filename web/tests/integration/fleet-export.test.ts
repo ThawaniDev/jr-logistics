@@ -135,9 +135,9 @@ describe("format=xlsx on a registered table", () => {
     expect(JSON.stringify(noFilter.rows)).toContain(t("ar", "fr.xl_no_filters"));
   });
 
-  it("the CSV did not change: raw keys, UTF-8 BOM, no format key in the audit diff, same permission", async () => {
+  it("headers=keys keeps the machine CSV: raw keys, UTF-8 BOM, no format key in the audit diff, same permission", async () => {
     const { admin } = await world();
-    const csv = await get(admin, "/admin/analytics/offices/table/scorecards?format=csv");
+    const csv = await get(admin, "/admin/analytics/offices/table/scorecards?format=csv&headers=keys");
     expect(csv.status).toBe(200); expect(csv.headers.get("content-type")).toBe("text/csv; charset=utf-8"); expect(csv.headers.get("content-disposition")).toBe('attachment; filename="offices-scorecards.csv"');
     expect(csv.text.startsWith("﻿")).toBe(true);
     expect(csv.text.slice(1).split("\n")[0]).toBe("name,city,agreement,fleet,activeDrivers,utilisation,jobs,delivered,success,onTime,rating,earnedCents,paidCents,pendingCents,links,unlinks,verification");

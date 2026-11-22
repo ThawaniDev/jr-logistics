@@ -6,8 +6,13 @@
     <!-- New-offer alerts (E12): local notifications. POST_NOTIFICATIONS is a runtime permission on Android 13+ (asked politely from the home screen). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- The camera is optional: parcels and receipts can be typed, so phones without a (rear / autofocus) camera are not filtered out of the Play listing. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+    <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
     <application
         android:label="JR Driver"
+        android:allowBackup="false"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

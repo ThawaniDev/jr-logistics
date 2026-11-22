@@ -70,7 +70,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
         body: SafeArea(
           child: ListView(padding: const EdgeInsets.all(20), children: [
             if (_forced) ...[Banner2(key: const Key('cp-forced'), tone: Tone.warn, text: t('m.au_cp_forced_sub')), const SizedBox(height: 16)]
-            else ...[Text(t('m.au_cp_sub'), style: const TextStyle(color: JR.muted, height: 1.4)), const SizedBox(height: 16)],
+            else ...[Text(t('m.au_cp_sub'), style: TextStyle(color: JR.muted, height: 1.4)), const SizedBox(height: 16)],
             AutofillGroup(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               PasswordField(id: 'cp-current', controller: _current, label: t('m.au_cp_current'), readOnly: _busy, errorText: _currentError, onChanged: (_) => setState(() => _currentError = null)),
               const SizedBox(height: 14),
@@ -82,7 +82,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
             const SizedBox(height: 10),
             PasswordChecklist(password: _new.text, confirm: _confirm.text),
             const SizedBox(height: 20),
-            FilledButton(key: const Key('cp-submit'), onPressed: _ok && !_busy ? _submit : null, child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('m.au_cp_submit'))),
+            FilledButton(key: const Key('cp-submit'), onPressed: _ok && !_busy ? _submit : null, child: _busy ? SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('m.au_cp_submit'))),
           ]),
         ),
       ),

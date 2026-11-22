@@ -43,7 +43,7 @@ export function ShipCard({ stop, access, routing, offerId, onOpen }: { stop: Sto
           ? <a data-testid="ship-call" href={tel} aria-label={t("jf2.call_code", { code: stop.code })} className={cn(roundBtn, "border-cyan/60 bg-cyan/10 text-cyan hover:bg-cyan/20")}><Phone className="size-5" aria-hidden /></a>
           : <span data-testid="ship-call" role="link" aria-disabled="true" aria-label={noContact} title={noContact} className={cn(roundBtn, "cursor-not-allowed border-line bg-bg2 text-muted/50")}><Phone className="size-5" aria-hidden /></span>}
         <button type="button" data-testid="ship-whatsapp" disabled={!tel || wa} aria-label={tel ? t("jf2.wa_code", { code: stop.code }) : noContact} title={tel ? undefined : noContact} onClick={whatsapp}
-          className={cn(roundBtn, tel ? "border-[#25d366]/60 bg-[#25d366]/15 text-[#25d366] hover:bg-[#25d366]/25" : "cursor-not-allowed border-line bg-bg2 text-muted/50", wa && "animate-pulse")}><MessageCircle className="size-5" aria-hidden /></button>
+          className={cn(roundBtn, tel ? "border-whatsapp/60 bg-whatsapp/15 text-whatsapp hover:bg-whatsapp/25" : "cursor-not-allowed border-line bg-bg2 text-muted/50", wa && "animate-pulse")}><MessageCircle className="size-5" aria-hidden /></button>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2.5">

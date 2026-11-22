@@ -2,9 +2,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Archive, ArrowDownLeft, ArrowUpRight, ExternalLink, FilePlus2, MapPin, Package, Printer, RefreshCw, RotateCcw, Search, Timer } from "lucide-react";
-import { Badge, Breadcrumbs, Button, DetailHeader, ErrorState, InfoGrid, Notice, PageLoading, Section, StatusBadge, Table, Td, useAction, type Tone } from "@/components/ui";
+import { Badge, Breadcrumbs, Button, DetailHeader, ErrorState, InfoGrid, Notice, PageLoading, Section, StatusBadge, Table, Td, useAction, type Tone, NoAccess } from "@/components/ui";
 import { useApi } from "@/components/ui/data";
-import { ApiError, post } from "@/lib/api";
+import { post } from "@/lib/api";
 import { fmtDateTime, fmtNum } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { mapsUrl } from "./business-fieldops-lib";
@@ -27,7 +27,7 @@ export function PartnerOrderView({ id, apiBase }: { id: string; apiBase: string 
   const [dismissing, setDismissing] = useState(false);
   const restore = useRestore(apiBase, () => { void r.mutate(); });
 
-  if (!perms.view) return <ErrorState error={new ApiError("FORBIDDEN", "Forbidden", 403)} />;
+  if (!perms.view) return <NoAccess />;
   if (r.error) return <ErrorState error={r.error} retry={() => r.mutate()} />;
   if (!o) return <PageLoading />;
 

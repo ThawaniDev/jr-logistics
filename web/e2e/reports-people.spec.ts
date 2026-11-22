@@ -189,7 +189,9 @@ test("drill-down tables: sort by a header, CSV of the whole filtered set, one ta
   const res = await page.request.get(href);
   expect(res.status()).toBe(200); expect(res.headers()["content-type"]).toContain("text/csv");
   const body = await res.text();
-  expect(body.startsWith("﻿name,")).toBe(true); expect(body).toContain("Nakheel Fresh Foods");
+  const raw = await (await page.request.get(`${href}&headers=keys`)).text(); // the machine form keeps the column keys
+  expect(raw.startsWith("﻿name,")).toBe(true); expect(body.startsWith("﻿")).toBe(true); expect(body.split("\n")[0]).not.toBe(raw.split("\n")[0]); // the default CSV has readable headers
+  expect(body).toContain("Nakheel Fresh Foods");
   await expect(page.getByTestId("report-csv")).toHaveAttribute("href", /\/api\/v1\/admin\/analytics\/companies\/table\/leaderboard\?.*format=csv/);
   for (const [path, ids] of [["/admin/reports/drivers", ["drill-scorecards", "drill-unreliable", "drill-inactive"]], ["/admin/reports/growth", ["drill-signups", "drill-pending", "drill-stalled"]]] as const) {
     await gotoReady(page, path);
@@ -219,7 +221,7 @@ test("access: no finance means no money anywhere, identity is masked without dri
   expect((await api(viewer.request, "GET", "/admin/analytics/companies/table/leaderboard?format=csv")).status).toBe(403);
   const blind = await staffPage(browser, page, ["requests.view"], "b");
   await gotoReady(blind, "/admin/reports/growth");
-  await expect(blind.locator('[role="alert"]:not(#__next-route-announcer__)')).toBeVisible();
+  await expect(blind.getByTestId("no-access")).toBeVisible(); // a calm "no access" page (decision K9), not an error alert
   await expect(blind.getByTestId("kpi-grid")).toHaveCount(0);
   const biz = await businessApi(browser);
   for (const r of NAMES) expect((await api(biz.request, "GET", `/admin/analytics/${r}`)).status, r).toBe(403);

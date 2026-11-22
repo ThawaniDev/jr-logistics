@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart' show ImageSource;
 import 'package:path_provider/path_provider.dart';
@@ -77,8 +78,8 @@ class _AttachmentsEditorState extends ConsumerState<AttachmentsEditor> {
     try {
       final src = await showModalBottomSheet<ImageSource>(context: context, useRootNavigator: true, builder: (b) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(padding: const EdgeInsets.all(16), child: Text(b.tr('m.pick_source'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-        ListTile(key: const Key('att-source-camera'), minVerticalPadding: 14, leading: const Icon(Icons.photo_camera_outlined, color: JR.accent), title: Text(b.tr('m.camera')), onTap: () => Navigator.pop(b, ImageSource.camera)),
-        ListTile(key: const Key('att-source-gallery'), minVerticalPadding: 14, leading: const Icon(Icons.photo_library_outlined, color: JR.accent), title: Text(b.tr('m.gallery')), onTap: () => Navigator.pop(b, ImageSource.gallery)),
+        ListTile(key: const Key('att-source-camera'), minVerticalPadding: 14, leading: Icon(Icons.photo_camera_outlined, color: JR.accent), title: Text(b.tr('m.camera')), onTap: () => Navigator.pop(b, ImageSource.camera)),
+        ListTile(key: const Key('att-source-gallery'), minVerticalPadding: 14, leading: Icon(Icons.photo_library_outlined, color: JR.accent), title: Text(b.tr('m.gallery')), onTap: () => Navigator.pop(b, ImageSource.gallery)),
       ])));
       if (src == null || !mounted) return;
       PickedPhoto? f;
@@ -135,14 +136,18 @@ class _Draft extends StatelessWidget {
       Positioned.fill(child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Container(
         decoration: BoxDecoration(color: JR.bg2, border: Border.all(color: failed ? JR.danger : JR.line), borderRadius: BorderRadius.circular(10)),
         child: Stack(fit: StackFit.expand, children: [
-          Image.file(File(item.path), fit: BoxFit.cover, errorBuilder: (_, _, _) => const Center(child: Icon(Icons.image_outlined, color: JR.muted))),
-          if (item.uploading) ColoredBox(color: Colors.black54, child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: JR.accent, value: item.progress > 0 && item.progress < 1 ? item.progress : null)))),
-          if (failed) ColoredBox(color: Colors.black54, child: Center(child: IconButton(key: Key('att-retry-${item.name}'), tooltip: context.tr('common.retry'), onPressed: onRetry, icon: const Icon(Icons.refresh, color: JR.danger)))),
+          Image.file(File(item.path), fit: BoxFit.cover, errorBuilder: (_, _, _) => Center(child: Icon(Icons.image_outlined, color: JR.muted))),
+          if (item.uploading) ColoredBox(color: JR.mediaScrim, child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: JR.mediaFg, value: item.progress > 0 && item.progress < 1 ? item.progress : null)))),
+          if (failed) ColoredBox(color: JR.mediaScrim, child: Center(child: IconButton(key: Key('att-retry-${item.name}'), tooltip: context.tr('common.retry'), onPressed: onRetry, icon: Icon(Icons.refresh, color: JR.mediaFg)))),
         ]),
       ))),
-      PositionedDirectional(top: -8, end: -8, child: Material(color: JR.bg, shape: const CircleBorder(side: BorderSide(color: JR.line)), child: InkWell(
-        key: Key('att-remove-${item.name}'), customBorder: const CircleBorder(), onTap: onRemove,
-        child: Padding(padding: const EdgeInsets.all(5), child: Icon(Icons.close, size: 16, color: JR.text, semanticLabel: context.tr('common.cancel'))),
+      // A 40 dp touch target around the small round "x" (a 26 dp circle was too small for a thumb, especially with gloves).
+      PositionedDirectional(top: -4, end: -4, child: SizedBox(width: 40, height: 40, child: InkResponse(
+        key: Key('att-remove-${item.name}'), onTap: onRemove, radius: 20,
+        child: Center(child: Container(
+          width: 26, height: 26, decoration: BoxDecoration(color: JR.bg, shape: BoxShape.circle, border: Border.all(color: JR.line)),
+          child: Icon(Icons.close, size: 16, color: JR.text, semanticLabel: context.tr('common.cancel')),
+        )),
       ))),
     ]));
   }
@@ -158,7 +163,7 @@ class AttachmentThumb extends ConsumerWidget {
     final a = attachment;
     final t = context.tr;
     if (!a.isImage) {
-      return Material(key: Key('att-file-${a.id}'), color: JR.bg2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: JR.line)), child: InkWell(
+      return Material(key: Key('att-file-${a.id}'), color: JR.bg2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: JR.line)), child: InkWell(
         customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), onTap: () => _openFile(context, ref),
         child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 48, maxWidth: 220), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(a.isPdf ? Icons.picture_as_pdf_outlined : Icons.attach_file, color: JR.cyan, size: 20), const SizedBox(width: 8),
@@ -168,9 +173,9 @@ class AttachmentThumb extends ConsumerWidget {
     }
     final bytes = ref.watch(attachmentBytesProvider(a.id));
     return SizedBox(key: Key('att-${a.id}'), width: 84, height: 84, child: ClipRRect(borderRadius: BorderRadius.circular(10), child: bytes.when(
-      data: (b) => InkWell(onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => AttachmentViewer(name: a.name, bytes: b))), child: Image.memory(b, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Center(child: Icon(Icons.broken_image_outlined, color: JR.muted)))),
-      loading: () => const ColoredBox(color: JR.bg2, child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accent)))),
-      error: (_, _) => InkWell(key: Key('att-reload-${a.id}'), onTap: () => ref.invalidate(attachmentBytesProvider(a.id)), child: const ColoredBox(color: JR.bg2, child: Center(child: Icon(Icons.refresh, color: JR.muted)))),
+      data: (b) => InkWell(onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => AttachmentViewer(name: a.name, bytes: b))), child: Image.memory(b, fit: BoxFit.cover, errorBuilder: (_, _, _) => Center(child: Icon(Icons.broken_image_outlined, color: JR.muted)))),
+      loading: () => ColoredBox(color: JR.bg2, child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accent)))),
+      error: (_, _) => InkWell(key: Key('att-reload-${a.id}'), onTap: () => ref.invalidate(attachmentBytesProvider(a.id)), child: ColoredBox(color: JR.bg2, child: Center(child: Icon(Icons.refresh, color: JR.muted)))),
     )));
   }
 
@@ -196,9 +201,12 @@ class AttachmentViewer extends StatelessWidget {
   final String name;
   final Uint8List bytes;
   @override
-  Widget build(BuildContext context) => Scaffold(
-        key: const Key('att-viewer'), backgroundColor: Colors.black,
-        appBar: AppBar(backgroundColor: Colors.black, title: Text(name, textDirection: TextDirection.ltr, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15))),
-        body: Center(child: InteractiveViewer(minScale: 0.8, maxScale: 5, child: Image.memory(bytes, fit: BoxFit.contain, errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined, color: JR.muted, size: 48)))),
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: systemOverlayFor(Brightness.dark, navigationBar: false), // the photo viewer is black in both modes: light status-bar icons
+        child: Scaffold(
+          key: const Key('att-viewer'), backgroundColor: JR.mediaBg,
+          appBar: AppBar(backgroundColor: JR.mediaBg, foregroundColor: JR.mediaFg, systemOverlayStyle: systemOverlayFor(Brightness.dark, navigationBar: false), title: Text(name, textDirection: TextDirection.ltr, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15))),
+          body: Center(child: InteractiveViewer(minScale: 0.8, maxScale: 5, child: Image.memory(bytes, fit: BoxFit.contain, errorBuilder: (_, _, _) => Icon(Icons.broken_image_outlined, color: JR.mediaFgSoft, size: 48)))),
+        ),
       );
 }

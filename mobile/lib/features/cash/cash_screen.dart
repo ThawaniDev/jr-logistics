@@ -38,7 +38,7 @@ class WalletCashSection extends ConsumerWidget {
       const SizedBox(height: 10),
       cash.when(
         data: (c) => CashSection(cash: c, lang: lang),
-        loading: () => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: JR.accent))),
+        loading: () => Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: JR.accent))),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(cashProvider)),
       ),
     ]);
@@ -60,11 +60,11 @@ class CashSection extends StatelessWidget {
       Banner2(key: const Key('cash-explain'), text: t('fmb.cash_explain')),
       const SizedBox(height: 12),
       SectionCard(key: const Key('cash-with-me'), border: withMe > 0 ? JR.gold : JR.accent, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(t('fmb.cash_with_me'), style: const TextStyle(color: JR.muted)),
+        Text(t('fmb.cash_with_me'), style: TextStyle(color: JR.muted)),
         const SizedBox(height: 6),
         FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(fmtMoney(withMe, lang), key: const Key('cash-with-me-amount'), textDirection: TextDirection.ltr, style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: withMe > 0 ? JR.gold : JR.accent))),
         const SizedBox(height: 4),
-        Text(withMe > 0 ? t('fmb.cash_with_me_hint') : t('fmb.cash_nothing_with_me'), style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.4)),
+        Text(withMe > 0 ? t('fmb.cash_with_me_hint') : t('fmb.cash_nothing_with_me'), style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.4)),
       ])),
       const SizedBox(height: 12),
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -98,7 +98,7 @@ class _Stat extends StatelessWidget {
   final Color color;
   @override
   Widget build(BuildContext context) => SectionCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(color: JR.muted, fontSize: 12, height: 1.3)),
+        Text(label, style: TextStyle(color: JR.muted, fontSize: 12, height: 1.3)),
         const SizedBox(height: 6),
         FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(fmtMoney(cents, lang), textDirection: TextDirection.ltr, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.w800))),
       ]));
@@ -113,7 +113,7 @@ class _OrderCard extends StatelessWidget {
     final t = context.tr;
     final o = order;
     Widget line(String label, int cents, {Color? color, bool bold = false}) => Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-          Expanded(child: Text(label, style: const TextStyle(color: JR.muted, fontSize: 13))),
+          Expanded(child: Text(label, style: TextStyle(color: JR.muted, fontSize: 13))),
           const SizedBox(width: 8),
           Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(cents, lang), textDirection: TextDirection.ltr, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w600, color: color)))),
         ]));
@@ -123,13 +123,13 @@ class _OrderCard extends StatelessWidget {
         const SizedBox(width: 8),
         Flexible(child: o.outstandingCents <= 0 ? Pill(t('fmb.cash_settled'), tone: Tone.success) : Pill(t('fmb.cash_to_hand'), tone: Tone.warn)),
       ]),
-      if (o.businessName.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text('${t('fmb.cash_warehouse')}: ${o.businessName}', style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
-      if (o.parcels > 0) Padding(padding: const EdgeInsets.only(top: 2), child: Text(t('fmb.cash_parcels', {'n': o.parcels}), style: const TextStyle(color: JR.muted, fontSize: 13))),
+      if (o.businessName.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text('${t('fmb.cash_warehouse')}: ${o.businessName}', style: TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
+      if (o.parcels > 0) Padding(padding: const EdgeInsets.only(top: 2), child: Text(t('fmb.cash_parcels', {'n': o.parcels}), style: TextStyle(color: JR.muted, fontSize: 13))),
       const SizedBox(height: 8),
       line(t('fmb.cash_collected'), o.collectedCents),
       line(t('fmb.cash_handed'), o.receivedCents, color: JR.accent),
       line(t('fmb.cash_with_me_short'), o.outstandingCents, color: o.outstandingCents > 0 ? JR.gold : JR.muted, bold: true),
-      if (o.lastCollectedAt != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t('fmb.cash_last', {'d': fmtDateTime(o.lastCollectedAt, lang)}), style: const TextStyle(color: JR.muted, fontSize: 12))),
+      if (o.lastCollectedAt != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t('fmb.cash_last', {'d': fmtDateTime(o.lastCollectedAt, lang)}), style: TextStyle(color: JR.muted, fontSize: 12))),
     ]));
   }
 }
@@ -143,17 +143,17 @@ class _HandoverRow extends StatelessWidget {
     final t = context.tr;
     final who = [if ((h.receivedByName ?? '').isNotEmpty) h.receivedByName!, h.receivedByRole == 'business' ? t('fmb.cash_by_warehouse') : t('fmb.cash_by_ops')].join(' · ');
     return SectionCard(key: Key('cash-handover-${h.id}'), padding: const EdgeInsets.all(12), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Padding(padding: EdgeInsets.only(top: 2), child: Icon(Icons.call_received, color: JR.accent, size: 20)),
+      Padding(padding: EdgeInsets.only(top: 2), child: Icon(Icons.call_received, color: JR.accent, size: 20)),
       const SizedBox(width: 10),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text(h.ref, textDirection: TextDirection.ltr, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))),
           const SizedBox(width: 8),
-          Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(h.amountCents, lang), textDirection: TextDirection.ltr, style: const TextStyle(fontWeight: FontWeight.w800, color: JR.accent)))),
+          Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Text(fmtMoney(h.amountCents, lang), textDirection: TextDirection.ltr, style: TextStyle(fontWeight: FontWeight.w800, color: JR.accent)))),
         ]),
-        Padding(padding: const EdgeInsets.only(top: 2), child: Text(t('fmb.cash_received_by', {'who': who}), style: const TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
+        Padding(padding: const EdgeInsets.only(top: 2), child: Text(t('fmb.cash_received_by', {'who': who}), style: TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
         if ((h.note ?? '').isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(h.note!, style: const TextStyle(fontSize: 13, height: 1.3))),
-        Padding(padding: const EdgeInsets.only(top: 4), child: Text(fmtDateTime(h.createdAt, lang), style: const TextStyle(color: JR.muted, fontSize: 12))),
+        Padding(padding: const EdgeInsets.only(top: 4), child: Text(fmtDateTime(h.createdAt, lang), style: TextStyle(color: JR.muted, fontSize: 12))),
       ])),
     ]));
   }

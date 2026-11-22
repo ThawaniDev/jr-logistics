@@ -39,7 +39,7 @@ describe("permissions and validation", () => {
     for (const [r, n] of names) expect((await get(viewer, `/admin/analytics/${r}/table/${n}?${Q}`)).status, `viewer ${r}/${n}`).toBe(200);
     for (const [r, n] of money) expect((await get(viewer, `/admin/analytics/${r}/table/${n}?${Q}`)).status, `viewer ${r}/${n}`).toBe(403);
     expect((await get(viewer, `/admin/analytics/drivers/table/perf?${Q}&format=csv`)).status).toBe(403);
-    const csv = await get(await mkStaff(["reports.view", "reports.export"]), `/admin/analytics/drivers/table/perf?${Q}&format=csv`);
+    const csv = await get(await mkStaff(["reports.view", "reports.export"]), `/admin/analytics/drivers/table/perf?${Q}&format=csv&headers=keys`);
     expect(csv.status).toBe(200); expect(csv.text.charCodeAt(0)).toBe(0xfeff);
     const cols = (await tbl(w.admin, "drivers", "perf")).columns.map((c: any) => c.key);
     expect(csv.text.split("\n")[0].replace("﻿", "").split(",")).toEqual(cols);

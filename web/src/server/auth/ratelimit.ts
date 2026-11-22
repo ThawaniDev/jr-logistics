@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, type Exec } from "@/db";
 import { rateLimits } from "@/db/schema";
 import { err } from "@/lib/errors";
@@ -14,4 +14,11 @@ export async function hit(key: string, limit: number, windowSec: number, x: Exec
       },
     }).returning({ count: rateLimits.count });
   if (rows[0].count > limit) throw err("RATE_LIMITED", "Too many attempts. Please try again later.");
+}
+
+/** Is the counter of `key` already at `limit` in its current window? Reads without counting: pair it with `hit` on the events that should count (e.g. only the FAILED sign-ins of an address). */
+export async function isOver(key: string, limit: number, windowSec: number, x: Exec = db): Promise<boolean> {
+  const [r] = await x.select({ count: rateLimits.count }).from(rateLimits)
+    .where(and(eq(rateLimits.key, key), sql`${rateLimits.windowStart} >= now() - make_interval(secs => ${windowSec})`));
+  return !!r && r.count >= limit;
 }

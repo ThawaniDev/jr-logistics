@@ -28,7 +28,7 @@ function Result({ code }: { code: string }) {
 
   const wrap = (children: React.ReactNode) => <div className="w-full max-w-md space-y-4">{children}</div>;
   const card = "glass-card-elevated rounded-3xl border border-line/80 p-6 shadow-2xl sm:p-8";
-  if (!valid) return wrap(<div className={card}><p className="mb-4 text-sm text-muted">{t("bs.track_need_digits")}</p><TrackForm initialCode={code} /></div>);
+  if (!valid) return wrap(<div className={card}><h1 className="text-xl font-bold">{t("bs.track_title")}</h1><p className="mb-4 mt-1 text-sm text-muted">{t("bs.track_need_digits")}</p><TrackForm initialCode={code} /></div>);
   if (error) {
     const api = error instanceof ApiError ? error : null;
     const notFound = api?.code === "NOT_FOUND";

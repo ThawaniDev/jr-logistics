@@ -14,9 +14,9 @@ String errMessage(BuildContext c, Object e) {
   final t = c.tr;
   if (e is ApiException) {
     // A few per-parcel errors carry numbers the driver needs ("N tries left", "wait 3:20"): use the richer message.
-    final left = (e.details['attemptsLeft'] as num?)?.toInt();
+    final left = numOf(e.details['attemptsLeft'])?.toInt();
     if (e.code == 'OTP_INVALID' && left != null) return left <= 0 ? t('err.OTP_LOCKED') : t('ms.otp_wrong', {'n': left});
-    final wait = (e.details['remainingSec'] as num?)?.toInt();
+    final wait = numOf(e.details['remainingSec'])?.toInt();
     if (e.code == 'WAIT_REQUIRED' && wait != null) return t('ms.wait_required', {'time': fmtCountdown(wait)});
     if (e.code == 'VALIDATION') {
       final field = e.details['field'];
@@ -61,13 +61,16 @@ void toast(BuildContext c, String msg, {bool error = false, bool quiet = false})
 }
 
 /// Runs [fn], shows a localized error toast on failure. Returns the result or null.
-Future<T?> guarded<T>(BuildContext c, Future<T> Function() fn, {String? success}) async {
+/// [maybeApplied]: [fn] is a write that is not idempotent (accept, send a message, open a ticket, upload a document). When the answer never came back
+/// the server may well have done it, so the toast says "we couldn't confirm it" (`m.net_unconfirmed_write`) instead of "check your connection" and
+/// the caller re-reads the list — a blind retry would duplicate the message / ticket / upload.
+Future<T?> guarded<T>(BuildContext c, Future<T> Function() fn, {String? success, bool maybeApplied = false}) async {
   try {
     final r = await fn();
     if (success != null && c.mounted) toast(c, c.tr(success));
     return r;
   } catch (e) {
-    if (c.mounted) toast(c, errMessage(c, e), error: true);
+    if (c.mounted) toast(c, maybeApplied && e is ApiException && e.isNetwork ? c.tr('m.net_unconfirmed_write') : errMessage(c, e), error: true);
     return null;
   }
 }
@@ -118,7 +121,7 @@ class StatusPill extends StatelessWidget {
   const StatusPill(this.status, {super.key});
   final String status;
   @override
-  Widget build(BuildContext context) => Pill(context.tr('jobstatus.$status'), tone: jobTone(status));
+  Widget build(BuildContext context) => Pill(context.tr.val('jobstatus', status), tone: jobTone(status));
 }
 
 class EmptyView extends StatelessWidget {
@@ -133,7 +136,7 @@ class EmptyView extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 48, color: JR.muted), const SizedBox(height: 12),
             Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            if (hint != null) ...[const SizedBox(height: 6), Text(hint!, textAlign: TextAlign.center, style: const TextStyle(color: JR.muted))],
+            if (hint != null) ...[const SizedBox(height: 6), Text(hint!, textAlign: TextAlign.center, style: TextStyle(color: JR.muted))],
           ]),
         ),
       );
@@ -210,7 +213,7 @@ class AsyncBody<T> extends StatelessWidget {
     }
     return v.when(
       data: builder,
-      loading: () => const Center(child: CircularProgressIndicator(color: JR.accent)),
+      loading: () => Center(child: CircularProgressIndicator(color: JR.accent)),
       error: (e, _) => ErrorView(error: e, onRetry: onRetry),
     );
   }
@@ -247,12 +250,12 @@ class ConnectionBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tr;
     return Material(
-      color: const Color(0xFF3A2A06),
+      color: JR.warnBg,
       child: Semantics(liveRegion: true, container: true, child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(14, 2, 4, 2),
         child: Row(children: [
-          const Icon(Icons.wifi_off_rounded, size: 18, color: JR.gold), const SizedBox(width: 10),
-          Expanded(child: Text(t('um.offline_strip'), key: const Key('offline-strip'), style: const TextStyle(fontSize: 13, height: 1.3, color: JR.text))),
+          Icon(Icons.wifi_off_rounded, size: 18, color: JR.gold), const SizedBox(width: 10),
+          Expanded(child: Text(t('um.offline_strip'), key: const Key('offline-strip'), style: TextStyle(fontSize: 13, height: 1.3, color: JR.text))),
           TextButton(key: const Key('offline-retry'), style: TextButton.styleFrom(minimumSize: const Size(64, 48)), onPressed: onRetry, child: Text(t('common.retry'))),
         ]),
       )),
@@ -295,6 +298,36 @@ class _DeadlineBuilderState extends State<DeadlineBuilder> {
 
   @override
   Widget build(BuildContext context) => widget.builder(context, _remaining);
+}
+
+/// "Load more" under a list the server pages (finished jobs, wallet history, notifications): one tap loads the next page, a spinner shows meanwhile
+/// (a second tap is ignored) and a failure is a localized toast — the rows already shown stay.
+class LoadMoreButton extends StatefulWidget {
+  const LoadMoreButton({super.key, required this.onLoad});
+  final Future<void> Function() onLoad;
+  @override
+  State<LoadMoreButton> createState() => _LoadMoreButtonState();
+}
+
+class _LoadMoreButtonState extends State<LoadMoreButton> {
+  bool _busy = false;
+  Future<void> _go() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onLoad();
+    } catch (e) {
+      if (mounted) toast(context, errMessage(context, e), error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: OutlinedButton.icon(key: const Key('load-more'), onPressed: _busy ? null : _go, icon: busyIcon(_busy, Icons.expand_more, color: JR.accent), label: Text(context.tr('dtk.load_more'))),
+      );
 }
 
 /// A button icon that turns into a spinner while [busy] (so a tap visibly "took" and cannot be repeated).

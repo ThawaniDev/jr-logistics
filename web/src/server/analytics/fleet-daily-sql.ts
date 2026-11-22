@@ -3,9 +3,9 @@ import { codRemittances, offers, settlements, shipments, users } from "@/db/sche
 import { bucketSql } from "./buckets";
 import { anyWindow, BILLED, NOT_DRAFT, PARCEL_OUTCOME_AT, scope } from "./conditions";
 import type { ResolvedFilters } from "./filters";
-import { tsz, twin, twinOrZero } from "./companies-lib";
+import { twin, twinOrZero } from "./companies-lib";
 import { DRIVER_CANCELLED, KEPT, PUSHED, STARTS } from "./drivers-lib";
-import { dayGrid, driverScope } from "./fleet-lib";
+import { availabilityIntervals, dayGrid, driverScope } from "./fleet-lib";
 import { onlineDaySecs } from "./fleet-sql";
 import { jobFamily, names, NULLABLE_PARCEL, offeredFamily, parcelFamily, startFamily } from "./fleet-sql-parts";
 
@@ -19,12 +19,11 @@ const day = (col: SQL | { _: unknown }) => bucketSql(col, "day");
 
 /** `days`, the availability intervals `iv` of the people in scope, their per-day seconds `ivd` and `d_on` (drivers online and online seconds per day; per driver and day with `by = "driver"`). */
 function daysAndOnline(f: ResolvedFilters, keys: string[], kind: DailyKind, by: Grain = "day"): SQL {
-  const inOffice = kind === "offices" ? sql` and l.driver_id in (select user_id from driver_profiles where office_id is not null)` : sql``;
+  const inOffice = (col: string) => (kind === "offices" ? sql` and ${sql.raw(col)} in (select user_id from driver_profiles where office_id is not null)` : sql``);
   const online = by === "driver" ? sql`select ivd.id, ivd.day as t, ivd.secs as online_c from ivd where ivd.secs > 0` : sql`select ivd.day as t, count(*) filter (where ivd.secs > 0)::int as online_drivers_c, coalesce(sum(ivd.secs), 0)::float8 as online_c from ivd group by 1`;
   return sql`
   days as (${dayGrid(keys)}),
-  iv as (select l.driver_id as id, l.at as s, coalesce(lead(l.at) over (partition by l.driver_id order by l.at), now()) as e, l.to_status as st
-    from driver_availability_log l where l.at < ${tsz(f.cur.end)} ${driverScope(f, "l.driver_id")}${inOffice}),
+  iv as ${availabilityIntervals(f.cur.start, f.cur.end, (col) => sql`${driverScope(f, col)}${inOffice(col)}`)},
   ivd as (${onlineDaySecs("iv", f.cur.start, f.cur.end)}),
   d_on as (${online})`;
 }

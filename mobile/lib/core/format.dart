@@ -39,14 +39,6 @@ String fmtCountdown(int seconds) {
   return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
-String fmtKm(num meters) => '${(meters / 1000).toStringAsFixed(1)} km';
-
-String fmtDuration(num seconds) {
-  final m = (seconds / 60).round();
-  if (m < 60) return '$m min';
-  return '${m ~/ 60} h ${m % 60} min';
-}
-
 /// Driving distance in the driver's language ("4.2 km" / "4.2 كم"). The unit comes from the dictionary, the number is always Latin digits
 /// (so it never flips inside right-to-left text). One decimal; whole km from 100 km up.
 String fmtDist(Strings t, num meters) => t('rm.km', {'n': (meters / 1000).toStringAsFixed(meters >= 100000 ? 0 : 1)});
@@ -71,7 +63,8 @@ String? normalizeIban(String raw) {
 /// Parses SAR typed by the user into integer halalas without float drift.
 int? sarToCents(String input) {
   final s = latinDigits(input).trim().replaceAll(',', '.');
-  if (!RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(s)) return null;
+  // At most 9 whole digits (the server accepts up to SAR 10 000 000): a longer string used to overflow `int` or throw in `int.parse`.
+  if (!RegExp(r'^\d{1,9}(\.\d{1,2})?$').hasMatch(s)) return null;
   final parts = s.split('.');
   final whole = int.parse(parts[0]);
   final frac = parts.length > 1 ? int.parse(parts[1].padRight(2, '0')) : 0;

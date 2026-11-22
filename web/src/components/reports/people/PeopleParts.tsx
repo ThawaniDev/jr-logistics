@@ -48,7 +48,7 @@ export function CohortTable({ title, description, cohorts, testId }: { title: st
                   return (
                     <td key={k} title={v == null ? t("rpp.cohort_pending") : t("rpp.cohort_cell", { n: formatValue(n, "number", locale), size: formatValue(r.size, "number", locale), pct: fmtPercent(v, locale, 0) })}
                       className={cn("ltr-num rounded-md px-0.5 py-1 text-center tabular-nums", v == null && "text-muted/50")}
-                      style={v == null ? { background: "color-mix(in srgb, var(--jr-line) 25%, transparent)" } : { background: `color-mix(in srgb, var(--jr-accent) ${Math.round(heat(v) * 70)}%, transparent)` }}>
+                      style={v == null ? { background: "color-mix(in srgb, var(--jr-line) 25%, transparent)" } : { background: `color-mix(in srgb, var(--jr-accent) calc(${Math.round(heat(v) * 70)}% * var(--jr-heat-cap)), transparent)` }}>
                       {v == null ? "·" : fmtPercent(v, locale, 0)}
                     </td>
                   );
@@ -130,7 +130,7 @@ export function BandMatrix({ title, description, cells, rowLabels, colLabels, ro
             <span className="ltr-num self-center pe-1 text-[11px] font-medium leading-tight text-muted">{rowLabels[i]}</span>
             {row.map((n, j) => (
               <div key={j} title={cellTitle(n, rowLabels[i], colLabels[j])} className="flex h-11 items-center justify-center rounded-md font-semibold tabular-nums sm:h-14"
-                style={{ background: n > 0 && max > 0 ? `color-mix(in srgb, var(--jr-accent) ${Math.round(12 + (n / max) * 70)}%, transparent)` : "color-mix(in srgb, var(--jr-line) 35%, transparent)" }}>
+                style={{ background: n > 0 && max > 0 ? `color-mix(in srgb, var(--jr-accent) calc(${Math.round(12 + (n / max) * 70)}% * var(--jr-heat-cap)), transparent)` : "color-mix(in srgb, var(--jr-line) 35%, transparent)" }}>
                 <span className="ltr-num">{n > 0 ? formatValue(n, "number", locale) : "·"}</span>
               </div>
             ))}

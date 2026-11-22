@@ -164,7 +164,7 @@ test("access: no finance hides the amount on hold, no reports.export hides the C
   expect((await api(viewer.request, "GET", "/admin/analytics/explorer/tickets")).status).toBe(403);
   expect((await api(viewer.request, "GET", "/admin/analytics/support/table/tickets?format=csv")).status).toBe(403);
   await gotoReady(viewer, "/admin/reports/explorer");
-  await expect(viewer.locator('[role="alert"]:not(#__next-route-announcer__)')).toBeVisible();
+  await expect(viewer.getByTestId("no-access")).toBeVisible(); // a calm "no access" page (decision K9), not an error alert
   const exporter = await staffPage(browser, page, ["reports.view", "reports.export"], "e");
   await gotoReady(exporter, "/admin/reports/explorer");
   await expect(exporter.getByTestId("rpq-x-controls")).toBeVisible();

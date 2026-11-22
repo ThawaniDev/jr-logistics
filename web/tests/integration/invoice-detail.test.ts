@@ -4,7 +4,7 @@
  * margin or payee ever reaches the company.
  */
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { businessProfiles, invoices, ledgerEntries, offers, settlements } from "@/db/schema";
 import { resetDb, shutdown, mkAdmin, mkBusiness, mkDriver, mkOffice, mkRule, mkStaff, publishedRequest } from "../helpers/factories";
@@ -93,7 +93,14 @@ describe("the invoice and its lines", () => {
   });
   it("an invoice without a settlement is one service line, with no money block; a legacy row whose subtotal + VAT is off is shown consistently", async () => {
     const { admin, biz, r, inv } = await paidJob();
-    const [bare] = await db.insert(invoices).values({ number: "INV-LEGACY-1", requestId: r.id, settlementId: null, businessId: biz.id, subtotalCents: 1, vatCents: 150, totalCents: 1150, vatPct: 15 }).returning();
+    // A legacy row from before `invoices_money_chk` (migration 0023, NOT VALID: new rows must add up, old ones are left alone). The constraint is dropped and re-added in ONE transaction
+    // (DDL is transactional, so a failure here cannot leave the test database without it) to write such a row.
+    const [bare] = await db.transaction(async (tx) => {
+      await tx.execute(sql`alter table invoices drop constraint invoices_money_chk`);
+      const row = await tx.insert(invoices).values({ number: "INV-LEGACY-1", requestId: r.id, settlementId: null, businessId: biz.id, subtotalCents: 1, vatCents: 150, totalCents: 1150, vatPct: 15 }).returning();
+      await tx.execute(sql`alter table invoices add constraint invoices_money_chk check (subtotal_cents >= 0 and vat_cents >= 0 and total_cents >= 0 and subtotal_cents + vat_cents = total_cents) not valid`);
+      return row;
+    });
     const d = (await adminGet(admin, bare.id)).json;
     expect(d.lines).toEqual([{ kind: "service", qty: 1, unit: null, unitPriceCents: 1150, amountCents: 1150 }]);
     expect(d.invoice).toMatchObject({ subtotalCents: 1000, vatCents: 150, totalCents: 1150 });

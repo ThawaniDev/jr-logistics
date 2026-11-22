@@ -3,9 +3,9 @@ import { Suspense, useState } from "react";
 import useSWR from "swr";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Plug, Plus, RefreshCw, Unplug } from "lucide-react";
-import { Badge, Button, CellPair, EmptyState, ErrorState, Notice, PageHeader, PageLoading, Pagination, SearchBox, Segmented, Select, Stat, StatGrid, Table, Td, Toolbar } from "@/components/ui";
+import { Badge, Button, CellPair, EmptyState, ErrorState, Notice, PageHeader, PageLoading, Pagination, SearchBox, Segmented, Select, Stat, StatGrid, Table, Td, Toolbar, NoAccess } from "@/components/ui";
 import { useApi, useUrlPatch, useUrlState } from "@/components/ui/data";
-import { ApiError, get } from "@/lib/api";
+import { get } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { useUser } from "@/components/layout/auth-context";
@@ -46,7 +46,7 @@ function IntegrationsInner() {
     return { total: all.total, active: on.total, problems: bad.total, stuck: bad.items.reduce((n, c) => n + c.stuckUpdates, 0), stuckCapped: bad.total > bad.items.length,
       providers: [...new Map(all.items.map((c) => [c.provider, c.providerLabel])).entries()].map(([value, label]) => ({ value, label })) };
   }, { refreshInterval: 60000, shouldRetryOnError: false });
-  if (!allowed) return <ErrorState error={new ApiError("FORBIDDEN", "Forbidden", 403)} />;
+  if (!allowed) return <NoAccess />;
   if (list.error && !list.data) return <ErrorState error={list.error} retry={() => list.mutate()} />;
   const k = kpi.data; const canBiz = hasAny(me, "users.view", "offices.view", "verification.manage");
   const filtered = !!(dq || provider || businessId || view !== "all");

@@ -2,11 +2,13 @@
 import { forwardRef, useCallback, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Loader2, X, Inbox, AlertTriangle, ChevronRight, ChevronLeft, Search, ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { Loader2, X, Inbox, AlertTriangle, ChevronRight, ChevronLeft, Search, ArrowDownRight, ArrowUpRight, Minus, Lock } from "lucide-react";
+import { mutate as globalMutate } from "swr";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import { useT } from "@/i18n/provider";
 import { ApiError } from "@/lib/api";
+import { isChromeKey } from "@/lib/chrome-keys";
 
 // ───────── Button ─────────
 const VARIANT = {
@@ -27,7 +29,7 @@ export const Button = forwardRef<HTMLButtonElement, BtnProps>(function Button({ 
 });
 
 // ───────── Fields ─────────
-const inputCls = "w-full rounded-xl border border-line bg-bg2 px-3 text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-60 aria-[invalid=true]:border-danger";
+const inputCls = "w-full rounded-xl border border-line-strong bg-bg2 px-3 text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-60 aria-[invalid=true]:border-danger";
 export function Field({ label, error, hint, children, required }: { label?: string; error?: string; hint?: string; children: (id: string, describedBy?: string) => ReactNode; required?: boolean }) {
   const id = useId();
   const dId = error || hint ? `${id}-d` : undefined;
@@ -73,7 +75,7 @@ export function Breadcrumbs({ items }: { items: Array<{ label: string; href?: st
           return (
             <li key={i} className="flex items-center gap-1">
               {i > 0 && <ChevronRight className="size-3.5 opacity-60 rtl:rotate-180" aria-hidden />}
-              {it.href && !last ? <Link href={it.href} className="rounded hover:text-ink hover:underline">{it.label}</Link> : <span aria-current={last ? "page" : undefined} className={last ? "text-ink/80" : undefined}>{it.label}</span>}
+              {it.href && !last ? <Link href={it.href} className="inline-flex min-h-6 items-center rounded hover:text-ink hover:underline">{it.label}</Link> : <span aria-current={last ? "page" : undefined} className={last ? "text-ink/80" : undefined}>{it.label}</span>}
             </li>
           );
         })}
@@ -121,7 +123,7 @@ export function Stat({ label, value, hint, tone = "accent", icon, href, delta, l
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-muted sm:text-[13px]">{label}</p>
-          <div className={cn("mt-1 text-xl font-bold leading-tight tabular-nums sm:mt-1.5 @[13rem]:text-2xl", c.text)}>{loading ? <Skeleton className="h-7 w-24" /> : value}</div>
+          <div className={cn("mt-1 text-xl font-bold leading-tight tabular-nums [overflow-wrap:anywhere] sm:mt-1.5 @[13rem]:text-2xl", c.text)}>{loading ? <Skeleton className="h-7 w-24" /> : value}</div>
         </div>
         {icon && <span className={cn("hidden size-9 shrink-0 items-center justify-center rounded-xl @[11.5rem]:flex sm:size-10", c.chip)} aria-hidden>{icon}</span>}
       </div>
@@ -212,7 +214,8 @@ export function StatusBadge({ status, ns = "status" }: { status: string; ns?: st
 
 // ───────── States ─────────
 export function Spinner({ className }: { className?: string }) { const t = useT(); return <Loader2 className={cn("size-5 animate-spin text-accent", className)} role="img" aria-label={t("a11y.loading")} />; }
-export const Skeleton = ({ className }: { className?: string }) => <div className={cn("animate-pulse rounded-xl bg-line/50", className)} />;
+/** A span (not a div) so it can sit inside a `<p>` — a div there is invalid HTML and a React hydration error. */
+export const Skeleton = ({ className }: { className?: string }) => <span aria-hidden className={cn("block animate-pulse rounded-xl bg-line/50", className)} />;
 export function PageLoading() {
   return <div className="space-y-4" aria-busy="true" role="status"><Skeleton className="h-8 w-56" /><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div><Skeleton className="h-64" /></div>;
 }
@@ -224,8 +227,37 @@ export function EmptyState({ title, hint, action, icon }: { title: string; hint?
     </div>
   );
 }
+/** True when the API refused the call because the signed-in user lacks the permission (nothing a retry can fix). */
+export const isForbidden = (e: unknown) => e instanceof ApiError && e.status === 403 && e.code === "FORBIDDEN";
+/**
+ * A page the signed-in user may not open: a heading (the page's own name), one calm sentence and a way back. Used by the shell for every
+ * sidebar area the role does not include, and by pages that check a permission themselves. No retry button: asking again changes nothing.
+ */
+export function NoAccess({ title, home }: { title?: string; home?: string }) {
+  const t = useT(); const path = usePathname();
+  const back = home ?? `/${path.split("/")[1] ?? ""}`;
+  return (
+    <>
+      <PageHeader title={title ?? t("err.no_access_title")} />
+      <div role="status" data-testid="no-access" className="flex flex-col items-center gap-2 rounded-card border border-dashed border-line px-6 py-12 text-center">
+        <Lock className="size-9 text-muted" aria-hidden />
+        {title && <p className="font-semibold">{t("err.no_access_title")}</p>}
+        <p className="max-w-md text-sm text-muted">{t("err.no_access_hint")}</p>
+        <Link href={back} className="mt-2 inline-flex h-10 items-center rounded-xl border border-line bg-bg2 px-4 text-sm text-ink hover:border-accent/60 hover:bg-card">{t("err.no_access_home")}</Link>
+      </div>
+    </>
+  );
+}
 export function ErrorState({ error, retry }: { error: unknown; retry?: () => void }) {
   const t = useT();
+  if (isForbidden(error)) {
+    return (
+      <div role="status" data-testid="no-access" className="flex flex-col items-center gap-2 rounded-card border border-dashed border-line px-6 py-10 text-center">
+        <Lock className="size-8 text-muted" aria-hidden />
+        <p className="font-semibold">{t("err.no_access_title")}</p><p className="max-w-md text-sm text-muted">{t("err.no_access_hint")}</p>
+      </div>
+    );
+  }
   return (
     <div role="alert" className="flex flex-col items-center gap-2 rounded-card border border-danger/40 bg-danger/5 px-6 py-10 text-center">
       <AlertTriangle className="size-8 text-danger" aria-hidden />
@@ -288,7 +320,7 @@ export function Table({ head, children, empty, label, stack, bare, dense, toolba
   return (
     <div className={cn("overflow-hidden", !bare && "rounded-card border border-line bg-card", stack && "jr-stack", dense && "jr-dense")}>
       {toolbar && <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3">{toolbar}</div>}
-      <div ref={box} onScroll={measure} tabIndex={more ? 0 : undefined} role={more ? "region" : undefined} aria-label={more ? (label ?? cols.map((c) => c.label).filter(Boolean).join(" · ")) : undefined} className={cn("overflow-x-auto", more && "jr-fade-end")}>
+      <div ref={box} onScroll={measure} tabIndex={more ? 0 : undefined} role={more ? "region" : undefined} aria-label={more ? (label ?? cols.map((c) => c.label).filter(Boolean).join(" · ")) : undefined} className={cn("relative overflow-x-auto", more && "jr-fade-end")}>
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-bg2/70 text-[11px] font-semibold uppercase tracking-wider text-muted"><tr>{cols.map((c, i) => <th key={i} scope="col" className={cn("px-4 py-2.5", ALIGN[c.align ?? "start"], c.className)}>{c.srOnly ? <span className="sr-only">{c.label}</span> : c.label}</th>)}</tr></thead>
           <tbody className="divide-y divide-line/70 [&>tr]:transition-colors [&>tr:hover]:bg-bg2/50">{children}</tbody>
@@ -452,6 +484,7 @@ export function useAction() {
       const r = await fn();
       if (o.success) toast.success(t(o.success));
       o.onDone?.(r);
+      void globalMutate(isChromeKey); // wallet chip, bell and sidebar counters move with the action instead of up to a minute later
       return r;
     } catch (e) {
       toast.error(errText(e, t));

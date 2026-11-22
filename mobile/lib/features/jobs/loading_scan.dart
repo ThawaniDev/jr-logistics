@@ -111,8 +111,8 @@ class _LoadingScanPanelState extends ConsumerState<LoadingScanPanel> {
       if (!mounted) return;
       setState(() {
         if (stopId != null) _overlay[stopId] = false;
-        _scannedNow = (r['scanned'] as num?)?.toInt() ?? _scannedNow;
-        _assignedNow = (r['assigned'] as num?)?.toInt() ?? _assignedNow;
+        _scannedNow = numOf(r['scanned'])?.toInt() ?? _scannedNow;
+        _assignedNow = numOf(r['assigned'])?.toInt() ?? _assignedNow;
         _last = (ok: true, warning: true, text: context.tr('fma.scan_removed', {'code': code}), code: null);
       });
       haptic(HapticKind.select);
@@ -150,7 +150,7 @@ class _LoadingScanPanelState extends ConsumerState<LoadingScanPanel> {
     return SectionCard(key: const Key('loading-scan'), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(t('fma.scan_loading_title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
       const SizedBox(height: 4),
-      Text(t('fma.scan_loading_hint'), style: const TextStyle(color: JR.muted, height: 1.4)),
+      Text(t('fma.scan_loading_hint'), style: TextStyle(color: JR.muted, height: 1.4)),
       const SizedBox(height: 14),
       Text(t('fma.scan_progress', {'n': scanned, 'total': total}), key: const Key('scan-progress-text'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
       const SizedBox(height: 8),
@@ -164,7 +164,7 @@ class _LoadingScanPanelState extends ConsumerState<LoadingScanPanel> {
           onChanged: (_) => setState(() {}), onSubmitted: (_) => _submitManual(), onScanned: (_) => _submitManual(),
         )),
         const SizedBox(width: 8),
-        SizedBox(width: 64, height: 56, child: FilledButton(key: const Key('scan-add'), style: FilledButton.styleFrom(minimumSize: const Size(64, 56), padding: EdgeInsets.zero), onPressed: _busy || _manual.text.trim().isEmpty ? null : _submitManual, child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : const Icon(Icons.add_task))),
+        SizedBox(width: 64, height: 56, child: FilledButton(key: const Key('scan-add'), style: FilledButton.styleFrom(minimumSize: const Size(64, 56), padding: EdgeInsets.zero), onPressed: _busy || _manual.text.trim().isEmpty ? null : _submitManual, child: _busy ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : const Icon(Icons.add_task))),
       ]),
       if (last != null && last.text.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 10), child: Banner2(
         key: const Key('scan-feedback'), tone: last.ok ? (last.warning ? Tone.warn : Tone.success) : (last.warning ? Tone.warn : Tone.danger), text: last.text,
@@ -173,7 +173,7 @@ class _LoadingScanPanelState extends ConsumerState<LoadingScanPanel> {
       if (_stops.isNotEmpty) ...[
         const SizedBox(height: 16),
         _ChecklistHeader(title: t('fma.not_scanned_n', {'n': pending.length}), icon: Icons.radio_button_unchecked, color: JR.muted),
-        if (pending.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Text(t('fma.all_scanned'), key: const Key('scan-all-done'), style: const TextStyle(color: JR.accent, fontWeight: FontWeight.w700))),
+        if (pending.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Text(t('fma.all_scanned'), key: const Key('scan-all-done'), style: TextStyle(color: JR.accent, fontWeight: FontWeight.w700))),
         for (final s in (_showAllPending ? pending : pending.take(_limit))) _ParcelRow(key: Key('scan-row-${s.id}'), stop: s, scanned: false),
         if (pending.length > _limit && !_showAllPending) TextButton(key: const Key('scan-show-all-pending'), onPressed: () => setState(() => _showAllPending = true), child: Text(t('fma.show_all', {'n': pending.length}))),
         if (done.isNotEmpty) ...[
@@ -185,7 +185,7 @@ class _LoadingScanPanelState extends ConsumerState<LoadingScanPanel> {
       ],
       const SizedBox(height: 16),
       FilledButton.icon(key: const Key('finish-loading'), onPressed: busy || _busy || !_canFinish ? null : _finish, icon: busyIcon(busy, Icons.flag_outlined), label: Text(t('fma.finish_loading'))),
-      Padding(padding: const EdgeInsets.only(top: 6), child: Text(!_canFinish ? t('fma.finish_need_one') : t('fma.finish_hint'), key: const Key('finish-loading-hint'), style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.4))),
+      Padding(padding: const EdgeInsets.only(top: 6), child: Text(!_canFinish ? t('fma.finish_need_one') : t('fma.finish_hint'), key: const Key('finish-loading-hint'), style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.4))),
     ]));
   }
 }
@@ -216,7 +216,7 @@ class _ParcelRow extends StatelessWidget {
       const SizedBox(width: 10),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(stop.code.isEmpty ? t('um.parcel_n', {'n': stop.seq}) : stop.code, textDirection: TextDirection.ltr, style: const TextStyle(fontWeight: FontWeight.w700)),
-        if (addr.isNotEmpty) Text(addr, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JR.muted, fontSize: 12.5, height: 1.3)),
+        if (addr.isNotEmpty) Text(addr, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: JR.muted, fontSize: 12.5, height: 1.3)),
       ])),
       if (scanned && onUndo != null) IconButton(key: Key('scan-undo-${stop.id}'), tooltip: t('fma.scan_unscan'), constraints: const BoxConstraints(minWidth: 48, minHeight: 48), onPressed: onUndo, icon: const Icon(Icons.undo, size: 20)),
     ]));

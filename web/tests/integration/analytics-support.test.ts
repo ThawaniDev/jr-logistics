@@ -181,7 +181,7 @@ describe("support drill-down tables", () => {
   it("CSV needs reports.export and is audited; a viewer-only staff member gets 403", async () => {
     const { admin } = await world();
     expect((await get(await mkStaff(["reports.view"]), "/admin/analytics/support/table/tickets?format=csv")).status).toBe(403);
-    const r = await get(admin, "/admin/analytics/support/table/tickets?format=csv");
+    const r = await get(admin, "/admin/analytics/support/table/tickets?format=csv&headers=keys");
     expect(r.status).toBe(200); expect(r.text.split("\n")[0]).toContain("ref,category,priority,status,sla");
     expect(r.text.trim().split("\n")).toHaveLength(6);
     const [a] = await db.select().from(auditLogs).where(eq(auditLogs.action, "report.export")).orderBy(desc(auditLogs.createdAt));

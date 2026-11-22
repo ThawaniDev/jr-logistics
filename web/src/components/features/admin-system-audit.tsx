@@ -2,9 +2,9 @@
 import { Suspense, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Activity, CalendarDays, ScrollText, Settings2, Users } from "lucide-react";
-import { Badge, Button, CellPair, EmptyState, ErrorState, KV, Modal, PageHeader, PageLoading, Pagination, SearchBox, Segmented, Select, Stat, StatGrid, Table, Td, Toolbar } from "@/components/ui";
+import { Badge, Button, CellPair, EmptyState, ErrorState, KV, Modal, PageHeader, PageLoading, Pagination, SearchBox, Segmented, Select, Stat, StatGrid, Table, Td, Toolbar, NoAccess } from "@/components/ui";
 import { useApi, useUrlPatch, useUrlState } from "@/components/ui/data";
-import { ApiError, get } from "@/lib/api";
+import { get } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { useI18n } from "@/i18n/provider";
 import { hasPerm, useUser } from "@/components/layout/auth-context";
@@ -45,7 +45,7 @@ function AuditInner() {
     const [today, week, who, settings, staff] = await Promise.all([q({ from: day, pageSize: 1 }), q({ from: auditFrom("7d"), pageSize: 1 }), q({ from: day, pageSize: 200 }), q({ from: day, action: "settings.", pageSize: 1 }), q({ from: day, action: "staff.", pageSize: 1 })]);
     return { today: today.total, week: week.total, people: distinctActors(who.items), peopleCapped: who.total > who.items.length, changes: settings.total + staff.total };
   }, { refreshInterval: 60_000, shouldRetryOnError: false });
-  if (!allowed) return <ErrorState error={new ApiError("FORBIDDEN", "Forbidden", 403)} />;
+  if (!allowed) return <NoAccess />;
   const k = kpi.data; const filtered = !!(entity || act || period !== "all");
   const reset = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
   const clear = () => { patchUrl({ period: "", entity: "", action: "" }); setActionQ(""); setPage(1); };

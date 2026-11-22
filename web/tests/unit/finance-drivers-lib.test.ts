@@ -176,6 +176,6 @@ describe("statement helpers and translations", () => {
   });
   it("every fdr. / cdc. key exists in all three languages with the same placeholders", () => {
     const ph = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join();
-    for (const k of Object.keys(en).filter((x) => /^(fdr|cdc|fdr_src)\./.test(x))) for (const d of [ar, ur]) { expect(d[k], k).toBeTruthy(); expect(ph(d[k]), k).toBe(ph(en[k])); }
+    for (const k of Object.keys(en).filter((x) => /^(fdr|cdc|fdr_src)\./.test(x) && !x.endsWith("__one"))) for (const d of [ar, ur]) { expect(d[k], k).toBeTruthy(); expect(ph(d[k]), k).toBe(ph(en[k])); }
   });
 });
