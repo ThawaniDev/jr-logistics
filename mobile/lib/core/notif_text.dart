@@ -12,7 +12,7 @@ List<String> placeholdersOf(String template) => {for (final m in _placeholder.al
 String notificationText(Strings t, AppNotification n, {String? type, String genericKey = 'um.notif_generic'}) {
   final key = 'notif.${type ?? n.type}';
   if (!t.has(key)) return t(genericKey);
-  final vars = <String, Object?>{...n.vars(city: (k) => t.has('city.$k') ? t('city.$k') : k)}..removeWhere((_, v) => '${v ?? ''}'.isEmpty);
+  final vars = <String, Object?>{...n.vars(city: (k) => t.has('city.$k') ? t('city.$k') : k, docType: (k) => t.has('doc.$k') ? t('doc.$k') : k)}..removeWhere((_, v) => '${v ?? ''}'.isEmpty);
   final raw = t(key);
   final full = placeholdersOf(raw);
   if (full.every(vars.containsKey)) return t(key, vars);

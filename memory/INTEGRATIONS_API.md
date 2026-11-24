@@ -72,3 +72,7 @@ The housekeeping tick (`INTERNAL_SCHEDULER` / `POST /cron/tick`) runs the outbox
 
 ## Ops
 `INTEGRATIONS_SECRET` (required in production; also keys label signatures and access tokens — changing it invalidates both).
+
+## Update L (W7) — integrator (API key) API and webhooks
+The company's own order system (as opposed to a warehouse-system connection above) uses the API-key API. Since Update L: `POST /quote`, `POST /jobs/:id/cancel`, `PATCH /jobs/:id/shipments/:shipmentId`, `POST /jobs/:id/shipments/:shipmentId/cancel`, and the **OpenAPI 3 document at `GET /api/v1/openapi.json`** (public; hand-maintained in `server/ops-tools/openapi.ts`, checked against the routes by `tests/unit/openapi.test.ts`). Details and shapes: `SHIPMENTS_API.md` §L.1.
+Webhooks: the business API page has **Send test event** (`POST /business/webhook/test`, event `webhook.test`) and **Retry / Send again** per delivery (`POST /business/webhook/deliveries/:id/retry`, same event id, current URL, attempts reset) — `SHIPMENTS_API.md` §L.2. Signature unchanged: `x-jr-signature: t=<unix>,v1=<hex>` = HMAC-SHA256(`<t>.<raw body>`, signing secret); de-duplicate on `x-jr-delivery`.

@@ -1,9 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/app_info.dart';
 import 'core/config.dart';
 import 'core/i18n.dart';
+import 'core/version_gate.dart';
 import 'data/api_client.dart';
 import 'data/driver_api.dart';
+import 'data/legal_api.dart';
 import 'data/models.dart';
 import 'data/token_store.dart';
 
@@ -17,11 +20,35 @@ final tokenStoreProvider = Provider<TokenStore>((_) => SecureTokenStore());
 /// Written to shared_preferences on the first launch of an install. iOS keeps keychain items when the app is deleted but wipes its preferences, so a missing
 /// marker means "fresh install": a session token left over from an earlier install is dropped instead of signing the next owner of the phone in.
 const installMarkerKey = 'install_marker';
+/// Set while an account-deletion request of this driver is open (see `PrivacyScreen`). When the session then ends with a 401 the sign-in page can say that the
+/// request may have been approved (the account is erased and its token stops working) instead of the usual "session expired".
+const deletionRequestKey = 'privacy_deletion_requested';
 final prefsProvider = Provider<SharedPreferences>((_) => throw UnimplementedError('override in main'));
+
+/// Which build is running (version, build, platform): read from the app bundle in `main`; the pubspec values until then and in tests.
+final appInfoProvider = Provider<AppInfo>((_) => AppInfo.fallback());
+
+/// Set when the app must be updated (a `426 UPGRADE_REQUIRED` from the server, or the catalog minimum above the installed version): the whole app is then
+/// replaced by the update screen. Only an update (a new process) or a lower minimum on the server clears it.
+class UpgradeNotifier extends Notifier<UpgradeInfo?> {
+  @override
+  UpgradeInfo? build() => null;
+  /// Keeps what is already known (a bare 426 must not erase the store link the catalog gave).
+  void require(UpgradeInfo u) {
+    final cur = state;
+    if (cur == null) { state = u; return; }
+    state = UpgradeInfo(minVersion: u.minVersion.isNotEmpty ? u.minVersion : cur.minVersion, currentVersion: u.currentVersion.isNotEmpty ? u.currentVersion : cur.currentVersion, platform: u.platform.isNotEmpty ? u.platform : cur.platform, storeUrl: u.storeUrl.isNotEmpty ? u.storeUrl : cur.storeUrl);
+  }
+  void clear() { if (state != null) state = null; }
+}
+
+final upgradeProvider = NotifierProvider<UpgradeNotifier, UpgradeInfo?>(UpgradeNotifier.new);
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient(
       baseUrl: AppConfig.baseUrl,
+      app: ref.watch(appInfoProvider),
       tokens: ref.watch(tokenStoreProvider),
+      onUpgradeRequired: (u) => ref.read(upgradeProvider.notifier).require(u),
       onUnauthorized: () => ref.read(authProvider.notifier).expire(),
       onPasswordChange: () => ref.read(authProvider.notifier).requirePasswordChange(),
       onConnectivity: (ok) => ref.read(onlineProvider.notifier).set(ok),
@@ -56,11 +83,16 @@ final stringsProvider = FutureProvider<Strings>((ref) => Strings.load(ref.watch(
 
 // ── auth ──
 class AuthState {
-  const AuthState({this.user, this.expired = false});
+  const AuthState({this.user, this.expired = false, this.afterDeletionRequest = false, this.legalPending = const []});
   final Json? user;
   final bool expired;
+  /// The session ended while an account-deletion request was open: most likely the team approved it.
+  final bool afterDeletionRequest;
+  /// Terms / privacy-policy versions the driver has to accept again (`GET /auth/me` → `legal.pending`): while there are any, the app shows the acceptance screen.
+  final List<PendingLegal> legalPending;
   bool get signedIn => user != null;
   bool get isDriver => user?['role'] == 'driver';
+  AuthState copyWith({Json? user, List<PendingLegal>? legalPending}) => AuthState(user: user ?? this.user, expired: expired, afterDeletionRequest: afterDeletionRequest, legalPending: legalPending ?? this.legalPending);
 }
 
 class AuthNotifier extends AsyncNotifier<AuthState> {
@@ -78,7 +110,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final me = await ref.read(apiProvider).me();
       final u = me['user'];
       if (u is! Map) throw ApiException('BAD_RESPONSE', 'no user in /auth/me');
-      return AuthState(user: u.cast<String, dynamic>());
+      return AuthState(user: u.cast<String, dynamic>(), legalPending: PendingLegal.parse(me));
     } on ApiException catch (e) {
       // Only a definite "your session is invalid" signs the driver out. Offline, slow, a 5xx or a malformed answer must NOT
       // destroy a valid session (a server blip on app start would otherwise log every driver out): show the retry screen instead.
@@ -90,7 +122,10 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
 
   Future<void> signIn(String token, Json user) async {
     await ref.read(tokenStoreProvider).write(token);
-    state = AsyncData(AuthState(user: user));
+    // Terms the driver has to accept again are known only to /auth/me: ask before the first screen so the acceptance page replaces the home page without a flash.
+    // Best effort and short: a weak signal must never keep a driver from signing in (the next resume / start asks again).
+    final pending = await _pendingLegal().timeout(const Duration(seconds: 4), onTimeout: () => const <PendingLegal>[]);
+    state = AsyncData(AuthState(user: user, legalPending: pending));
     final lang = user['language'];
     if (lang is String && supportedCodes.contains(lang)) await ref.read(localeProvider.notifier).set(lang);
   }
@@ -106,10 +141,34 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     state = const AsyncData(AuthState());
   }
 
+  Future<List<PendingLegal>> _pendingLegal() async {
+    try { return PendingLegal.parse(await ref.read(apiProvider).me()); } catch (_) { return const []; }
+  }
+
+  /// Asks the server which terms are waiting for the driver (after sign-in, when the app comes back to the front, and after a stale acceptance). Never throws.
+  /// A failed answer keeps what is known: no signal must neither open nor close the acceptance screen.
+  Future<void> refreshLegal() async {
+    final cur = state.value;
+    if (cur == null || !cur.signedIn) return;
+    try {
+      final me = await ref.read(apiProvider).me();
+      final now = state.value;
+      if (now == null || !now.signedIn) return;
+      state = AsyncData(now.copyWith(legalPending: PendingLegal.parse(me)));
+    } catch (_) {/* keep what is known */}
+  }
+
+  /// The pending list after the driver accepted (or from the server's answer): an empty list opens the app.
+  void setLegalPending(List<PendingLegal> pending) {
+    final cur = state.value;
+    if (cur == null || !cur.signedIn) return;
+    state = AsyncData(cur.copyWith(legalPending: pending));
+  }
+
   /// Keeps the cached account in sync after the driver edits their profile (name/city/email).
   void updateUser(Json user) {
     final cur = state.value;
-    state = AsyncData(AuthState(user: {...?cur?.user, ...user}));
+    state = AsyncData(AuthState(user: {...?cur?.user, ...user}, legalPending: cur?.legalPending ?? const []));
   }
 
   /// The server wants a new password before it answers anything else (`403 PASSWORD_CHANGE_REQUIRED`): the router then shows "choose a new password".
@@ -124,7 +183,10 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     // screen into "your session expired".
     if (state.value?.signedIn != true) return;
     ref.read(tokenStoreProvider).clear();
-    state = const AsyncData(AuthState(expired: true));
+    final prefs = ref.read(prefsProvider);
+    final afterRequest = prefs.getBool(deletionRequestKey) == true;
+    if (afterRequest) prefs.remove(deletionRequestKey);
+    state = AsyncData(AuthState(expired: true, afterDeletionRequest: afterRequest));
   }
 }
 
@@ -174,6 +236,11 @@ final profileProvider = FutureProvider.autoDispose<Json>((ref) => ref.watch(apiP
 final custodyProvider = FutureProvider.autoDispose.family<List<Json>, String>((ref, id) => ref.watch(apiProvider).custody(id));
 final walletProvider = FutureProvider.autoDispose<Json>((ref) => ref.watch(apiProvider).wallet());
 final catalogProvider = FutureProvider<Json>((ref) => ref.watch(apiProvider).catalog());
+
+// ── legal texts (driver terms, privacy policy) ──
+final legalApiProvider = Provider<LegalApi>((ref) => LegalApi(ref.watch(apiProvider).c));
+/// One text in one language. Autodisposed: a reader that is closed does not keep a long markdown text in memory.
+final legalDocProvider = FutureProvider.autoDispose.family<LegalDoc, ({String slug, String lang})>((ref, k) => ref.watch(legalApiProvider).doc(k.slug, k.lang));
 
 void refreshAll(WidgetRef ref) {
   ref.invalidate(overviewProvider);

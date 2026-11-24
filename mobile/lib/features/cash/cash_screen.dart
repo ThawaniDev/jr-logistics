@@ -7,6 +7,7 @@ import '../../data/models_extra.dart';
 import '../../providers.dart';
 import '../../providers_extra.dart';
 import '../../widgets/common.dart';
+import 'cash_risk_banner.dart';
 
 /// "Cash with me" (E17): the cash the driver collected on delivery and has not yet handed to the warehouse. It is the warehouse's money — it never
 /// touches the earnings wallet. The warehouse (or operations) records each hand-over, and it shows up here.
@@ -17,10 +18,11 @@ class CashScreen extends ConsumerWidget {
     final t = context.tr;
     final lang = ref.watch(localeProvider);
     final cash = ref.watch(cashProvider);
+    final risk = ref.watch(overviewProvider).value?.cashRisk;
     Future<void> reload() async { ref.invalidate(cashProvider); ref.invalidate(overviewProvider); await ref.read(cashProvider.future); }
     return Scaffold(
       appBar: AppBar(title: Text(t('nav.cash_with_me'))),
-      body: RefreshIndicator(color: JR.accent, onRefresh: reload, child: AsyncBody<CashSummary>(value: cash, onRetry: () { ref.invalidate(cashProvider); }, builder: (c) => ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [CashSection(cash: c, lang: lang)]))),
+      body: RefreshIndicator(color: JR.accent, onRefresh: reload, child: AsyncBody<CashSummary>(value: cash, onRetry: () { ref.invalidate(cashProvider); }, builder: (c) => ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [CashSection(cash: c, lang: lang, risk: risk)]))),
     );
   }
 }
@@ -33,11 +35,12 @@ class WalletCashSection extends ConsumerWidget {
     final t = context.tr;
     final lang = ref.watch(localeProvider);
     final cash = ref.watch(cashProvider);
+    final risk = ref.watch(overviewProvider).value?.cashRisk;
     return Column(key: const Key('wallet-cash-section'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(t('drs.cash_section'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
       const SizedBox(height: 10),
       cash.when(
-        data: (c) => CashSection(cash: c, lang: lang),
+        data: (c) => CashSection(cash: c, lang: lang, risk: risk),
         loading: () => Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: JR.accent))),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(cashProvider)),
       ),
@@ -47,9 +50,11 @@ class WalletCashSection extends ConsumerWidget {
 
 /// Cash with me · collected · handed over · by order · recent hand-overs. Not scrollable itself: the screen that hosts it scrolls.
 class CashSection extends StatelessWidget {
-  const CashSection({super.key, required this.cash, required this.lang});
+  const CashSection({super.key, required this.cash, required this.lang, this.risk});
   final CashSummary cash;
   final String lang;
+  /// The cash-risk block of the overview (limit, overdue, state): a banner above everything when the driver is at risk, and the "overdue" tag on old orders.
+  final CashRisk? risk;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +62,7 @@ class CashSection extends StatelessWidget {
     final withMe = cash.outstandingCents;
     final orders = cash.orders, recent = cash.recent;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (risk?.atRisk == true) ...[CashRiskBanner(cash: risk, lang: lang), const SizedBox(height: 12)],
       Banner2(key: const Key('cash-explain'), text: t('fmb.cash_explain')),
       const SizedBox(height: 12),
       SectionCard(key: const Key('cash-with-me'), border: withMe > 0 ? JR.gold : JR.accent, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -78,7 +84,7 @@ class CashSection extends StatelessWidget {
         if (orders.isNotEmpty) ...[
           Text(t('fmb.cash_orders'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
-          for (final o in orders) Padding(padding: const EdgeInsets.only(bottom: 10), child: _OrderCard(order: o, lang: lang)),
+          for (final o in orders) Padding(padding: const EdgeInsets.only(bottom: 10), child: _OrderCard(order: o, lang: lang, maxDays: risk?.maxDays ?? 0)),
         ],
         if (recent.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -105,9 +111,11 @@ class _Stat extends StatelessWidget {
 }
 
 class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.order, required this.lang});
+  const _OrderCard({required this.order, required this.lang, this.maxDays = 0});
   final CashOrder order;
   final String lang;
+  /// The platform's handover time in days (0 = none): older cash is tagged "Overdue".
+  final int maxDays;
   @override
   Widget build(BuildContext context) {
     final t = context.tr;
@@ -125,6 +133,11 @@ class _OrderCard extends StatelessWidget {
       ]),
       if (o.businessName.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text('${t('fmb.cash_warehouse')}: ${o.businessName}', style: TextStyle(color: JR.muted, fontSize: 13, height: 1.3))),
       if (o.parcels > 0) Padding(padding: const EdgeInsets.only(top: 2), child: Text(t('fmb.cash_parcels', {'n': o.parcels}), style: TextStyle(color: JR.muted, fontSize: 13))),
+      // How long this cash has been with the driver (`ageDays`); past the handover time it is tagged overdue.
+      if (o.outstandingCents > 0 && o.ageDays != null) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Text(t('lm.cash_age_days', {'n': o.ageDays}), key: Key('cash-age-${o.offerId}'), style: TextStyle(color: JR.muted, fontSize: 13)),
+        if (maxDays > 0 && o.ageDays! > maxDays) Pill(t('lm.cash_overdue_pill'), key: Key('cash-overdue-${o.offerId}'), tone: Tone.danger),
+      ])),
       const SizedBox(height: 8),
       line(t('fmb.cash_collected'), o.collectedCents),
       line(t('fmb.cash_handed'), o.receivedCents, color: JR.accent),

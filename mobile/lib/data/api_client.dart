@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import '../core/app_info.dart';
+import '../core/version_gate.dart';
 import 'token_store.dart';
 
 typedef Json = Map<String, dynamic>;
@@ -13,6 +15,7 @@ String? strOf(Object? v) => v is String ? v : null;
 /// Stable server error codes (see web src/lib/errors.ts). The UI localizes `err.<code>`.
 /// Client-side codes (never sent by the server): NETWORK (no connection), TIMEOUT (too slow), UNAVAILABLE (502/503/504 from a proxy,
 /// no JSON envelope), BAD_RESPONSE (a 2xx that is not JSON, e.g. a captive portal), FILE_TOO_LARGE (413).
+/// `UPGRADE_REQUIRED` (426) is a server code: the app is older than the platform's minimum — see [ApiClient.onUpgradeRequired].
 class ApiException implements Exception {
   ApiException(this.code, this.message, {this.status = 0, this.details = const {}});
   final String code;
@@ -29,9 +32,14 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({required String baseUrl, required this.tokens, Dio? dio, this.onUnauthorized, this.onPasswordChange, this.onConnectivity, this.retryDelays = const [Duration(milliseconds: 500), Duration(milliseconds: 1500)]})
-      : dio = dio ?? Dio(BaseOptions(baseUrl: '$baseUrl/api/v1', connectTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 30), receiveTimeout: const Duration(seconds: 25), headers: {'X-Client': 'mobile', 'Accept': 'application/json'})) {
+  ApiClient({required String baseUrl, required this.tokens, Dio? dio, this.onUnauthorized, this.onPasswordChange, this.onConnectivity, this.onUpgradeRequired, AppInfo? app, this.retryDelays = const [Duration(milliseconds: 500), Duration(milliseconds: 1500)]})
+      : app = app ?? AppInfo.fallback(),
+        dio = dio ?? Dio(BaseOptions(baseUrl: '$baseUrl/api/v1', connectTimeout: const Duration(seconds: 12), sendTimeout: const Duration(seconds: 30), receiveTimeout: const Duration(seconds: 25), headers: {'X-Client': 'mobile', 'Accept': 'application/json'})) {
     this.dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) async {
+      // Which build is asking: the server answers 426 UPGRADE_REQUIRED to a mobile build below the platform's minimum (every route but /catalog and /health).
+      o.headers['X-Client'] = 'mobile';
+      o.headers['X-App-Version'] = this.app.full;
+      o.headers['X-App-Platform'] = this.app.platform;
       // An explicit Authorization header (revoking a session that was never stored, see [revokeSession]) is never replaced by the stored token.
       if (!o.headers.containsKey('Authorization')) {
         final t = await tokens.read();
@@ -43,12 +51,17 @@ class ApiClient {
 
   final Dio dio;
   final TokenStore tokens;
+  /// The running build (version, platform): sent as headers on every request.
+  final AppInfo app;
   final void Function()? onUnauthorized;
   /// Called when the server answers `403 PASSWORD_CHANGE_REQUIRED` (a temporary password: every call but change-password / me / logout is refused).
   /// The app then sends the driver to "choose a new password" instead of showing an error on every action.
   final void Function()? onPasswordChange;
   /// Called with `false` when a request fails for lack of connectivity and `true` as soon as the server answers anything.
   final void Function(bool online)? onConnectivity;
+  /// Called when the server answers `426 UPGRADE_REQUIRED` (before auth, to a build below the minimum version): the app then shows the full-screen update
+  /// page instead of an error on every action. The error is still thrown to the caller.
+  final void Function(UpgradeInfo info)? onUpgradeRequired;
   /// Reads (GET) are retried after these delays when the connection drops or a proxy answers 502/503/504. Writes never are:
   /// a repeated deliver/fail could double-apply, so the UI verifies the outcome instead (see stops_panel).
   final List<Duration> retryDelays;
@@ -84,6 +97,7 @@ class ApiClient {
         final ex = ApiException('${er['code']}', '${er['message']}', status: status, details: det is Map ? det.cast<String, dynamic>() : const {});
         if (ex.isAuth && !(e.requestOptions.path.contains('/auth/'))) onUnauthorized?.call();
         if (ex.code == 'PASSWORD_CHANGE_REQUIRED') onPasswordChange?.call();
+        if (ex.code == 'UPGRADE_REQUIRED') onUpgradeRequired?.call(UpgradeInfo.fromDetails(ex.details));
         throw ex;
       }
       switch (e.type) {
@@ -94,6 +108,8 @@ class ApiClient {
           throw ApiException('TIMEOUT', e.message ?? 'timeout');
         case DioExceptionType.badResponse:
           onConnectivity?.call(true);
+          // 426 without the JSON envelope (a proxy rewrote the body): still "update the app" — the store link then comes from the catalog.
+          if (status == 426) { onUpgradeRequired?.call(const UpgradeInfo()); throw ApiException('UPGRADE_REQUIRED', e.message ?? 'upgrade required', status: status); }
           // A proxy/gateway answered without our JSON envelope.
           if (status == 401 && !e.requestOptions.path.contains('/auth/')) { onUnauthorized?.call(); throw ApiException('UNAUTHENTICATED', 'unauthenticated', status: status); }
           throw ApiException(switch (status) { 429 => 'RATE_LIMITED', 413 => 'FILE_TOO_LARGE', 502 || 503 || 504 => 'UNAVAILABLE', _ => 'INTERNAL' }, e.message ?? 'bad response', status: status);

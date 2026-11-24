@@ -9,6 +9,7 @@ import 'package:jr_driver/features/auth/change_password_screen.dart';
 import 'package:jr_driver/features/auth/login_screen.dart';
 import 'package:jr_driver/features/auth/register_screen.dart';
 import 'package:jr_driver/providers.dart';
+import 'package:jr_driver/providers_extra.dart';
 import 'package:jr_driver/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../helpers.dart';
@@ -58,6 +59,7 @@ Future<ProviderContainer> pumpApp(WidgetTester t, {required FakeApi api, bool to
     overrides: [
       prefsProvider.overrideWithValue(p), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(store),
       stringsProvider.overrideWith((ref) async => strings(ref.watch(localeProvider))), linkOpenerProvider.overrideWithValue(FakeLinks()), locationServiceProvider.overrideWithValue(FakeLocation()),
+      legalApiProvider.overrideWithValue(FakeLegalApi()), privacyRepoProvider.overrideWithValue(FakePrivacyRepo()), fileSharerProvider.overrideWithValue(FakeSharer()),
       ...extraOverrides(api: FakeExtraApi(), notifier: FakeNotifier(permission: true)),
     ],
     child: const JrApp(),
@@ -564,6 +566,8 @@ void _suite() {
       await t.pump();
       await t.pump(const Duration(milliseconds: 700)); // the page transition back
       expect(find.byKey(const Key('cp-submit')), findsNothing, reason: 'back on the profile');
+      await t.drag(find.byKey(const Key('profile-list')), const Offset(0, 3000)); // the profile is longer now (legal links, contact, privacy): back to its top
+      await t.pump();
       expect(find.byKey(const Key('profile-username')), findsOneWidget);
     });
   });

@@ -180,7 +180,19 @@ void main() {
     await t.pumpAndSettle(const Duration(seconds: 1));
     await t.tap(find.text('Me'));
     await t.pumpAndSettle(const Duration(seconds: 1));
-    await tapVisible(t, find.text('Language')); // the profile list is longer now (username, change password): scroll to the row first
+    // Update L: the driver terms and the privacy policy are read from the server (`GET /legal/:kind`), and the Privacy & data card is on the profile.
+    await t.scrollUntilVisible(find.byKey(const Key('profile-terms')), 300, scrollable: find.byType(Scrollable).first); // the list builds lazily: scroll down to the tile first
+    await tapVisible(t, find.byKey(const Key('profile-terms')));
+    await pumpUntil(t, find.byKey(const Key('legal-title')));
+    await t.pageBack();
+    await t.pumpAndSettle(const Duration(seconds: 1));
+    await t.scrollUntilVisible(find.byKey(const Key('privacy-card')), 300, scrollable: find.byType(Scrollable).first);
+    expect(find.byKey(const Key('privacy-export')), findsOneWidget);
+    // the profile list is longer now (username, change password, legal links, privacy) and builds lazily: from the top, scroll down to the Language row before tapping it
+    await scrollTop(t);
+    await t.scrollUntilVisible(find.text('Language'), 300, scrollable: find.byType(Scrollable).first);
+    await t.pumpAndSettle();
+    await tapVisible(t, find.text('Language'));
     await t.pumpAndSettle();
     await t.tap(find.text('العربية'));
     await t.pumpAndSettle(const Duration(seconds: 2));

@@ -20,14 +20,19 @@ class PasswordChangedNotice extends Notifier<bool> {
 final passwordChangedNoticeProvider = NotifierProvider<PasswordChangedNotice, bool>(PasswordChangedNotice.new);
 
 /// Router redirect rules for the auth state (pure, so they are unit-tested): signed out -> sign-in; signed in on a public page -> home;
-/// a pending password change locks every other page until it is done.
+/// a pending password change locks every other page until it is done, and so does a newer version of the terms / privacy policy that has not been
+/// accepted yet (`/legal-accept`). The legal texts themselves (`/legal/…`) are readable signed in or out — the registration page links to them and the
+/// acceptance page opens them.
 String? authRedirect({required bool loading, required AuthState? auth, required String location}) {
   if (loading) return null;
   final signedIn = auth?.signedIn == true;
-  final public = location == '/login' || location == '/register';
-  if (!signedIn) return public ? null : '/login';
+  final authOnly = location == '/login' || location == '/register';
+  final shared = location.startsWith('/legal/');
+  if (!signedIn) return authOnly || shared ? null : '/login';
   if (auth!.mustChangePassword) return location == '/change-password' ? null : '/change-password';
-  return public ? '/' : null;
+  if (auth.legalPending.isNotEmpty) return location == '/legal-accept' || shared ? null : '/legal-accept';
+  if (location == '/legal-accept') return '/';
+  return authOnly ? '/' : null;
 }
 
 enum PasswordChangeOutcome { sessionKept, signedInAgain, signedOut }

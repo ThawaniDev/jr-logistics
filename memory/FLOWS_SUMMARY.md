@@ -3,6 +3,8 @@
 **Scope:** 32 Core Operational Flows across Warehouses, Drivers, Courier Offices, and Finance  
 **Version:** 1.0 · November 2026 · Saudi Logistics Pilot (Riyadh)
 
+> **Update L (2026-11-22):** this quick reference was written before several owner decisions. Differences from what runs: flows 03 / 06 / 30 mention a show-up fee, a detention surcharge and a late-cancellation indemnity — **none is implemented (no fees, amounts pending the owner)**; flows 13–14 mention POS terminals (not supported) ; flow 12 needs routing switched on (off by default); flows 23–27 describe a warehouse confirm / dispute step and a review / approval step that were **removed** (the delivery is confirmed automatically and the settlement is paid at once); flow 31's priority window was retired. Details per flow: `FLOWS_DETAILED.md` (top table) and `PLATFORM_FULL_SPEC_AND_FLOWS_EN.md` (Update L notes). New flows 33–39 are at the end.
+
 ---
 
 ### Category 1: Loading Bay, Capacity & Quantity Mismatches
@@ -191,3 +193,39 @@
 - **System Action:** Escrow reserved for 5 vehicles; 5 drivers accept independently; each offer executes autonomous lifecycle.
 - **Financial Outcome:** If 1 driver no-shows, only that slot re-opens; remaining 4 vans operate uninterrupted; clean per-vehicle settlement.
 
+### Category 8: Providers, Payments, Cash Risk, Privacy, Legal & App Update (Update L)
+
+**Flow 33: Top-Up by Card (PayTabs)**
+- **Scenario:** A company adds funds from its wallet page; the card is typed on PayTabs' own page.
+- **System Action:** The platform asks PayTabs itself (never trusting the callback alone) and credits the wallet once.
+- **Financial Outcome:** Wallet `available` + the paid amount; ledger key `paytabs:<intent>`.
+
+**Flow 34: Top-Up by Bank Transfer**
+- **Scenario:** The company transfers money, uploads the receipt and the bank reference.
+- **System Action:** Finance (`topups.manage`) approves (optionally with the amount received) or rejects with a reason.
+- **Financial Outcome:** Credited once on approval (`banktopup:<id>`); the company is notified.
+
+**Flow 35: Cash-Risk Limits**
+- **Scenario:** A driver holds SAR 3,000+ of cash on delivery, or cash older than 3 days.
+- **System Action:** Warning at 80 %; over the limit or overdue: no new offers (`CASH_LIMIT`), withdrawal limited to balance minus overdue cash (`CASH_OUTSTANDING`); handing the cash over lifts it at once.
+- **Financial Outcome:** No money moves; the wallet is protected by the lien.
+
+**Flow 36: Delivery with SMS Off**
+- **Scenario:** The super admin has not enabled SMS.
+- **System Action:** Nothing is texted and the recipient's delivery code is not demanded; the driver scans the parcel code (and signature where required).
+- **Financial Outcome:** Unchanged.
+
+**Flow 37: Terms Re-Acceptance**
+- **Scenario:** A new version of a legal document is published with "require re-acceptance".
+- **System Action:** Every affected user is blocked until he accepts the new version.
+- **Financial Outcome:** None.
+
+**Flow 38: Privacy Export and Erasure**
+- **Scenario:** A person downloads his data, then asks to be erased.
+- **System Action:** Blockers are shown; staff approve; the account is anonymised in one transaction.
+- **Financial Outcome:** Ledger and invoices stay, without identifying the person.
+
+**Flow 39: Forced App Update**
+- **Scenario:** The owner sets a minimum app version.
+- **System Action:** Older app builds get `426 UPGRADE_REQUIRED` and an update screen with the store link.
+- **Financial Outcome:** None.

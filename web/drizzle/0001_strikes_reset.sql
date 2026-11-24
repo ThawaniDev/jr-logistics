@@ -1,1 +1,0 @@
-ALTER TABLE "driver_profiles" ADD COLUMN "strikes_reset_at" timestamp with time zone;

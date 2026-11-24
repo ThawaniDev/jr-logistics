@@ -2,10 +2,15 @@
 library;
 
 import 'dart:io';
+import 'dart:convert';
+import 'package:dio/dio.dart' show Options;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jr_driver/core/legal_markdown.dart';
 import 'package:jr_driver/data/api_client.dart';
 import 'package:jr_driver/data/driver_api.dart';
 import 'package:jr_driver/data/extra_api.dart';
+import 'package:jr_driver/data/legal_api.dart';
+import 'package:jr_driver/data/privacy_repo.dart';
 import 'package:jr_driver/data/models_extra.dart';
 import 'package:jr_driver/data/models.dart';
 import 'package:jr_driver/data/token_store.dart';
@@ -523,5 +528,89 @@ void main() {
     } finally {
       await dir.delete(recursive: true);
     }
+  });
+
+  // Update L (mobile): the terms and privacy texts, the re-acceptance list, the cash block, the catalog's update policy and support contact, the privacy tools
+  // (status, export, request + withdraw) and the crash-report endpoint — against the real server. It changes no platform setting.
+  test('Update L: legal texts, /auth/me legal, cash block, catalog policy + company, privacy status / export / deletion request, crash reports', skip: skip, () async {
+    final anon = DriverApi(ApiClient(baseUrl: base!, tokens: MemoryTokenStore()));
+
+    // GET /legal/:kind?lang= is public, per language, and carries markdown the app can draw
+    final legal = LegalApi(anon.c);
+    for (final slug in [legalDriverSlug, legalPrivacySlug]) {
+      for (final lang in ['ar', 'en', 'ur']) {
+        final d = await legal.doc(slug, lang);
+        expect(d.version, isNotEmpty, reason: '$slug/$lang');
+        expect(d.title, isNotEmpty, reason: '$slug/$lang');
+        expect(parseLegalMarkdown(d.body).length, greaterThan(3), reason: '$slug/$lang has a real text');
+      }
+    }
+    await expectLater(legal.doc('nonsense', 'en'), apiError('NOT_FOUND'));
+
+    // GET /auth/me carries legal.pending (a list); the demo driver has nothing to re-accept unless somebody published a release that asks for it
+    final me = await drv.api.me();
+    expect(me['legal'], isA<Map>());
+    final pending = PendingLegal.parse(me);
+    for (final p in pending) { expect(const ['terms_driver', 'privacy'], contains(p.kind)); expect(p.version, isNotEmpty); }
+    if (pending.isNotEmpty) {
+      // POST /legal/accept {items:[{kind,version}], locale}: only the version in force can be accepted, a stale one is a 409
+      await expectLater(LegalApi(drv.client).accept([PendingLegal({'kind': pending.first.kind, 'version': 'old-0'})], 'en'), apiError('CONFLICT'));
+      final r = await LegalApi(drv.client).accept(pending, 'en');
+      expect(r['pending'], isA<List>());
+    }
+
+    // GET /catalog: the update policy per platform and the company's support channels (both may be empty, but they exist and are tolerant)
+    final cat = await anon.catalog();
+    final app = mapOf(mapOf(cat['policy'])?['app']);
+    expect(app, isNotNull, reason: 'policy.app');
+    expect(mapOf(app!['minVersion']), isNotNull);
+    expect(mapOf(app['storeUrl']), isNotNull);
+    expect(mapOf(cat['company']), isNotNull, reason: 'company (Settings › Company)');
+
+    // GET /driver/overview → cash (the cash-risk block) and the paused-offers envelope are well-formed
+    final ov = await drv.api.overview();
+    final risk = ov.cashRisk;
+    expect(risk, isNotNull);
+    expect(CashState.values, contains(risk!.state));
+    expect(risk.lienCents, greaterThanOrEqualTo(0));
+    if (risk.state == CashState.ok || risk.state == CashState.warn) { expect(risk.blocksOffers, isFalse); }
+    final info = await ExtraApi(drv.client).offersInfo();
+    if (info.cashBlocked) { expect(info.items, isEmpty); expect(info.cash, isNotNull); }
+    // the stops of a job carry otpOffReason / canResend and the job carries deliveryCode (checked on the jobs of the other tests when SMS is off)
+    for (final j in await drv.api.jobs(active: true)) { expect(j.deliveryCode.required, isA<bool>()); }
+
+    // a fresh account (nothing to settle) can use the privacy tools: status → export (a JSON attachment) → request deletion → it is open → withdraw it
+    final stamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final username = 'lm.${stamp.substring(5)}', phone = '05${stamp.substring(5, 13)}', password = 'Flutter#Pass2026';
+    final reg = await anon.register({'role': 'driver', 'username': username, 'password': password, 'name': 'Update L Test Driver', 'phone': phone, 'city': 'riyadh', 'vehicleType': 'sedan', 'services': ['delivery_driver'], 'termsAccepted': true});
+    final tokens = MemoryTokenStore();
+    await tokens.write(reg['token'] as String);
+    final client = ApiClient(baseUrl: base!, tokens: tokens);
+    final repo = PrivacyRepository(client);
+    var st = await repo.status();
+    expect(st.deletionSupported, isTrue);
+    expect(st.blockers, isEmpty, reason: 'a new account owes nothing');
+    expect(st.canRequest, isTrue);
+    expect(st.hasRetention, isTrue);
+    final bytes = await repo.exportData();
+    final exported = jsonDecode(utf8.decode(bytes));
+    expect(exported, isA<Map>());
+    expect(utf8.decode(bytes), isNot(contains(password)), reason: 'an export never holds the password');
+    final req = await repo.requestDeletion('Live test');
+    expect(req.open, isTrue);
+    st = await repo.status();
+    expect(st.request?.open, isTrue);
+    expect(st.canRequest, isFalse);
+    await expectLater(repo.requestDeletion('again'), apiError('CONFLICT'));
+    final cancelled = await repo.cancelDeletion();
+    expect(cancelled.status, 'cancelled');
+    await expectLater(repo.cancelDeletion(), apiError('NOTHING_TO_DO'));
+    // a driver with money or an open job is told what blocks it (the demo driver may hold cash or a wallet balance; either way the answer is well-formed)
+    final busy = await PrivacyRepository(drv.client).status();
+    for (final b in busy.blockers) { expect(b.code, isNotEmpty); }
+
+    // POST /app/errors always answers 202 / 204 (and takes no token)
+    final r = await anon.c.dio.post('/app/errors', data: {'message': 'live test', 'stack': '#0 main (package:jr_driver/main.dart:1:1)', 'route': '/', 'appVersion': '1.0.0+1', 'platform': 'android', 'osVersion': 'test', 'at': DateTime.now().toUtc().toIso8601String()}, options: Options(validateStatus: (_) => true));
+    expect([202, 204], contains(r.statusCode));
   });
 }

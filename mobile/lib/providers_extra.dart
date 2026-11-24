@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'data/api_client.dart';
 import 'data/extra_api.dart';
+import 'data/privacy_repo.dart';
 import 'data/models.dart';
 import 'data/models_extra.dart';
 import 'providers.dart';
@@ -13,6 +15,19 @@ final extraApiProvider = Provider<ExtraApi>((ref) => ExtraApi(ref.watch(apiProvi
 
 /// The coloured legs of the whole route, fetched when the map opens.
 final routeGeometryProvider = FutureProvider.autoDispose.family<RouteGeometry, String>((ref, offerId) => ref.watch(extraApiProvider).routeGeometry(offerId));
+
+// ── privacy & data ──
+final privacyRepoProvider = Provider<PrivacyRepository>((ref) => PrivacyRepository(ref.watch(apiProvider).c));
+final privacyStatusProvider = FutureProvider.autoDispose<PrivacyStatus>((ref) async {
+  final st = await ref.watch(privacyRepoProvider).status();
+  await markDeletionRequest(ref.read(prefsProvider), st.request?.open == true); // what the sign-in page may need to say if the session ends (the team approved it)
+  return st;
+});
+
+/// Remembers (or forgets) that a deletion request is open — see [deletionRequestKey]. Never throws.
+Future<void> markDeletionRequest(SharedPreferences prefs, bool open) async {
+  try { if (open) { await prefs.setBool(deletionRequestKey, true); } else { await prefs.remove(deletionRequestKey); } } catch (_) {/* a convenience only */}
+}
 
 final cashProvider = FutureProvider.autoDispose<CashSummary>((ref) => ref.watch(extraApiProvider).cash());
 

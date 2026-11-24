@@ -1,0 +1,5 @@
+/* Permission texts the system shows (Settings > JR Driver, and the permission dialogs). One file per language: Arabic and Urdu drivers read them in their own language. */
+"NSLocationWhenInUseUsageDescription" = "JR Logistics uses your location while you are online to help dispatch jobs, confirm you are at the warehouse when you check in, and plan your route.";
+"NSCameraUsageDescription" = "JR Logistics uses the camera to scan parcel barcodes and to take photos of your documents, delivery evidence and signatures.";
+"NSPhotoLibraryUsageDescription" = "Choose a photo of your documents or delivery evidence.";
+"NSLocalNetworkUsageDescription" = "JR Driver connects to your JR Logistics server on the local network.";

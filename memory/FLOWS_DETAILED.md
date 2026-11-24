@@ -7,9 +7,27 @@
 
 ---
 
+> **Update L reality check (2026-11-22).** These flows are *narratives*: names of states, reason codes, endpoints and amounts were written to illustrate the rules and several no longer match the code (audit K, `memory/audit/gaps.md` §5). Where a flow is superseded, a note **Update L** sits under its title. The real contracts are `SHIPMENTS_API.md`, `INTEGRATIONS_API.md`, `SRS.md` / `TRACEABILITY.md` and `DECISIONS.md`. Summary of what changed since the flows were written:
+>
+> | Flow | State | What runs |
+> |---|---|---|
+> | 01, 04, 05, 07–11, 20–22, 28–29, 32 | still the right idea | Steps that name a warehouse **confirmation** are automatic since E16; parcel exceptions are recorded per stop (`POST /offers/:id/stops/:sid/fail`, reasons from the stop-fail list), not as one `contact-exception` for the whole job. Flows 20–22 were not re-checked line by line in Update L. |
+> | 02 | corrected | Billing is capped at booked and loaded (A1); there is no "accept the extra" step. |
+> | 03, 06, 30 | **fees not implemented** | No show-up indemnity (SAR 50), no demurrage / detention surcharge (SAR 35), no SLA auto-shift. **Decision #8 "no fees" is what runs; amounts are pending the owner (O4).** |
+> | 12 | off by default | Route optimisation only when `routingEnabled` is ON (J2). |
+> | 13, 14, 15 | partly out of scope | POS / card terminals are not custody items (C8); a `not_returned` outcome only records a note and an event. |
+> | 16 | changed | COD is tracked (E17) with cash-risk limits (flow 35). |
+> | 18, 19 | numbers differ | No-show: business only from `startsAt + lateGraceMin` (30 min); suspension: warning at 2 / suspension at 4 cancellations within 7 days, for 3 days (settings). |
+> | 23, 24, 25, 26 | **superseded (E16)** | No warehouse confirm / dispute; no `resolveDispute` route. |
+> | 27 | **superseded (E18)** | No review / approval step; paid at once. |
+> | 31 | **retired (C9)** | Office selection and the priority window were removed. |
+> | 33–39 | **new** | Category 8 at the end of this file. |
+
 ## 1. Domain State Machines & Financial Invariants
 
 ### 1.1 Composite Request & Offer Lifecycle
+> **Update L:** `delivered_reported → pending_settlement → completed` happens in one go (E16 / E18: automatic confirmation and immediate payment); `qty_disputed` is legacy and unreachable. `offers.loadedUnits` is the parcels scanned onto the vehicle, `deliveredUnits` / `finalUnits` are derived from the delivered parcels and can never exceed booked or loaded.
+
 The platform separates the aggregate booking request (`requests`) from the individual vehicle/driver assignment (`offers`).
 ```
 [requests]
@@ -42,6 +60,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ### Category 1: Loading Bay, Capacity & Quantity Mismatches
 
 #### Flow 01: Asymmetric Delivery — Booked 50, Loaded 30, Delivered 25, 5 Returned
+> **Update L:** step 5 is per parcel (`/stops/:sid/deliver` and `/stops/:sid/fail`), step 7 is the end of the route, and **step 8 does not exist** (E16): the delivery is confirmed automatically and the settlement is paid in the same transaction (E18). The money in *Financial Calculation* is right.
 - **Real-World Context:**
   A hypermarket fulfillment center in Sulay books a delivery driver for 50 parcels scheduled for 08:00 dispatch. Due to morning picker shortages, only 30 parcels are staged. The driver loads 30 cartons. During the delivery shift, 25 consignees receive their orders; 5 consignees are unreachable or refuse COD. At 18:00, the driver returns to the warehouse dock, returns the 5 undelivered parcels, and reports 25 delivered.
 - **Participating Actors:** Warehouse Supervisor, Direct Driver, Platform Operations, Finance.
@@ -78,6 +97,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 02: Warehouse Over-Loading Attempt (Exceeding Booked Quota)
+> **Update L (A1):** with a parcel manifest the warehouse can only load parcels of the order, and whatever happens at the dock the payment is capped at `min(loaded, booked)` (`maxBillableUnits`) — the cap is applied when the driver reports and when the offer is billed, not when the warehouse types a number. There is no "driver accepts the extra and both sides are billed for 75" variant (the master spec's decision #2 was not built). The "Recommended SOP" below describes the cap at billing time.
 - **Real-World Context:**
   Warehouse booked a sedan for 50 parcels (350 SAR escrow reserved). Upon arrival, warehouse attempts to force 75 large parcels into the sedan, exceeding vehicle payload and booked escrow funds.
 - **Participating Actors:** Warehouse Dock Worker, Driver, Operations Support.
@@ -98,6 +118,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 03: Warehouse Stockout / Outage on Arrival ("Not Put to Work")
+> **Update L: step 6 is not implemented.** There is **no show-up fee / indemnity** (no SAR 50 debit, no credit to the driver): ops cancel the request, the whole remaining reserve returns to the warehouse, and the driver is not penalised. Any compensation is a manual wallet adjustment by finance. *Fees: none — amounts pending the owner* (DECISIONS L16). The recommended 45-minute auto-claim timer does not exist. A driver who already worked stops cannot use "not put to work" any more (he ends the route).
 - **Real-World Context:**
   Driver checks in on time at 07:55. Warehouse conveyor line suffered an electrical failure; no parcels are sorted or ready for dispatch. Warehouse supervisor tells driver to leave.
 - **Participating Actors:** Driver, Warehouse Supervisor, Ops Staff.
@@ -150,6 +171,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 06: Dock Congestion & Loading Bay Staging Delay (>60 Minutes)
+> **Update L: steps 4–5 are not implemented.** There is no dwell-time calculation, no automatic shift of the delivery SLA and **no SAR 35 detention surcharge** (no demurrage rule exists). The driver can open a `business_not_ready` ticket and operations decide. *Fees: none — amounts pending the owner.*
 - **Real-World Context:**
   Driver arrives at 07:55. Due to 30 long-haul trucks blocking the yard, driver is not loaded until 09:30 (95 minutes dock dwell time).
 - **Participating Actors:** Driver, Dock Master, SLA Engine.
@@ -243,6 +265,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 12: Dynamic Multi-Stop Sequence Optimization
+> **Update L (J2): routing is OFF by default.** With `routingEnabled` off the app shows a plain list of the driver's stops (any order), there is no "Optimize Route" button and `POST /offers/:id/route/optimize` answers `409 ROUTING_DISABLED`. This flow applies only when the owner switches routing on (Settings › Field operations); then Google Routes is used when a key is configured, otherwise a labelled straight-line estimate.
 - **Real-World Context:**
   Driver receives 28 delivery stops across northern and eastern Riyadh.
 - **Participating Actors:** Driver, Google Maps Routes API.
@@ -259,6 +282,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ### Category 3: Custody, POS Terminals, Cash & Assets
 
 #### Flow 13: POS Terminal Handover & Verified Return
+> **Update L: not supported (decision C8).** Custody item types are `phone`, `charger`, `bag`, `other` (`CUSTODY_ITEM_TYPES`); there is no `pos_device` and no card collection. Cash on delivery is collected in cash and tracked per parcel (E17, flow 35).
 - **Real-World Context:**
   Warehouse issues bank mada POS card terminal (Serial #ING-88210) to driver for COD card collections.
 - **Participating Actors:** Warehouse Asset Clerk, Driver.
@@ -274,6 +298,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 14: Unreturned POS Equipment Post-Shift
+> **Update L:** the same applies to any custody item: recording `not_returned` (note mandatory) stores the note and a `custody_not_returned` event. It does **not** create a complaint, hold the settlement or suspend the driver automatically — operations use the complaint / wallet-adjustment / suspension tools by hand.
 - **Real-World Context:**
   Driver completes route, returns parcel returns, but forgets POS terminal in his personal vehicle and leaves warehouse.
 - **Participating Actors:** Warehouse Clerk, Driver, Ops Tower, Finance.
@@ -306,6 +331,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 16: Cash-on-Delivery (COD) Deposit Shortage
+> **Update L (E17, L6):** the warehouse (or the super admin) records "Receive money from driver" per order, partial receipts allowed, never above what is outstanding. A shortage therefore simply **stays outstanding** on the driver — it counts toward his cash limit, ages, and blocks new offers and part of his withdrawals once over the limit or overdue (flow 35). COD cash never touches the wallet ledger; a deduction from his earnings, if the owner wants one, is a manual wallet adjustment.
 - **Real-World Context:**
   Driver collects 3,200 SAR in physical cash across 14 COD orders. At evening cash count, cashier counts 3,050 SAR (150 SAR shortage).
 - **Participating Actors:** Driver, Cashier, Finance Controller.
@@ -337,6 +363,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 18: Late Arrival Beyond Grace Period (>15 Minutes)
+> **Update L:** the business may record a no-show only from `startsAt + lateGraceMin` (default **30** minutes; staff are exempt); the 40-minute example still qualifies, a driver 10 minutes late does not.
 - **Real-World Context:**
   Shift starts at 08:00. Driver arrives unannounced at 08:40. Warehouse dispatch window has already passed.
 - **Participating Actors:** Warehouse Supervisor, Late Driver, Ops Tower.
@@ -352,6 +379,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 19: Driver Total No-Show & 3-Strike Auto-Suspension
+> **Update L:** the thresholds are settings: warning at **2** and suspension at **4** cancellations / no-shows within **7** days, for **3** days (not "strike #3 → 7 days"); the whole policy can be switched off. Staff can clear a suspension at any time (it also restarts the count).
 - **Real-World Context:**
   Driver accepts delivery shift but ghosts warehouse on Sunday morning.
 - **Participating Actors:** Warehouse, Driver, Automated Strike Policy Engine.
@@ -415,6 +443,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ### Category 5: Quantity Audits, Disputes & Escalations
 
 #### Flow 23: Disputed Missing Packages (Warehouse Claims 5 Lost)
+> **Update L: superseded by E16 / B8.** The warehouse has no *Dispute* button, `POST /offers/:id/delivery-confirm` does not exist and the `qty_disputed` state cannot be reached; the settlement is not held by a quantity dispute. The delivered count is derived from the parcels the driver actually marked delivered with proof, so a parcel that was not delivered is simply not billed. A claim after the fact is a ticket / complaint (a complaint with `holdsSettlement` still defers the payment while it is open) and, if money must move, a staff wallet adjustment.
 - **Real-World Context:**
   Warehouse loaded 30 parcels in morning. Driver reports 25 delivered, returns 0, and claims only 25 were loaded. Warehouse insists 30 were handed over.
 - **Participating Actors:** Warehouse Inventory Lead, Driver, Operations Mediator.
@@ -434,6 +463,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 24: Driver Fraudulent Over-Reporting ("Ghost Deliveries")
+> **Update L:** a driver cannot report more than he scanned and each delivery needs its own proof (code / scan / photo / signature), so the "30 delivered" report of this story cannot be submitted; the `maxBillableUnits` cap and the audit trail remain. Staff tools for a suspected fraud: location history, stop events, suspension, wallet adjustment.
 - **Real-World Context:**
   Driver delivers 16 parcels, stops working at 14:00, and reports 30 parcels delivered in the app to claim full payout.
 - **Participating Actors:** Driver, Warehouse Auditor, Fraud Investigator.
@@ -449,6 +479,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 25: Operations Tower Conciliation & Binding Resolution
+> **Update L: superseded (B8).** `POST /admin/offers/:id/resolve-dispute` was removed; `resolveDispute` remains in `jobs.ts` only for an old database row still in `qty_disputed` and for its test. A binding outcome today = complaint resolution + wallet adjustment (`wallet.adjust`).
 - **Real-World Context:**
   Dispute caused by warehouse shipping software printing duplicate barcodes on 8 parcels, confusing sorting.
 - **Participating Actors:** Ops Staff (`requests.edit`), Warehouse Manager, Office Manager.
@@ -464,6 +495,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 26: Post-Fulfillment Clean Sign-Off & Auto-Completion
+> **Update L: step 2 does not exist** — nobody clicks *Confirm Delivery*; the system confirms when the driver finishes the route and the request completes when every offer is settled.
 - **Real-World Context:**
   Driver loads 30, delivers 30, returns 0. Warehouse supervisor verifies and confirms in portal.
 - **Participating Actors:** Driver, Warehouse Supervisor.
@@ -485,6 +517,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ### Category 6: Financial Ledger, Escrow Release, Multi-Tier Payouts & Cancellations
 
 #### Flow 27: Standard Double-Entry Settlement & VAT Invoicing
+> **Update L: steps 2–3 do not exist (E18).** There is no `reviewSettlement` / `approveSettlement`, no separation of duties and no settlement states `pending_review → reviewed → approved`: when the driver's work ends the settlement is created and **paid in the same transaction** (`settleOffer` → `payoutTx`: reserve released, customer charged, payee credited, platform fee booked, invoice issued). An open complaint that holds the job leaves the settlement `approved` (= on hold) and the tick pays it when the hold is lifted; a failed payout is retried by the tick. The invoice carries the platform's seller block (Settings › Company); it is **not** a ZATCA Phase-2 invoice. A zero-value settlement issues no invoice.
 - **Real-World Context:**
   Clean delivery shift: 30 parcels @ 20 SAR customer price = 600 SAR. Provider cost @ 14 SAR = 420 SAR. Platform fee = 180 SAR. VAT 15% inclusive.
 - **Participating Actors:** Finance Reviewer, Finance Approver, Double-Entry Ledger.
@@ -539,6 +572,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 30: Late Warehouse Cancellation Post-Arrival
+> **Update L: step 3 is not implemented** — there is no SAR 50 show-up compensation. Ops cancel (the business cannot once the driver has arrived) and the **whole** remaining reserve returns to the warehouse; if the driver already delivered parcels, ops end his route instead of cancelling so the delivered stops stay paid. *Fees: none — amounts pending the owner.*
 - **Real-World Context:**
   Driver arrives at warehouse at 07:55. At 08:15, warehouse cancels request because their ERP server crashed.
 - **Participating Actors:** Warehouse Supervisor, Driver, Ops Staff.
@@ -558,6 +592,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ### Category 7: Marketplace Matching & Capacity Edge Cases
 
 #### Flow 31: Preferred Office Window Expiry & General Market Broadcast
+> **Update L: retired (decision C9).** Warehouses can no longer prefer an office; `preferredOfficeId` and `officeWindowEndsAt` are never set and the "office window" step of the tick was removed (B8). Offers go to the general matching pool (the office-first rule remains only for *replacement* offers).
 - **Real-World Context:**
   Warehouse creates booking requesting priority allocation to "Express Courier Office" with a 15-minute priority window. The office has no available drivers.
 - **Participating Actors:** Warehouse, Preferred Office, Open Marketplace Drivers.
@@ -575,6 +610,7 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
 ---
 
 #### Flow 32: Multi-Vehicle Enterprise Request (5 Dynas Booked)
+> **Update L:** the choice "all slots together or partial" is the boolean `requests.allow_partial` (false = all-or-nothing: the request is called off at its start time unless every slot is filled, sparing any offer that already delivered).
 - **Real-World Context:**
   Wholesale distribution center books 5 Dynas for a seasonal branch replenishment.
 - **Participating Actors:** Warehouse Logistics Director, 5 Candidate Drivers, Dispatch Engine.
@@ -591,3 +627,120 @@ offered ──► accepted ──► arrived ──► attendance_confirmed ─�
   7. Request auto-completes when all 5 offers reach settlement readiness.
 - **Code Reference:** [`web/src/server/requests.ts`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/jr-logistics/web/src/server/requests.ts#L112-L150), [`web/src/server/jobs.ts`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/jr-logistics/web/src/server/jobs.ts#L50-L83).
 
+---
+
+### Category 8: Providers, Payments, Cash Risk, Privacy, Legal & App Update (Update L, 2026-11-22)
+
+Each of the first two flows needs its provider **on and complete** (Settings › Payments, super admin); flow 36 describes what happens while SMS is off. Decisions: `DECISIONS.md` L1–L16.
+
+#### Flow 33: Top-Up by Card (PayTabs hosted payment page)
+- **Real-World Context:**
+  A company's prepaid wallet is low before a large dispatch day. The company adds SAR 2,000 by card from the wallet page.
+- **Participating Actors:** Company (business), PayTabs, the platform (server), Finance (only when something needs review).
+- **Technical State Transitions:**
+  - `payment_intents.status`: `pending` $\rightarrow$ `paid` (or `failed`, `expired`, `needs_review`).
+  - Wallet ledger: one `topup` entry, key `paytabs:<intent id>`, `simulated: false`, note = PayTabs `tran_ref`.
+- **Step-by-Step Execution:**
+  1. The wallet page shows "Add funds" only for the methods that are available (card / bank transfer); with none available (and not demo mode) it says funding is arranged through support and shows the company contact.
+  2. Company enters SAR 2,000 (within the console's min / max, default minimum SAR 10). The page calls `POST /wallet/topup/card {amountCents, idempotencyKey}`; the server creates the intent and calls PayTabs `/payment/request` (`tran_type: sale`, `cart_id` = intent id, `cart_currency: SAR`, callback and return URLs derived from `APP_URL`).
+  3. The browser is sent to PayTabs' payment page; the company types the card there. **The platform never sees the card number.**
+  4. PayTabs calls the IPN `POST /api/v1/payments/paytabs/callback` (the signature header is checked over the raw body) and sends the browser to `POST /api/v1/payments/paytabs/return`, which answers 303 to `/business/wallet?topup=<id>`.
+  5. **Neither message is trusted with the money.** `settleIntent` locks the intent, asks PayTabs itself (`/payment/query`), checks `response_status = A`, the amount, the currency and the cart id against the intent, and only then posts the ledger entry. Callback, return, the "Check payment" button (`POST /wallet/topups/:id/check`) and the scheduler may all arrive together: the intent row is locked and the ledger key is unique, so the credit happens **once**.
+  6. A mismatch (wrong amount, paid after expiry, on hold for > 48 h …) puts the intent in `needs_review` and alerts Finance (`topups.manage`); Finance can re-check from `/admin/finance/topups` (cards tab).
+  7. The scheduler (`reconcileIntents`) re-asks PayTabs about attempts pending more than 10 minutes and marks abandoned ones `expired` after 30 minutes.
+- **Financial Calculation:**
+  - Company wallet `available` + SAR 2,000.00 exactly (halalas). The gateway's fee (MDR) is **not modelled** — it is settled between PayTabs and the owner outside the platform (owner item).
+- **Code Reference:** `web/src/server/payments/card.ts` (`createCardTopup`, `settleIntent`, `reconcileIntents`), `payments/paytabs.ts`, `payments/paytabs-signature.ts`, `payments/http.ts`, `app/api/v1/payments/paytabs/{callback,return}/route.ts`, `server/maintenance-steps/payments.ts`.
+- **Recommended SOP & Gaps:** Register the callback URL in the PayTabs dashboard (it must be reachable over https and answer 200); live credentials have not been tested end to end (owner item).
+
+---
+
+#### Flow 34: Top-Up by Bank Transfer with Receipt
+- **Real-World Context:**
+  A company prefers to pay by bank transfer. It sends SAR 10,000 from its corporate account.
+- **Participating Actors:** Company, Finance (`topups.manage`), the platform.
+- **Technical State Transitions:**
+  - `bank_transfers.status`: `requested` $\rightarrow$ `approved` | `rejected` | `cancelled`.
+  - Ledger `topup`, key `banktopup:<id>`, only on approval.
+- **Step-by-Step Execution:**
+  1. The company opens "Add funds › Bank transfer": it sees JR's bank, account holder, IBAN, SWIFT, the notes and **its own transfer reference** to quote.
+  2. After transferring, it sends `POST /wallet/topup/bank` with the amount, the transfer date (not older than 60 days), the bank's reference number and a receipt (photo / PDF, ≤ 8 MB, type checked). Sending the same reference and amount again warns of a duplicate.
+  3. Finance sees the request in `/admin/finance/topups` with the receipt (a permission-checked stream), a duplicate marker when another request quotes the same reference and amount, and filters / export.
+  4. Finance **approves** — optionally typing the amount that actually arrived — or **rejects** with a required reason. Approval posts the ledger entry once and notifies the company (`topup_approved` / `topup_rejected`); a double click does not credit twice. The company cannot approve its own request, and can cancel it while it is still `requested`.
+- **Financial Calculation:** wallet `available` + the *received* amount (default = requested amount).
+- **Code Reference:** `web/src/server/payments/bank.ts`, `payments/topups.ts`, `routes/payments.ts`, `admin-finance-topups*.tsx`.
+- **Recommended SOP & Gaps:** Retention of receipts is an open owner / lawyer question (`PRIVACY.md` §5).
+
+---
+
+#### Flow 35: Cash-Risk Limits on a Driver
+- **Real-World Context:**
+  A driver collects cash on delivery all week and has not handed it to the warehouse. By Thursday he holds SAR 3,400, the oldest of it 4 days old.
+- **Participating Actors:** Driver, warehouse (receives the cash), the driver's office (if any), Finance and operations.
+- **Technical State Transitions:** state `ok` $\rightarrow$ `warn` (80 % of the limit) $\rightarrow$ `over_limit` / `overdue`. Computed live, nothing stored except the once-a-day notice rows (`cash_risk_notices`).
+- **Step-by-Step Execution:**
+  1. Each COD delivery adds to the driver's outstanding cash; the warehouse's "Receive money from driver" subtracts.
+  2. At SAR 2,400 (80 %) he gets `cash_limit_warning`; at SAR 3,000 or when any order's cash is older than 3 days he gets `cash_blocked` / `cash_overdue` (and his office `office_driver_cash`), once per state and Riyadh day (right after the delivery and from the hourly tick).
+  3. While blocked: matching skips him, the opportunities list says why, accepting or applying answers `403 CASH_LIMIT`; a job he already accepted keeps running; a withdrawal is limited to `available − overdue cash` (`409 CASH_OUTSTANDING`). His overview and the web driver shell show a banner with what to do.
+  4. He hands the cash to the warehouse; the warehouse records the receipt; **the block lifts at once** and offers he missed are made to him again.
+  5. Operations see him on the radar (`cash_overdue` / `cash_over_limit`); Finance › Drivers has columns, a filter and a KPI, Finance › COD has the aging buckets (0–1, 2–3, 4–7, 8+ days); the office sees `/office/cash`.
+- **Financial Calculation:** halalas; limit SAR 3,000, warning 80 %, 3 days, all editable in Settings › Finance › Cash risk (`0` = off).
+- **Code Reference:** `web/src/server/cash-risk.ts`, `cash-risk-lib.ts`, `cash-risk-sql.ts`, `cash-risk-notify.ts`, `cash-aging.ts`, `office-cash.ts`, `ops-alerts.ts`, `jobs.ts` (accept check), `wallet.ts` (withdrawal lien).
+
+---
+
+#### Flow 36: Delivery with SMS Switched Off
+- **Real-World Context:**
+  The platform goes live before an SMS contract exists. The super admin leaves SMS off.
+- **Participating Actors:** Driver, recipient, warehouse, super admin.
+- **Technical State Transitions:** stop `loaded` $\rightarrow$ `delivered` with proof `scan`; event payload `codeSkipped: "sms_off"`; message-log row `skipped`.
+- **Step-by-Step Execution:**
+  1. While `smsEnabled` is off (or on without complete credentials, outside demo mode) no SMS provider is active: when the parcel is loaded nothing is texted to the recipient (tracking link and delivery code), and the log records a `skipped` row per parcel and kind — not a failure.
+  2. At the door the driver scans the parcel code (and captures the signature where the warehouse asks). **The recipient's delivery code is not requested**, whatever the warehouse's `requireDeliveryOtp` is; the stop view carries `needsOtp: false, otpOffReason: "sms_off"` (the apps explain that no code is needed) and the public tracking answer carries `deliveryCode: false`.
+  3. The switch takes effect immediately, also for parcels already on the road. If the super admin turns SMS on later, the next stop needs the code again; a driver already at the door taps *Resend code*.
+  4. A gateway that is **on but failing** (no balance, wrong key, network) is different: the code stays required, the failure is logged with a short reason (`bad_login`, `sender`, `balance`, `text`, `number`, `ip`, `timeout`, `network`) and the status page turns red.
+- **Code Reference:** `web/src/server/sms-policy.ts`, `stops.ts` (`deliverStop`), `shipments.ts` (`sendRecipientCodes`, `driverStopView`), `auth/otp.ts` (`activeSmsProvider`), `sms/msegat.ts`.
+- **Recommended SOP & Gaps:** Owner items: Msegat sender-id approval and the wording of the delivery-code message.
+
+---
+
+#### Flow 37: Terms Re-Acceptance
+- **Real-World Context:**
+  The owner's lawyer reviews the built-in company terms and the owner publishes version 1.1.
+- **Participating Actors:** Super admin / staff with `settings.edit`, every company, office and driver.
+- **Technical State Transitions:** `legal_documents` gets a new published row per language; `GET /auth/me` → `legal.pending: [{kind, version, …}]`; `terms_consents` gets the new acceptance.
+- **Step-by-Step Execution:**
+  1. In Settings › Legal staff edit a draft for each language (preview, "restore built-in text" if needed), then **Publish** with a version label, an optional effective date, a change note and the switch **"require re-acceptance"**.
+  2. From that moment every signed-in user of the affected module gets a blocking page in the web shell (and the app's legal screen) with the changed text; nothing else can be used until he accepts (`POST /legal/accept`, kind + version + language, address recorded).
+  3. Staff see acceptance statistics per version; the history keeps every published text (published rows are never edited).
+  4. New registrations read the terms of their chosen module (and the privacy policy) before registering; the consent row records kind, version, language and address.
+- **Code Reference:** `web/src/server/legal.ts`, `legal-admin.ts`, `legal-defaults.ts`, `routes/legal.ts`, `components/legal/*`, pages `(auth)/terms`, `(auth)/privacy`, `admin/settings/legal`.
+- **Recommended SOP & Gaps:** The built-in texts are drafts: lawyer review is an owner item.
+
+---
+
+#### Flow 38: Privacy — Export and Erasure
+- **Real-World Context:**
+  A former driver asks for his data and then to be erased.
+- **Participating Actors:** The person, staff with `privacy.manage`.
+- **Technical State Transitions:** `privacy_requests.status`: `pending` $\rightarrow$ `approved` (account anonymised) | `rejected` | `cancelled`.
+- **Step-by-Step Execution:**
+  1. Profile › *Privacy & data* › **Download my data** (`GET /privacy/export`): one JSON file (profile, documents metadata, requests / jobs, ledger, tickets, notifications, consents, sign-in history without tokens …), rate-limited and audited. It never holds secrets or other people's personal data.
+  2. **Request deletion** (`POST /privacy/delete-request`, with a reason). The page first lists the **blockers** computed live: open orders / jobs, undelivered parcels, money in the wallet, pending withdrawals or top-ups, unpaid invoices, cash not handed over, linked drivers. While one exists the request is refused.
+  3. Staff open `/admin/privacy`, see the checklist and what approval does, and **approve** (explicit tick) or **reject with a reason**. Approval runs `anonymiseUser` in one transaction: name → "Deleted account"; phone, e-mail, username, IBAN, national id, plate cleared; password and sessions removed; chat, ticket and note text scrubbed; documents deleted from storage after the commit. Ledger, invoices, audit and orders remain but no longer identify the person; a database trigger forbids re-activation.
+  4. The hourly retention step separately blanks recipient details of old parcels (12 months), prunes notifications (90 days once read) and old webhook deliveries.
+- **Code Reference:** `web/src/server/privacy/*`, `routes/privacy.ts`, `maintenance-steps/privacy.ts`; the data map is `memory/PRIVACY.md`.
+- **Recommended SOP & Gaps:** Buyer identity on tax invoices of an erased company, and the retention of proofs / receipts, are open for the owner's lawyer.
+
+---
+
+#### Flow 39: Forced App Update
+- **Real-World Context:**
+  A server change makes version 1.0 of the driver app unusable. The owner sets a minimum.
+- **Participating Actors:** Staff (Settings › General › Mobile app), the driver's phone.
+- **Technical State Transitions:** none in the data; the API answers `426 UPGRADE_REQUIRED`.
+- **Step-by-Step Execution:**
+  1. Staff enter the minimum version and the store link for iOS and / or Android (blank = no minimum).
+  2. The app sends `X-Client: mobile`, `X-App-Version`, `X-App-Platform` on every request. A request below the minimum of its platform is answered before anything else with `426` and `details {minVersion, currentVersion, platform, storeUrl}`; the app shows the update screen with the store button.
+  3. `GET /catalog` and `GET /health` are exempt so the screen can always read the link; the web and integrators are never affected. Lifting the minimum works at once.
+- **Code Reference:** `web/src/server/ops-tools/app-version.ts`, `api/router.ts`, app: `lib/core/version_gate.dart`, `features/update/update_screen.dart`.

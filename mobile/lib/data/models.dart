@@ -1,4 +1,5 @@
 import 'api_client.dart';
+import 'models_extra.dart' show CashRisk;
 
 // ── tolerant readers ──
 // The server adds fields over time (partnerId, partnerStatus, ...) and a field may be null/absent on older rows. Every getter below
@@ -52,6 +53,8 @@ class Job {
   StopsSummary get stopsSummary => StopsSummary(_m(j['stopsSummary']) ?? const {});
   /// Effective warehouse switches (arrival confirmation, loading record, delivery code, signature). Old servers omit them: defaults = the old flow.
   JobOps get ops => JobOps(_m(j['ops']) ?? const {});
+  /// Whether the recipient's delivery code is used for this job, and why not: `{required, offReason: sms_off|warehouse|null, smsActive}`. Old servers send nothing: required.
+  JobDeliveryCode get deliveryCode => JobDeliveryCode(_m(j['deliveryCode']) ?? const {});
   /// Arrival geofence (E1). Absent on old servers: nothing is enforced.
   JobArrival get arrival => JobArrival(_m(j['arrival']) ?? const {});
   /// How the parcels get onto the vehicle (E3): the driver scans them (`driver_scan`) or the warehouse records them (`warehouse`).
@@ -107,6 +110,17 @@ class JobOps {
   bool get requireLoadingRecord => j['requireLoadingRecord'] == true;
   bool get requireDeliveryOtp => j['requireDeliveryOtp'] != false;
   bool get requireSignature => j['requireSignature'] == true;
+}
+
+/// `deliveryCode` on the job view (Update L): the code is demanded only while the warehouse wants one AND text messages can be sent.
+class JobDeliveryCode {
+  JobDeliveryCode(this.j);
+  final Json j;
+  bool get required => j['required'] != false;
+  /// `sms_off` (text messages are switched off platform-wide) | `warehouse` (this warehouse does not use codes) | null.
+  String? get offReason => _s(j['offReason']);
+  bool get smsActive => j['smsActive'] != false;
+  bool get smsOff => offReason == 'sms_off';
 }
 
 /// `arrival` on the job view: the warehouse geofence for "I've arrived at the warehouse".
@@ -207,6 +221,8 @@ class Overview {
   int get availableCents => _i(_m(j['wallet'])?['availableCents']) ?? 0;
   int get pendingCents => _i(_m(j['wallet'])?['pendingCents']) ?? 0;
   int get heldCents => _i(_m(j['wallet'])?['heldCents']) ?? 0;
+  /// The cash-risk block: what the driver holds against the platform's limit (null on servers that send none).
+  CashRisk? get cashRisk => CashRisk.of(j['cash']);
 }
 
 class StopsSummary {
@@ -267,6 +283,10 @@ class Stop {
   bool get hasProof => j['hasProof'] == true;
   int get otpAttemptsLeft => _i(j['otpAttemptsLeft']) ?? 5;
   bool get canResend => j['canResend'] != false;
+  /// Why no recipient code is asked for at this stop (`needsOtp == false`): `sms_off` | `warehouse`. Null while a code is used.
+  String? get otpOffReason => _s(j['otpOffReason']);
+  /// No code because text messages are switched off platform-wide (so nothing can be resent either).
+  bool get smsOff => !needsOtp && otpOffReason == 'sms_off';
   String? get failReason => _s(j['failReason']);
   String? get failNote => _s(j['failNote']);
   bool get open => status == 'loaded' || status == 'pending';

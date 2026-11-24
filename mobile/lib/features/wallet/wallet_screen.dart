@@ -8,6 +8,8 @@ import '../../data/api_client.dart';
 import '../../providers_extra.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../cash/cash_errors.dart';
+import '../cash/cash_risk_banner.dart';
 import '../cash/cash_screen.dart';
 import 'wallet_managed.dart';
 
@@ -55,8 +57,16 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
         final entries = [...first, for (final e in _more) if (!shown.contains(e['id'])) e];
         final hasMoreEntries = _cents(d['total']) > 0 ? entries.length < _cents(d['total']) : false;
         final available = _cents(d['availableCents']);
+        // Cash past its handover time holds part of the balance back (`cash.lienCents`): only the rest can be withdrawn until the cash is handed over.
+        final lien = (ov?.cashRisk?.lienCents ?? 0).clamp(0, available);
+        final withdrawable = available - lien;
         return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [
           if (linked) ...[Banner2(text: t('wallet.linked_note')), const SizedBox(height: 12)],
+          if (lien > 0 && ov?.cashRisk != null) ...[
+            Banner2(key: const Key('wallet-lien'), tone: Tone.warn, title: t('cr.banner_overdue_title'), text: '${t('cr.banner_lien', cashRiskVars(ov!.cashRisk!, lang))}\n${t('lm.wallet_withdrawable', {'amount': fmtMoney(withdrawable, lang)})}',
+                action: OutlinedButton.icon(key: const Key('wallet-lien-open'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)), onPressed: () => context.push('/cash'), icon: const Icon(Icons.payments_outlined), label: Text(t('cr.banner_open'), textAlign: TextAlign.center))),
+            const SizedBox(height: 12),
+          ],
           SectionCard(border: JR.accent, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(t('wallet.available'), style: TextStyle(color: JR.muted)),
             const SizedBox(height: 6),
@@ -75,9 +85,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
             ]),
             if (!linked) ...[
               const SizedBox(height: 16),
-              FilledButton.icon(key: const Key('withdraw'), onPressed: available > 0 && available >= minCents && !_withdrawing ? () => _withdraw(context, ref, available, minCents, lang) : null, icon: busyIcon(_withdrawing, Icons.north_east), label: Text(t('wallet.withdraw'))),
-              if (available <= 0) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('um.wallet_nothing_to_withdraw'), style: TextStyle(color: JR.muted, fontSize: 12)))
-              else if (available < minCents) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('m.withdraw_min', {'amount': fmtMoney(minCents, lang)}), key: const Key('withdraw-min-hint'), style: TextStyle(color: JR.muted, fontSize: 12))),
+              FilledButton.icon(key: const Key('withdraw'), onPressed: withdrawable > 0 && withdrawable >= minCents && !_withdrawing ? () => _withdraw(context, ref, withdrawable, minCents, lang) : null, icon: busyIcon(_withdrawing, Icons.north_east), label: Text(t('wallet.withdraw'))),
+              if (withdrawable <= 0) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('um.wallet_nothing_to_withdraw'), style: TextStyle(color: JR.muted, fontSize: 12)))
+              else if (withdrawable < minCents) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t('m.withdraw_min', {'amount': fmtMoney(minCents, lang)}), key: const Key('withdraw-min-hint'), style: TextStyle(color: JR.muted, fontSize: 12))),
             ],
           ])),
           const SizedBox(height: 20),
@@ -143,6 +153,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: Text(d.tr('common.cancel'))), FilledButton(key: const Key('add-iban'), style: FilledButton.styleFrom(minimumSize: const Size(100, 44)), onPressed: () => Navigator.pop(d, true), child: Text(d.tr('m.add_iban')))],
         ));
         if (edit == true && context.mounted) context.push('/profile/edit');
+      } else if (e is ApiException && e.code == 'CASH_OUTSTANDING') {
+        // Overdue cash holds part of the balance back: say how much CAN be withdrawn, why, and take him to the cash page. The wallet and overview reload so the card shows it too.
+        ref.invalidate(overviewProvider); ref.invalidate(walletProvider);
+        await showCashOutstandingDialog(context, e, lang);
       } else if (e is ApiException && e.code == 'VALIDATION' && e.details['min'] is num) {
         // The platform's minimum changed since the catalog was read (or it was not loaded): say the number instead of "some details are invalid".
         toast(context, context.tr('m.withdraw_min', {'amount': fmtMoney((e.details['min'] as num).toInt(), lang)}), error: true);

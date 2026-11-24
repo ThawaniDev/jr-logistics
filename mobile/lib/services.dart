@@ -1,7 +1,12 @@
+import 'dart:io' show File;
+import 'dart:typed_data';
+import 'dart:ui' show Rect;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 typedef LatLng = ({double lat, double lng});
@@ -95,3 +100,31 @@ Future<PickedPhoto?> pickPhoto(ImageSource source) async {
 }
 
 final photoPickerProvider = Provider<PhotoPicker>((_) => DevicePhotoPicker());
+
+
+/// Hands a file to the platform's share sheet (save to Files, AirDrop, mail, WhatsApp…). Abstracted so tests never open a real sheet.
+/// [origin] is where the share popover points on an iPad (the button that was tapped); phones ignore it. Returns false when the sheet could not be opened.
+abstract class FileSharer {
+  Future<bool> shareFile({required Uint8List bytes, required String filename, required String mime, String? subject, Rect? origin});
+}
+
+class DeviceFileSharer implements FileSharer {
+  @override
+  Future<bool> shareFile({required Uint8List bytes, required String filename, required String mime, String? subject, Rect? origin}) async {
+    File? file;
+    try {
+      final dir = await getTemporaryDirectory();
+      file = File('${dir.path}/$filename');
+      await file.writeAsBytes(bytes, flush: true);
+      final r = await SharePlus.instance.share(ShareParams(files: [XFile(file.path, mimeType: mime, name: filename)], subject: subject, sharePositionOrigin: origin));
+      // The copy holds personal data: once the sheet reports an outcome (iOS does; Android only says "unavailable") it is not left lying in the cache.
+      if (r.status != ShareResultStatus.unavailable) { try { await file.delete(); } catch (_) {} }
+      return true;
+    } catch (_) {
+      try { await file?.delete(); } catch (_) {}
+      return false;
+    }
+  }
+}
+
+final fileSharerProvider = Provider<FileSharer>((_) => DeviceFileSharer());

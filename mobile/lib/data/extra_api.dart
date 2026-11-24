@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import '../core/version_gate.dart';
 import 'api_client.dart';
 import 'models_extra.dart';
 
@@ -50,6 +51,7 @@ class ExtraApi {
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status == 401) { c.onUnauthorized?.call(); throw ApiException('UNAUTHENTICATED', 'unauthenticated', status: status); }
+      if (status == 426) { c.onUpgradeRequired?.call(const UpgradeInfo()); throw ApiException('UPGRADE_REQUIRED', 'upgrade required', status: status); }
       if (status == 404) throw ApiException('NOT_FOUND', 'attachment not found', status: status);
       if (status == 403) throw ApiException('FORBIDDEN', 'forbidden', status: status);
       if (e.type == DioExceptionType.badResponse) throw ApiException('INTERNAL', e.message ?? 'bad response', status: status);

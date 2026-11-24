@@ -7,6 +7,8 @@ import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../legal/legal_reader.dart';
+import '../../data/legal_api.dart';
 import 'account_section.dart';
 import 'auth_rules.dart';
 import 'auth_session.dart';
@@ -75,13 +77,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final cities = listOf(cat?['cities']).whereType<Map>().toList();
     final vehicles = listOf(cat?['vehicleTypes']).whereType<String>().toList();
     final svcs = listOf(cat?['services']).whereType<Map>().where((s) => s['driverless'] != true);
-    final termsText = strOf(mapOf(cat?['terms'])?['driver']) ?? '';
     final ok = _un.submittable && _passwordOk && phoneValid(_phone.text) && _name.text.trim().length >= 2 && _city != null && _vehicle != null && (!_needTemp || _temp != null) && _services.isNotEmpty && _ibanOk && _terms;
     Widget heading(String s) => Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(s, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)));
     return Scaffold(
       appBar: AppBar(leading: BackButton(onPressed: () => context.go('/login')), title: Text(t('reg.title'))),
       body: SafeArea(
-        child: ListView(padding: const EdgeInsets.all(20), children: [
+        // A plain scroll view, not a lazy list: every field keeps its own state (the username check, the typed text) however far the driver scrolls.
+        child: SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(t('m.au_reg_sub'), style: TextStyle(color: JR.muted, height: 1.4)),
           const SizedBox(height: 20),
           // The city / vehicle / service lists come from the server. Without them the form is unusable: say why and offer a retry.
@@ -123,12 +125,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ]),
           if (_errors['services'] != null) Text(_errors['services']!, style: TextStyle(color: JR.danger, fontSize: 12)),
           const SizedBox(height: 18),
-          SectionCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(t('reg.terms_title'), style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Text(termsText.isEmpty ? t('reg.terms_default_driver') : termsText, style: TextStyle(color: JR.muted, fontSize: 13, height: 1.5)),
-            CheckboxListTile(key: const Key('terms'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, activeColor: JR.accent, checkColor: JR.accentInk, value: _terms, onChanged: (v) => setState(() => _terms = v ?? false), title: Text(t('reg.terms_accept'), style: const TextStyle(fontSize: 14))),
-          ])),
+          // The driver terms and the privacy policy are READ here (the server's own text, in the driver's language) before the box that accepts both.
+          Text(t('reg.terms_title'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(t('lm.reg_terms_intro'), style: TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
+          const SizedBox(height: 10),
+          LegalInline(slug: legalDriverSlug, heading: t('lm.legal_driver_terms')),
+          const SizedBox(height: 10),
+          LegalInline(slug: legalPrivacySlug, heading: t('lm.privacy_policy_title')),
+          const SizedBox(height: 4),
+          CheckboxListTile(key: const Key('terms'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, activeColor: JR.accent, checkColor: JR.accentInk, value: _terms, onChanged: (v) => setState(() => _terms = v ?? false), title: Text(t('lg.reg_accept'), style: const TextStyle(fontSize: 14, height: 1.35))),
           const SizedBox(height: 20),
           FilledButton(key: const Key('register'), onPressed: ok && !_busy ? _submit : null, child: _busy ? SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('reg.submit'))),
           const SizedBox(height: 12),
@@ -136,7 +142,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             Text(t('m.au_have_account'), style: TextStyle(color: JR.muted)),
             TextButton(key: const Key('back-to-login'), onPressed: _busy ? null : () => context.go('/login'), child: Text(t('m.au_sign_in'))),
           ])),
-        ]),
+        ])),
       ),
     );
   }

@@ -8,6 +8,9 @@ import 'features/auth/register_screen.dart';
 import 'features/cash/cash_screen.dart';
 import 'features/home/shell.dart';
 import 'features/home/today_screen.dart';
+import 'features/legal/legal_gate_screen.dart';
+import 'features/legal/legal_reader.dart';
+import 'features/privacy/privacy_screen.dart';
 import 'features/jobs/chat_screen.dart';
 import 'features/jobs/job_detail_screen.dart';
 import 'features/jobs/jobs_screen.dart';
@@ -21,6 +24,7 @@ import 'features/support/new_ticket_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/support/ticket_screen.dart';
 import 'features/wallet/wallet_screen.dart';
+import 'core/crash_reporter.dart' show CurrentRoute;
 import 'providers.dart';
 
 /// Re-evaluates redirects whenever auth state changes.
@@ -30,7 +34,7 @@ class _AuthListenable extends ChangeNotifier {
 
 final routerProvider = Provider<GoRouter>((ref) {
   final listenable = _AuthListenable(ref);
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/',
     refreshListenable: listenable,
     redirect: (context, state) {
@@ -41,6 +45,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
       GoRoute(path: '/change-password', builder: (_, _) => const ChangePasswordScreen()),
+      // The driver terms and the privacy policy: readable before signing in (registration) and from Profile. `/legal-accept` is the blocking re-acceptance page.
+      GoRoute(path: '/legal-accept', builder: (_, _) => const LegalGateScreen()),
+      GoRoute(path: '/legal/:kind', builder: (_, s) => LegalReaderScreen(slug: s.pathParameters['kind']!)),
+      GoRoute(path: '/privacy', builder: (_, _) => const PrivacyScreen()),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => HomeShell(shell: shell),
         branches: [
@@ -66,4 +74,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ]),
     ],
   );
+  // The screen the driver is on goes into crash reports (ids removed).
+  void track() => CurrentRoute.set(router.routerDelegate.currentConfiguration.uri.toString());
+  router.routerDelegate.addListener(track);
+  ref.onDispose(() => router.routerDelegate.removeListener(track));
+  return router;
 });

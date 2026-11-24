@@ -29,6 +29,9 @@ if [[ "${1:-}" == "--e2e" ]]; then
   set_modes on # the simulator test walks the approved-route flow (approve route, one stop at a time)
   # the live tests above signed in as the same demo accounts (and registered a driver): clear the login / register rate-limit counters so the app can sign in too
   ( cd "$ROOT/web" && node -e "const {Pool}=require('pg');const p=new Pool({connectionString:'postgres://dogorshom@localhost:5432/jr_logistics_test'});p.query('delete from rate_limits').then(()=>p.end())" )
+  # a live test (field ops: scan, finish loading, approve the route) ends with the demo driver still on that job, and a driver works one job at a time: the app would be shown "finish your current job".
+  # Close every job that is still running (test database only) so the app starts from a free driver.
+  ( cd "$ROOT/web" && node -e "const {Pool}=require('pg');const p=new Pool({connectionString:'postgres://dogorshom@localhost:5432/jr_logistics_test'});(async()=>{await p.query(\"update requests set status='cancelled' where id in (select request_id from offers where status in ('accepted','arrived','attendance_confirmed','delivered_reported','pending_settlement'))\");await p.query(\"update offers set status='cancelled' where status in ('accepted','arrived','attendance_confirmed','delivered_reported','pending_settlement')\");await p.end()})()" )
   # the app's check-in is geofenced: put the simulator at the demo warehouse and pre-grant location / camera so no native prompt blocks the test.
   # Grant BEFORE the app runs (granting to a running app makes iOS terminate it); permissions survive the re-install of the same bundle id.
   SIM="${DEVICE:-iPhone 17 Pro}"

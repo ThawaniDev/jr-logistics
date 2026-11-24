@@ -15,6 +15,17 @@ import '../home/notify_prompt.dart';
 final notificationsProvider = FutureProvider.autoDispose((ref) => ref.watch(apiProvider).notifications());
 
 IconData notificationIcon(String type) {
+  // Update L: the cash-risk notices, expiring documents, operations corrections on a job, announcements and privacy decisions.
+  if (type == 'cash_overdue' || type == 'cash_blocked') return Icons.warning_amber_rounded;
+  if (type == 'cash_limit_warning') return Icons.payments_outlined;
+  if (type == 'document_expiring') return Icons.event_busy_outlined;
+  if (type == 'balance_moved_to_office') return Icons.account_balance_wallet_outlined;
+  if (type == 'stop_marked_delivered' || type == 'stop_marked_failed') return Icons.fact_check_outlined;
+  if (type == 'parcels_added') return Icons.inventory_2_outlined;
+  if (type == 'recipient_corrected') return Icons.edit_location_alt_outlined;
+  if (type == 'offer_rescheduled') return Icons.update;
+  if (type == 'broadcast') return Icons.campaign_outlined;
+  if (type.startsWith('privacy_request_')) return Icons.privacy_tip_outlined;
   if (type.startsWith('offer') || type == 'office_opportunity') return Icons.work_outline;
   if (type.startsWith('cod_')) return Icons.payments_outlined;
   if (type.startsWith('ticket_')) return Icons.support_agent;
@@ -27,7 +38,7 @@ IconData notificationIcon(String type) {
 
 /// The Offers and Earnings tabs are shell branches (`go` switches the tab); everything else is a page on top (`push`).
 void openAppRoute(BuildContext context, String route) {
-  if (route == '/offers' || route == '/wallet' || route == '/jobs') { context.go(route); } else { context.push(route); }
+  if (route == '/offers' || route == '/wallet' || route == '/jobs') { context.go(route); } else if (route == '/') { context.go(route); } else { context.push(route); }
 }
 
 class NotificationsScreen extends ConsumerStatefulWidget {

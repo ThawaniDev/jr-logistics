@@ -64,13 +64,14 @@ void toast(BuildContext c, String msg, {bool error = false, bool quiet = false})
 /// [maybeApplied]: [fn] is a write that is not idempotent (accept, send a message, open a ticket, upload a document). When the answer never came back
 /// the server may well have done it, so the toast says "we couldn't confirm it" (`m.net_unconfirmed_write`) instead of "check your connection" and
 /// the caller re-reads the list — a blind retry would duplicate the message / ticket / upload.
-Future<T?> guarded<T>(BuildContext c, Future<T> Function() fn, {String? success, bool maybeApplied = false}) async {
+/// [handle] sees the failure first: returning true means "I showed something better" (a dialog with what to do), so no toast is raised.
+Future<T?> guarded<T>(BuildContext c, Future<T> Function() fn, {String? success, bool maybeApplied = false, bool Function(Object error)? handle}) async {
   try {
     final r = await fn();
     if (success != null && c.mounted) toast(c, c.tr(success));
     return r;
   } catch (e) {
-    if (c.mounted) toast(c, maybeApplied && e is ApiException && e.isNetwork ? c.tr('m.net_unconfirmed_write') : errMessage(c, e), error: true);
+    if (c.mounted && handle?.call(e) != true) toast(c, maybeApplied && e is ApiException && e.isNetwork ? c.tr('m.net_unconfirmed_write') : errMessage(c, e), error: true);
     return null;
   }
 }

@@ -134,6 +134,8 @@ class CashOrder {
   int get receivedCents => _i(j['receivedCents']) ?? 0;
   int get outstandingCents => _i(j['outstandingCents']) ?? 0;
   String? get lastCollectedAt => _s(j['lastCollectedAt']);
+  /// Whole days since the first collection on this order (null when the server sends none, or nothing is outstanding).
+  int? get ageDays => _i(j['ageDays']);
 }
 
 class CashHandover {
@@ -173,6 +175,39 @@ class CashBrief {
   bool get show => outstandingCents > 0 || orders > 0;
 }
 
+/// Cash-risk states (`overview.cash.state`): a driver's cash against the platform's limit and handover time.
+enum CashState { ok, warn, overLimit, overdue }
+
+/// The `cash` block of `GET /driver/overview` (and `details.cash` of `403 CASH_LIMIT`, and `cash` of a paused offers answer): what the driver holds and what it allows.
+/// Every field is tolerant — a server without cash limits sends only `outstandingCents` / `orders`, which reads as "ok".
+class CashRisk {
+  CashRisk(this.j);
+  final Json j;
+  int get outstandingCents => _i(j['outstandingCents']) ?? 0;
+  int get orders => _i(j['orders']) ?? 0;
+  bool get enabled => j['enabled'] == true;
+  int get limitCents => _i(j['limitCents']) ?? 0;
+  int get warnPct => _i(j['warnPct']) ?? 0;
+  int get maxDays => _i(j['maxDays']) ?? 0;
+  /// Share of the limit in use, whole percent (can exceed 100); null without a money limit.
+  int? get pct => _i(j['pct']);
+  int get oldestDays => _i(j['oldestDays']) ?? 0;
+  String? get oldestAt => _s(j['oldestAt']);
+  int get overdueCents => _i(j['overdueCents']) ?? 0;
+  CashState get state => switch (_s(j['state'])) { 'warn' => CashState.warn, 'over_limit' => CashState.overLimit, 'overdue' => CashState.overdue, _ => CashState.ok };
+  /// No new offers while true (accepting / applying answers `CASH_LIMIT`).
+  bool get blocksOffers => j['blocksOffers'] == true;
+  /// `limit` | `overdue` | null.
+  String? get reason => _s(j['reason']);
+  /// Part of the wallet balance that cannot be withdrawn now (`CASH_OUTSTANDING`); 0 when none.
+  int get lienCents => _i(j['lienCents']) ?? 0;
+  /// Worth a banner: any state but ok.
+  bool get atRisk => state != CashState.ok;
+
+  /// Null when [v] is not a map (older servers send no block).
+  static CashRisk? of(Object? v) { final m = _m(v); return m == null ? null : CashRisk(m); }
+}
+
 // ── Offers hidden while busy (E11) ──
 
 class ActiveJobRef {
@@ -187,12 +222,37 @@ class ActiveJobRef {
 
 /// `{ items, hidden, activeJob }` of `GET /driver/offers` and `/driver/opportunities`.
 class OffersInfo {
-  const OffersInfo({this.items = const [], this.hidden = false, this.activeJob});
+  const OffersInfo({this.items = const [], this.hidden = false, this.activeJob, this.cashBlocked = false, this.cash});
   final List<Json> items;
   final bool hidden;
   final ActiveJobRef? activeJob;
+  /// `{ items: [], cashBlocked: true, cash }`: the driver's cash is over the limit or overdue, so no offers are made until it is handed over.
+  final bool cashBlocked;
+  final CashRisk? cash;
   static const none = OffersInfo();
-  factory OffersInfo.fromJson(Json j) => OffersInfo(items: _list(j['items']), hidden: j['hidden'] == true, activeJob: ActiveJobRef.fromJson(j['activeJob']));
+  factory OffersInfo.fromJson(Json j) => OffersInfo(items: _list(j['items']), hidden: j['hidden'] == true, activeJob: ActiveJobRef.fromJson(j['activeJob']), cashBlocked: j['cashBlocked'] == true, cash: CashRisk.of(j['cash']));
+}
+
+// ── Invitations from a courier office ──
+
+/// `walletBlock` of `GET /driver/invites`: money in the wallet or a withdrawal waiting stops the driver from joining an office (his earnings then go to the office).
+class WalletBlock {
+  const WalletBlock({this.availableCents = 0, this.heldCents = 0, this.pendingWithdrawals = 0, this.blocks = false});
+  final int availableCents, heldCents, pendingWithdrawals;
+  final bool blocks;
+  int get totalCents => availableCents + heldCents;
+  static const none = WalletBlock();
+  static WalletBlock fromJson(Object? v) {
+    final m = _m(v);
+    return m == null ? none : WalletBlock(availableCents: _i(m['availableCents']) ?? 0, heldCents: _i(m['heldCents']) ?? 0, pendingWithdrawals: _i(m['pendingWithdrawals']) ?? 0, blocks: m['blocks'] == true);
+  }
+}
+
+class InvitesInfo {
+  const InvitesInfo({this.items = const [], this.walletBlock = WalletBlock.none});
+  final List<Json> items;
+  final WalletBlock walletBlock;
+  factory InvitesInfo.fromJson(Json j) => InvitesInfo(items: _list(j['items']), walletBlock: WalletBlock.fromJson(j['walletBlock']));
 }
 
 // ── Notifications ──
@@ -212,29 +272,43 @@ class AppNotification {
 
   /// The `{placeholders}` of the `notif.<type>` text. Scalars become text; objects/lists are dropped. Two conveniences on top of the server data:
   /// `amount` (SAR, from `amountCents` — `notif.cod_received` is worded in riyals) and localized city names (via [city]).
-  Map<String, Object?> vars({String Function(String key)? city}) {
+  Map<String, Object?> vars({String Function(String key)? city, String Function(String key)? docType}) {
     final out = <String, Object?>{for (final e in data.entries) e.key: e.value is Map || e.value is List ? '' : '${e.value ?? ''}'};
     final cents = _i(data['amountCents']);
     if (cents != null && !out.containsKey('amount')) out['amount'] = (cents / 100).toStringAsFixed(2);
     if (city != null) {
       for (final k in const ['pickupCity', 'deliveryCity']) { final v = _s(data[k]); if (v != null && v.isNotEmpty) out[k] = city(v); }
     }
+    // `document_expiring` carries the document type as a dictionary key (`national_id`): shown by its localized name, like the web.
+    if (docType != null) { final v = _s(data['docType']); if (v != null && v.isNotEmpty) out['docType'] = docType(v); }
     return out;
   }
 }
 
 List<AppNotification> parseNotifications(Json r) => [for (final e in _list(r['items'])) AppNotification(e)];
 
+/// A web path an administrator typed into a broadcast (`/driver/opportunities`) → the page of the app that shows the same thing; null for anything the app does not have.
+String? appRouteOfWebLink(String? link) {
+  final p = (link ?? '').trim().split('?').first.split('#').first.replaceAll(RegExp(r'/+$'), '');
+  const map = {
+    '/driver': '/', '/driver/opportunities': '/offers', '/driver/offers': '/offers', '/driver/jobs': '/jobs', '/driver/cash': '/cash', '/driver/wallet': '/wallet', '/driver/earnings': '/wallet',
+    '/driver/documents': '/documents', '/driver/notifications': '/notifications', '/driver/support': '/support', '/driver/profile': '/profile',
+  };
+  return map[p];
+}
+
 /// Where tapping a notification of this type goes (a go_router location), or null for "nothing to open".
 String? notificationRoute(AppNotification n) {
   final t = n.type;
-  if (t == 'offer_new' || t == 'offer_replacement' || t == 'office_opportunity') return '/offers';
-  if (t == 'cod_received') return '/cash';
+  if (t == 'offer_new' || t == 'offer_replacement' || t == 'office_opportunity' || t == 'offer_rescheduled') return '/offers';
+  if (t == 'cod_received' || t == 'cash_limit_warning' || t == 'cash_overdue' || t == 'cash_blocked') return '/cash';
   if (t.startsWith('ticket_')) return '/support';
   if (t == 'chat_message' && (n.offerId ?? '').isNotEmpty) return '/job/${n.offerId}/chat';
-  if (const ['payout_paid', 'withdrawal_paid', 'withdrawal_rejected', 'wallet_adjusted'].contains(t)) return '/wallet';
+  if (const ['payout_paid', 'withdrawal_paid', 'withdrawal_rejected', 'wallet_adjusted', 'balance_moved_to_office'].contains(t)) return '/wallet';
   if (t.startsWith('document_') || t.startsWith('verification_')) return '/documents';
-  if ((n.offerId ?? '').isNotEmpty) return '/job/${n.offerId}';
+  if (t.startsWith('privacy_request_')) return '/privacy';
+  if (t == 'broadcast') return appRouteOfWebLink(_s(n.data['link']));
+  if ((n.offerId ?? '').isNotEmpty) return '/job/${n.offerId}'; // stop_marked_delivered / stop_marked_failed / parcels_added / recipient_corrected …
   return null;
 }
 

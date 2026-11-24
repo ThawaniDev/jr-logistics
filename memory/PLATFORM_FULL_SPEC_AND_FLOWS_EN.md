@@ -8,6 +8,12 @@
 > 4. **Section 4:** Complete Catalog of All 32 End-to-End Platform Workflows Across 7 System Modules
 > 5. **Section 5:** Database Schema Delta Summary
 
+> **Update L (2026-11-22) — read this first. This document is a *target* specification, not a description of the code.** The status line above ("100% of the platform codebase") is **not accurate**: audit K (`memory/audit/gaps.md` §5) found that large parts were never built or were changed by later owner decisions. What actually runs is in `SRS.md`, `TRACEABILITY.md`, `DECISIONS.md` (A–L series), `FLOWS_DETAILED.md` and `PLATFORM_UPDATE_L.md`. Every correction below is marked **Update L**. In short:
+> 1. **Fields that do not exist** (0 hits in `web/src/db/schema.ts` and `web/src/server/`): `billing_model`, `billing_cycle`, `grace_period_days`, `agreed_package_specs`, `approved_zones`, `zone_mismatch_penalty_cents`, `unreadiness_strikes_weekly`, `occupancy_reservation_fee_cents`, `dock_delay_strikes`, `dock_delay_penalty_cents`, `callout_cancel_fee_cents`, `loading_grace_period_mins`, `tga_license_number`, `replacement_sla_mins`, `max_package_capacity`, `extra_units_accepted`, `static_route_approved_at`, `slot_acceptance_mode`, `national_address_short`, `geofence_radius_meters`, `ops_contact_phone`. Section 5 is therefore **not applied**. (Real near-equivalents: `wallet_accounts.credit_limit_cents`, `requests.allow_partial`, `offers.route_approved_at`, platform setting `arrivalRadiusM`.)
+> 2. **Fees: none.** Decision #8 of `DECISIONS.md` says "no fees" and that is what runs. The call-out fee (SAR 50), demurrage (SAR 35 per hour), zone surcharges, occupancy fee, dock-delay penalty and zone-mismatch penalty described here and in `FLOWS_DETAILED.md` flows 03 / 06 / 30 are **not implemented — amounts pending the owner** (DECISIONS O4 / L16).
+> 3. **Changed by owner decisions:** sign-in is username + password, there is no phone OTP and no phone verification (J1); cash on delivery **is enabled** (E17) while POS terminals stay out (C8); routing is **off** by default (J2) so there is no static-route approval step unless the owner switches it on; the warehouse no longer confirms or disputes the delivered quantity (E16); there is no settlement review, approval, batch or correction step — a finished job is paid at once (E18); billable quantity is **capped at booked and loaded** (A1) so nobody is billed for 75 units on a 50-unit booking; B2B parcels are off by default (J3).
+> 4. **New since this was written** (flows 33–39 in Module H below): top-up by card (PayTabs) and by bank transfer, cash-risk limits for drivers, delivery with SMS switched off, privacy export and erasure, terms re-acceptance, forced app update; plus the provider switches, system status, ops overrides, announcements and the minimum app version.
+
 ---
 
 ## Executive Summary of Custom Operational Decisions Integrated
@@ -16,21 +22,21 @@ All custom operational overrides recorded during the 78-scenario review have bee
 
 | Scenario # | Approved Operational Decision | Impact on Platform Fields & Workflows |
 | :--- | :--- | :--- |
-| **#1** | Repeated warehouse shipment unreadiness (> 2 times/week) lowers loading bay priority and triggers an occupancy reservation fee | Added `unreadiness_strikes_weekly` counter and `occupancy_reservation_fee_cents` to warehouse contract terms |
-| **#2** | When extra packages exist at the loading bay (e.g., 75 instead of 50), the driver has the **choice to accept or reject** based on vehicle capacity; if accepted, **both the warehouse and the driver are billed/paid for all 75 packages** | Updated loading & settlement logic to allow `final_units > expected_units` upon driver acceptance and reserve the additional delta from the warehouse's negative wallet |
-| **#6** | Loading bay delays (> 60 minutes) extend the driver's SLA and notify the warehouse that repeated delays incur a financial penalty | Added `dock_delay_strikes` and cumulative `dock_delay_penalty_cents` |
-| **#9** | **Weight and volume are NOT entered per shipment** on orders; package size standards are **agreed upfront in each warehouse's contract** | Removed per-order weight/volume inputs and added `agreed_package_specs` (`JSONB`) to warehouse contract terms |
-| **#19** | Use **Static Routing with approval from the driver/delegate** rather than forced automatic dynamic re-routing | Added `static_route_approved_at` step before route execution |
+| **#1** | Repeated warehouse shipment unreadiness (> 2 times/week) lowers loading bay priority and triggers an occupancy reservation fee | Added `unreadiness_strikes_weekly` counter and `occupancy_reservation_fee_cents` to warehouse contract terms **Update L: not built — no strike counter, no occupancy fee.** |
+| **#2** | When extra packages exist at the loading bay (e.g., 75 instead of 50), the driver has the **choice to accept or reject** based on vehicle capacity; if accepted, **both the warehouse and the driver are billed/paid for all 75 packages** | Updated loading & settlement logic to allow `final_units > expected_units` upon driver acceptance and reserve the additional delta from the warehouse's negative wallet **Update L: superseded by A1 — the driver is paid and the warehouse billed for at most the booked quantity and at most what was loaded; extra parcels need a new request; no `max_package_capacity`, no "accept the extra" step.** |
+| **#6** | Loading bay delays (> 60 minutes) extend the driver's SLA and notify the warehouse that repeated delays incur a financial penalty | Added `dock_delay_strikes` and cumulative `dock_delay_penalty_cents` **Update L: not built — no dock-delay counter, penalty or automatic SLA shift; the driver can open a `business_not_ready` ticket and operations decide.** |
+| **#9** | **Weight and volume are NOT entered per shipment** on orders; package size standards are **agreed upfront in each warehouse's contract** | Removed per-order weight/volume inputs and added `agreed_package_specs` (`JSONB`) to warehouse contract terms **Update L: per-shipment weight/volume is indeed not asked; `agreed_package_specs` was not built.** |
+| **#19** | Use **Static Routing with approval from the driver/delegate** rather than forced automatic dynamic re-routing | Added `static_route_approved_at` step before route execution **Update L: the column is `offers.route_approved_at`; it is used only while the platform switch `routingEnabled` is ON (default OFF, J2) — then there is no approval step at all.** |
 | **#21** | Mid-route customer address change to another zone: **Return the shipment to the warehouse** (do not divert mid-route for an extra fee) | Updated mid-route diversion handling to transition the package directly to `RTO / returned_to_warehouse` |
 | **#22 & #38** | Complex disputes and damaged appliance/white-glove rejections are **resolved through the platform's dispute system** based on inputs from both parties | Linked directly to `complaints` with `holds_settlement = true` until operations arbitration |
-| **#23 & #24** | **Disable Cash on Delivery (`COD`) and `POS` network terminals**; customer payments occur online with the merchant | Disabled cash collection and POS custody workflows by default |
-| **#26** | Any custody discrepancy or failure to return goods: **Immediate suspension of the driver after the first offense** pending platform review | Enforced immediate `status = 'suspended'` on first custody violation |
-| **#29** | Automated 7-day suspension after 3 strikes (`3-Strikes`), **with manual account reactivation capability by platform admins** | Added manual admin override (`POST /admin/drivers/:id/clear-suspension`) |
+| **#23 & #24** | **Disable Cash on Delivery (`COD`) and `POS` network terminals**; customer payments occur online with the merchant | Disabled cash collection and POS custody workflows by default **Update L: partly reversed — COD is enabled (E17: the driver collects, the warehouse records the receipt, never in the wallet ledger; cash-risk limits, DECISIONS L6); POS / card terminals stay out of scope (C8, `CUSTODY_ITEM_TYPES` = phone, charger, bag, other).** |
+| **#26** | Any custody discrepancy or failure to return goods: **Immediate suspension of the driver after the first offense** pending platform review | Enforced immediate `status = 'suspended'` on first custody violation **Update L: not enforced — `returnCustody` records `returned` / `not_returned` / `damaged` with a mandatory note and a `custody_*` event; it neither suspends the driver, holds a settlement nor files a complaint (operations act by hand: suspend, complaint, wallet adjustment).** |
+| **#29** | Automated 7-day suspension after 3 strikes (`3-Strikes`), **with manual account reactivation capability by platform admins** | Added manual admin override (`POST /admin/drivers/:id/clear-suspension`) **Update L: the override exists; the automatic rule is the configurable cancellation policy (default: warning at 2, suspension at 4 cancellations within 7 days, for 3 days — DECISIONS #8), not "3 strikes → 7 days".** |
 | **#31** | Mid-shift driver medical/breakdown emergency: If the driver belongs to a **courier office**, the **same office must provide a replacement**; if the driver is a **freelancer**, remaining shipments are **returned to the warehouse or resolved via the platform** | Branched emergency replacement workflow based on `driver.office_id IS NOT NULL` vs `NULL` |
-| **#35** | Reefer cooling unit breakdown: Search for a replacement vehicle; if none is available within the specified window, **return the goods to the warehouse** | Removed mobile mechanic dispatch; enforced replacement SLA window or immediate return to origin (`RTO`) |
-| **#42** | Zone misclassification by warehouse: **Return out-of-zone shipments to the warehouse and charge a financial penalty to the warehouse** | Added `zone_mismatch_penalty_cents` and mandatory `RTO` for out-of-polygon shipments |
+| **#35** | Reefer cooling unit breakdown: Search for a replacement vehicle; if none is available within the specified window, **return the goods to the warehouse** | Removed mobile mechanic dispatch; enforced replacement SLA window or immediate return to origin (`RTO`) **Update L: `replacement_sla_mins` was not built; operations dispatch a replacement or end the route.** |
+| **#42** | Zone misclassification by warehouse: **Return out-of-zone shipments to the warehouse and charge a financial penalty to the warehouse** | Added `zone_mismatch_penalty_cents` and mandatory `RTO` for out-of-polygon shipments **Update L: the return to the warehouse is how it works; no zone polygons and no penalty amount exist. A typo in a recipient's phone/address can now be corrected while the parcel is `loaded` and the driver has not arrived (O8, DECISIONS L11).** |
 | **#47** | **Remove/Cancel the "Select Preferred Office" feature** when a warehouse creates a request | Disabled `preferred_office_id` selection; all requests route through the fair general matching engine |
-| **#48** | Multi-vehicle fleet requests (e.g., 5 Dynas): Add a **checkbox option** when creating the opportunity to choose between **Accept All Slots Together (`all_or_nothing` bundle)** OR **Allow Partial Acceptance (`allow_partial` individual slots)** | Added `slot_acceptance_mode: 'all_or_nothing' \| 'allow_partial'` to `requests` |
+| **#48** | Multi-vehicle fleet requests (e.g., 5 Dynas): Add a **checkbox option** when creating the opportunity to choose between **Accept All Slots Together (`all_or_nothing` bundle)** OR **Allow Partial Acceptance (`allow_partial` individual slots)** | Added `slot_acceptance_mode: 'all_or_nothing' \| 'allow_partial'` to `requests` **Update L: implemented as the boolean `requests.allow_partial` (default true); `false` = all-or-nothing (the request is called off at the start time unless every slot is filled; an offer that already delivered is spared).** |
 | **#49, #52, #53, #56** | **Excluded out-of-scope features:** No live IoT temperature sensor integration (#49), platform is not responsible for emergency mobile refueling (#52), no special ice-cream sub-classification (#53), and no PPE app verification workflow (#56) | Kept system lean by excluding all fields and screens for these four items |
 | **#54** | Missing `Gate Pass` at industrial/port security gates: **The recipient must receive the shipment at the gate; if they refuse, the shipment is returned to the warehouse** | Standardized restricted-access procedure: gate handover or immediate `RTO` |
 
@@ -46,8 +52,9 @@ A warehouse (`role = 'business'`) is the primary service requester. Its data spa
 | `id` | Unique Warehouse User ID | `UUID (PK)` | Auto | Generated automatically upon registration |
 | `role` | Account Role | `'business'` | Fixed | Grants access to the Warehouse Portal & Business APIs |
 | `name` | Authorized Representative Name | `Text (2–100 chars)` | Yes | Also stored as `business_profiles.responsible_person` |
-| `phone` | Official Mobile Number | `Text (Unique, E.164)` | Yes | Normalized to `+9665XXXXXXXX` and verified via 6-digit SMS `OTP` before account creation |
-| `email` | Official Corporate Email | `Text (Unique, Lowercase)` | Yes | Used for `ZATCA` tax invoices and financial notifications |
+| `phone` | Official Mobile Number | `Text (Unique, E.164)` | Yes | Normalized to `+9665XXXXXXXX`. **Update L: it is NOT verified by SMS** — registration has no OTP step (J1; the owner does not want phone verification for now); staff verify accounts through documents |
+| `username` | Sign-in name *(Update L, J1)* | `Text (Unique, 1–60 chars)` | Yes | Sign-in is **username + password** for every role and the app (`POST /auth/login`; an e-mail also works as the identifier); staff create / rename usernames and set temporary passwords |
+| `email` | Official Corporate Email | `Text (Unique, Lowercase)` | **Update L: optional** | Not used to sign in or to send anything today (no e-mail provider); `ZATCA` e-invoicing is not built |
 | `city` | Primary Operating City | `Text` | Yes | Must match an enabled pickup city in `settings.cities` (`pickup = true`) |
 | `language` | Preferred UI & Notification Language | `'ar' \| 'en' \| 'ur'` | Yes | Defaults to `'ar'` |
 | `status` | Account Lifecycle Status | `'active' \| 'suspended'` | Auto | Transitioning to `suspended` immediately revokes all active sessions |
@@ -60,14 +67,16 @@ A warehouse (`role = 'business'`) is the primary service requester. Its data spa
 | `tax_number` | VAT Registration Number (`TRN`) | `Text (15 digits)` | Yes | Starts and ends with `3`; mandatory for `ZATCA Phase 2` e-invoicing |
 | `industry` | Business Sector / Vertical | `Text (max 80 chars)` | Yes | Food & Beverage, Pharmacy, Electronics, Retail, Wholesale (`B2B`), Auto Parts, etc. |
 | `address` | Full Street & District Address | `Text (max 250 chars)` | Yes | Building No, Street, District, Postal Code, Additional Number |
-| `national_address_short` | Saudi National Address Short Code *(New)* | `Text (8 chars)` | Yes | 4 letters + 4 digits (e.g., `RRRD2929`) |
+| `national_address_short` | Saudi National Address Short Code *(New)* | `Text (8 chars)` | Yes | 4 letters + 4 digits (e.g., `RRRD2929`) **— Update L: not in the schema** |
 | `warehouse_lat` & `warehouse_lng` | Loading Bay GPS Coordinates *(New)* | `Double Precision` | Yes | Reference point used to enforce the `500m Geofence` check-in rule |
-| `geofence_radius_meters` | Allowed Check-in Geofence Radius *(New)* | `Integer` | Yes | Defaults to `500` meters |
+| `geofence_radius_meters` | Allowed Check-in Geofence Radius *(New)* | `Integer` | Yes | Defaults to `500` meters **— Update L: not per warehouse; the radius is the platform setting `arrivalRadiusM` (default 200 m)** |
 | `responsible_person` | Loading Bay / Operations Supervisor Name | `Text` | Yes | Primary contact for daily dispatch operations |
-| `ops_contact_phone` | Loading Bay Supervisor Mobile *(New)* | `Text (E.164)` | Yes | Displayed to assigned drivers upon offer acceptance |
+| `ops_contact_phone` | Loading Bay Supervisor Mobile *(New)* | `Text (E.164)` | Yes | Displayed to assigned drivers upon offer acceptance **— Update L: not in the schema (the account `phone` is the contact)** |
 | `verification_status` | KYC Verification Status | `'pending' \| 'verified' \| 'rejected' \| 'info_requested' \| 'suspended'` | Auto | Cannot publish requests (`publishRequest`) if `requireBusinessVerification = true` and status is not `verified` |
 | `verification_note` | Reviewer Feedback Note | `Text` | Cond. | Mandatory when reviewer action is `reject`, `request_info`, or `suspend` |
 | `rating_sum` & `rating_count` | Cumulative Driver Rating Score & Count | `Integer` | Auto | Updated atomically when drivers rate the warehouse (`1–5 stars`) after job completion |
+
+> **Update L:** at registration only `company_name` is required; `cr_number`, `tax_number`, `industry`, `address` are optional and are checked by staff against the uploaded documents (`requireBusinessVerification`, default on, decides whether an unverified warehouse may publish). The seller identity of the **platform** (legal names, VAT, CR, address, support channels, privacy contact) is separate and lives in Settings › Company (DECISIONS L8).
 
 ### 1.3 Required Legal Documents (`documents` — `owner_kind = 'business'`)
 * `business_cr` (**Mandatory**): Valid Commercial Registration certificate (`PDF / JPG / PNG / WEBP`, max `8 MB`, validated via binary magic-byte header inspection).
@@ -84,8 +93,11 @@ A warehouse (`role = 'business'`) is the primary service requester. Its data spa
 | `billing_cycle` | Invoicing & Repayment Cycle *(New)* | `'weekly' \| 'net_15' \| 'net_30'` | Settlement repayment schedule for negative balances |
 | `grace_period_days` | Overdue Grace Period Before Lockout *(New)* | `Integer (Default: 5)` | Days after invoice due date before triggering `Automated Credit Lockout` (Scenario #68) |
 
+> **Update L:** `billing_model`, `billing_cycle` and `grace_period_days` **do not exist** and there is no postpaid invoice cycle, due date or automatic credit lockout. What exists: `wallet_accounts.credit_limit_cents` (default 0, set by staff with `POST /admin/finance/credit-limit`; `available` may go down to `-credit_limit_cents`, error `CREDIT_LIMIT_EXCEEDED`). A postpaid statement / repayment flow is an open owner item (gap L6). Funding a prepaid wallet: card (PayTabs) or bank transfer — flows 33 and 34 below.
+
 ### 1.5 Contractual SLA & Penalty Configuration (`Warehouse Contract Terms`)
 > **Enforcing Custom Decisions #1, #6, #9, and #42:**
+> **Update L — status: none of the fields in this list exists except `webhook_url` and `webhook_secret` (in `business_profiles`). No amounts were ever approved by the owner ("no fees", DECISIONS #8): call-out, demurrage, occupancy, dock-delay and zone-mismatch charges are *not implemented — amounts pending*. Treat this list as a wish list.**
 * `agreed_package_specs` (`JSONB` — **Decision #9**): Pre-agreed package size tiers (Small/Medium/Large) and maximum weight per parcel defined in the warehouse contract (eliminating per-shipment weight/volume entry during order creation).
 * `approved_zones` (`Text[]` — **Decision #42**): Approved geographic delivery zones mapped to JR's zone polygons.
 * `zone_mismatch_penalty_cents` (`Integer` — **Decision #42**): Penalty automatically charged to the warehouse when an address falls outside the declared zone (accompanied by mandatory return of the shipment to the warehouse).
@@ -107,7 +119,7 @@ A courier office (`role = 'office'`) is a fleet partner that manages affiliated 
 | `user_id` | Unique Office User ID | `UUID (PK, FK -> users.id)` | Auto | Linked to a user account with `role = 'office'` |
 | `office_name` | Registered Courier Office Name | `Text (2–150 chars)` | Yes | Displayed in admin operations, settlements, and driver profiles (not selectable as a preferred office by warehouses per **Decision #47**) |
 | `cr_number` | Commercial Registration Number | `Text (10 digits)` | Yes | Mandatory for legal verification |
-| `tga_license_number` | Transport General Authority (`TGA / Wasl`) License *(New)* | `Text` | Yes | Verified via `office_license` document |
+| `tga_license_number` | Transport General Authority (`TGA / Wasl`) License *(New)* | `Text` | Yes | Verified via `office_license` document **— Update L: not in the schema; staff check the uploaded `office_license` document** |
 | `tax_number` | Office VAT Registration Number | `Text (15 digits)` | Yes | Required for VAT settlement accounting |
 | `city` | Primary Operating City | `Text` | Yes | Must be an enabled city in platform settings |
 | `address` | Official Head Office Address | `Text` | Yes | Used for legal notices and billing |
@@ -127,7 +139,7 @@ A courier office (`role = 'office'`) is a fleet partner that manages affiliated 
 | `version` | Agreement Version Number | `Integer (Auto-increment per office)` | Creating a new agreement automatically marks any prior `pending_acceptance` version as `superseded` |
 | `status` | Agreement Lifecycle State | `'pending_acceptance' \| 'accepted' \| 'superseded' \| 'expired'` | Office must explicitly accept via `POST /office/agreements/:id/accept` to unlock fleet dispatch |
 | `terms` | Full Commercial & SLA Terms Text | `Text (up to 10,000 chars)` | Includes mandatory replacement SLA and 100% office wallet settlement routing |
-| `replacement_sla_mins` | Emergency Replacement SLA Window *(New)* | `Integer (Default: 45)` | **Decisions #31 & #35:** Maximum minutes allowed for the office to dispatch a replacement driver/vehicle from the same office upon breakdown or medical emergency |
+| `replacement_sla_mins` | Emergency Replacement SLA Window *(New)* | `Integer (Default: 45)` | **Decisions #31 & #35:** Maximum minutes allowed for the office to dispatch a replacement driver/vehicle from the same office upon breakdown or medical emergency **— Update L: not in the schema; the office replaces its own driver through `officeReplace` with no timer** |
 | `effective_at` & `expires_at` | Effective Date & Expiration Timestamp | `Timestamp` | Once `expires_at <= now()`, `readyOfficeIds` automatically blocks the office's fleet until a new agreement is accepted |
 | `created_by` & `accepted_at` | Staff Creator ID & Acceptance Timestamp | `UUID / Timestamp` | Recorded in immutable `audit_logs` |
 
@@ -140,11 +152,13 @@ A courier office (`role = 'office'`) is a fleet partner that manages affiliated 
 | `vehicle_type` | Vehicle Category | `'sedan' \| 'dokker' \| 'hiace' \| 'van' \| 'dyna'` | Enforced as a hard eligibility guard during matching |
 | `vehicle_temperature` | Thermal Capability (`van` / `dyna` only) | `'dry' \| 'cold' \| null` | Mandatory when `vehicle_type` is `van` or `dyna` |
 | `vehicle_plate` | License Plate Number | `Text` | Used for warehouse gate security verification |
-| `max_package_capacity` | Maximum Parcel Capacity *(New)* | `Integer` | Determines whether the driver can accept extra packages at the loading bay (**Decision #2**) |
+| `max_package_capacity` | Maximum Parcel Capacity *(New)* | `Integer` | Determines whether the driver can accept extra packages at the loading bay (**Decision #2**) **— Update L: not in the schema (see the note on #2 above)** |
 | `services` | Qualified Service Types | `Text[]` | Subset of `['delivery_driver', 'car_with_driver']` |
 | `availability` | Real-Time Shift Availability | `'available' \| 'unavailable'` | Toggling to `available` triggers `backfillOffersForDriver` to immediately push qualifying open jobs |
 | `verification_status` | Derived Document Verification State | `'pending' \| 'verified' \| 'rejected' \| 'expired'` | **Automatically computed (`recomputeDriverVerification`):** Requires approved, unexpired `national_id`, `driving_license`, and `vehicle_registration`. Automatically flips to `expired` the day any document lapses (Scenario #77) |
 | `suspended_until` & `strikes_reset_at` | Auto-Suspension End & Strike Reset Timestamps | `Timestamp (Nullable)` | Set for 7 days upon reaching 3 cancellation/no-show strikes; can be manually cleared at any time by admins via `clearSuspension` (**Decision #29**) |
+
+> **Update L:** (1) The invitation flow changed: an invitation sent to a phone number is **not** linked to whoever registers with that number — it links when staff approve the driver's documents or the office confirms the registered account (`POST /office/invites/:id/confirm`), DECISIONS L15. (2) A driver cannot join an office while his wallet holds money (`available + held > 0`) or a withdrawal is pending — `409 WALLET_NOT_EMPTY`; staff can *Move balance to office* (L10). (3) Suspension: the default is warning at 2 and suspension at 4 cancellations in 7 days, for 3 days (settings), not "3 strikes → 7 days". (4) A driver whose unremitted cash is over the limit or overdue receives no offers (DECISIONS L6).
 
 ---
 
@@ -217,6 +231,8 @@ stateDiagram-v2
     pending_settlement --> completed: finalizeRequest (Creates idempotent Settlement row + closes slot)
 ```
 
+> **Update L (E16, E18):** there is **no warehouse confirm / dispute step**. When the driver reports the delivery (or the route is ended), `autoConfirmDelivery` confirms it (`delivery_confirmed {auto: true}`) and the settlement is created **and paid in the same transaction** (an open complaint that holds the job defers the payment; the tick pays it once the hold is lifted). `qty_disputed` is a legacy state no route can reach any more and `POST /admin/offers/:id/resolve-dispute` was removed (B8). Undelivered parcels are received back by the warehouse (`confirm_returns`) at any time without blocking money. A no-show can be recorded by the business only from `startsAt + lateGraceMin` (default 30 min; staff exempt); an offer that lapsed can be taken again while the request is open (DECISIONS L15).
+
 ---
 
 ### 3.2 Behavioral Differences Across the 3 Service Types
@@ -276,6 +292,8 @@ Defined in [`catalog.ts`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/
   3. **Courier Office Assignment (`source = 'office'`):** Office manager assigns an eligible linked driver (`POST /office/opportunities/:id/assign`).
   4. **Operations Manual Assignment (`source = 'manual'`):** Backoffice staff assigns a specific driver with an audited reason (`POST /admin/requests/:id/assign`).
 
+> **Update L:** the list above names 10 guards; the code (`evaluateCandidates`) also has `busy` (E11, `driverSingleActiveJob`: a driver with an accepted job gets no other offers) and `cash_blocked` (B5: a driver whose cash is over the limit or overdue is skipped by matching and cannot accept or apply — `403 CASH_LIMIT`, DECISIONS L6). The reasons shown to operations are these codes.
+
 #### Phase 4: Offer Acceptance & Multi-Slot Concurrency Control (`fillSlot`)
 * Deadlock-free locking order: **always locks `requests` first, then `offers` second**.
 * Re-verifies all 12 eligibility guards inside the transaction, increments `slots_filled`, updates the offer to `accepted`, and transitions the parent request to:
@@ -283,6 +301,7 @@ Defined in [`catalog.ts`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/
   * `assigned` (when `slots_filled === quantity`), automatically expiring all remaining `offered` rows on that request.
 
 #### Phase 5: Geofence Arrival Check-in, Attendance Confirmation & "Not Put To Work"
+> **Update L:** the geofence is the platform setting `arrivalRadiusM` (default 200 m), not a per-warehouse 500 m. `present = false` is allowed to the business only from `startsAt + lateGraceMin`; staff are exempt. "Not put to work" is refused once the driver has already worked stops of the job (he ends the route instead). Repeating the same check-in answers 200 with the same result.
 * **Driver Check-in (`POST /offers/:id/checkin`):** Allowed starting `checkinEarlyMin` before `startsAt` within the warehouse's `500m GPS Geofence`. Transitions offer to `arrived` and records `arrived_lat`, `arrived_lng`, `arrived_at`.
 * **Warehouse Attendance Decision (`POST /offers/:id/attendance`):**
   * `present = true`: Transitions offer to `attendance_confirmed` and parent request (if fully staffed) to `in_progress`.
@@ -290,6 +309,7 @@ Defined in [`catalog.ts`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/
 * **Driver "Not Put To Work" Escalation (`POST /offers/:id/no-work`):** If a driver is `arrived` or `attendance_confirmed` but the warehouse ignores them or has no shipments, the driver triggers `reportNoWork`, opening an urgent `not_put_to_work` operations ticket (Scenarios #3 & #57).
 
 #### Phase 6: Loading Bay Count, Over/Under-Capacity Handling & Physical Custody
+> **Update L:** loaded quantity can never exceed the booked quantity and billing never exceeds booked or loaded (A1, `maxBillableUnits`). **Outcome 3 below (accept the extra and bill all 75 units) does not exist**: a warehouse that presents more than booked is told to remove the extra or book a new request (`FLOWS_DETAILED.md` flow 02). There is no occupancy fee for under-loading (outcome 2). Custody items: phone, charger, bag, other — no COD cash and no POS terminals.
 * **Warehouse Records Loaded Units (`POST /offers/:id/loading`):** Sets `loaded_units` and `loaded_at`, resetting `loaded_ack_by_driver = null`.
 * **4 Loading Bay Capacity Outcomes:**
   1. **Exact Match (`loaded_units == expected_units`):** Driver acknowledges (`POST /offers/:id/loading-ack` with `ok = true`).
@@ -302,17 +322,20 @@ Defined in [`catalog.ts`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/
   * Warehouse logs physical equipment handed to the driver (thermal bags, smart padlocks, etc.—excluding COD cash/POS terminals per **Decisions #23 & #24**), and the driver acknowledges receipt (`status = 'acknowledged'`).
 
 #### Phase 7: Static Route Approval, WhatsApp Handoff & Contact Exceptions
+> **Update L (J2):** with `routingEnabled` OFF (the default) there is no route computation, no approval, no one-stop-at-a-time lock and no re-ordering: the driver works any `loaded` stop of his job in any order and sees a recipient's name and phone from the moment the parcel is loaded. The `POST /offers/:id/route/optimize` call below applies only when the owner switches routing ON (then: Google Routes when a key is set, a labelled straight-line estimate otherwise).
 * **Static Route Approval (`POST /driver/route/optimize` — Decision #19):** Computes a static stop sequence (`Nearest-Neighbor + 2-Opt` refinement) approved by the driver prior to departure (no forced dynamic mid-drive re-routing).
 * **Audited WhatsApp Handoff (`GET /driver/jobs/:id/whatsapp`):** Generates pre-filled `wa.me` deep links in Arabic, English, or Urdu (`contact`, `arriving`, `issue`) and logs `whatsapp_handoff_opened` in `job_events` as immutable proof of contact initiation.
 * **Recipient Contact Exception (`POST /driver/jobs/:id/contact-exception`):** After waiting 10 minutes on-site, the driver logs `no_answer | wrong_number | refused | other`, recording a `contact_exception` event and opening an `attendance_issue` ticket.
 
 #### Phase 8: Delivery Reporting, Dispute Gate & Operations Arbitration
+> **Update L (E16): the "Warehouse Delivery Decision" below was removed.** There is no `POST /offers/:id/delivery-decision`; the delivery is confirmed automatically when the driver finishes, and disputes after the fact are tickets / complaints plus a staff wallet adjustment. Per-parcel delivery proof is per stop (scan; plus the recipient's code while SMS is on; plus a signature where the warehouse asks) — flow 36 below.
 * **Driver Reports Delivered Quantity (`POST /offers/:id/delivered`):** Requires `loaded_ack_by_driver === true` (for shipment jobs) and validates `delivered_units <= ceiling`. Transitions offer to `delivered_reported`.
 * **Warehouse Delivery Decision (`POST /offers/:id/delivery-decision`):**
   * **Confirm (`action = 'confirm'`):** Sets `final_units`, transitions offer to `pending_settlement`, and triggers `completeIfReady()`.
   * **Dispute (`action = 'dispute'` — Decisions #22 & #38):** Transitions offer to `qty_disputed` and automatically files an urgent formal complaint (`complaints` with `holds_settlement = true`), freezing payout for that job until operations resolves it via `POST /admin/offers/:id/resolve-dispute`.
 
 #### Phase 9: Request Finalization, Unspent Escrow Release & Mutual Rating
+> **Update L (E18):** settlements are created and paid when each driver's work ends (`settleOffer`); there is no `pending_settlement` wait for a review. A zero-value settlement (nothing delivered) moves no money and issues no invoice. The invoice is an invoice **record** with VAT extraction and the seller block of Settings › Company — **not** a ZATCA Phase-2 e-invoice (no QR, no credit note).
 * When all active offers on a request reach `pending_settlement` (via `completeIfReady` or `POST /requests/:id/complete` for partially staffed requests):
   1. Creates an idempotent `settlements` record per offer (`UNIQUE(offer_id)`).
   2. Transitions each offer to `completed` and expires any remaining `offered` rows.
@@ -330,6 +353,8 @@ Defined in [`catalog.ts`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/
 | **3. Over-Capacity / Extra Units Accepted Delivery (Decision #2)** | Warehouse books 50 parcels, presents 75 at the dock ➔ Driver accepts extra 25 within vehicle capacity and delivers all 75 | On `recordLoading(75)` + driver `acknowledgeLoading(true)`: slot ceiling updates to `75` with additional escrow reserve for +25 units | • **Per Decision #2:** Warehouse is charged for **all 75 units** (`75 × unitPrice`)<br>• Driver/Office is paid for **all 75 units** (`75 × providerCost`)<br>• `ZATCA` invoice issued for all 75 units |
 | **4. Daily Chauffeur / Vehicle with Driver (`car_with_driver`)** | Warehouse books 1 refrigerated Dyna with driver for 5 days (`durationDays = 5`) | Skips parcel loading count (`hasShipments = false`); tracks daily attendance and confirms `final_units = 5` days | • Billed per `vehicle_day`<br>• `customerCents = 5 × dailyPrice`<br>• `providerCents = 5 × dailyProviderCost` |
 | **5. Driverless Fleet Rental (`car_without_driver`)** | Warehouse rents 3 dry vans without drivers for 10 days | `Request`: `draft -> confirmed -> completed` (via staff `POST /admin/requests/:id/fulfil-rental`, zero driver offers) | • Deducts full `reservedCents` from warehouse via `charge` and credits `platform_fee` on platform account |
+
+> **Update L:** variant 2 has no occupancy fee; variant 3 does not exist (see Phase 6); variants 1–2 read "`ZATCA` invoice" as "invoice record" (Phase 9); for parcel deliveries the warehouse confirmation step in the state progressions is automatic (E16).
 
 ---
 
@@ -349,6 +374,8 @@ flowchart TD
     CancelType -->|"8. Cron Unfilled / Partial Timeout"| C8["runMaintenance()\n• If slotsFilled == 0 at startsAt: Request -> expired (100% reserve released)\n• If 0 < slotsFilled < quantity at startsAt + 60m: Closes empty slots, releases their reserve, continues active slots"]
 ```
 
+> **Update L:** branch 3 (late warehouse cancel) has **no call-out fee**: once a driver has arrived only operations can cancel (`INVALID_TRANSITION` for the business) and the whole reserve returns to the warehouse (no fee, DECISIONS #8); a request that already has delivered parcels is not cancelled — operations end the route (K6). Branch 2 issues no credit note (none exists). Branch 5 (no-show) follows the `lateGraceMin` rule above. Branch 8 also *calls off* an all-or-nothing request that is not fully staffed at its start time, sparing any offer that already delivered.
+
 ---
 
 ### 3.6 The 8 Returned Order (`RTO`) & Custody Flows
@@ -366,11 +393,15 @@ Whenever a parcel cannot be delivered, the driver logs a timestamped, GPS-tagged
 | **7. Mid-Shift Vehicle / Reefer Breakdown (Decisions #31 & #35)** | Mechanical failure, cooling failure, or medical emergency mid-route | • **Office-Linked Driver:** Same courier office must dispatch a replacement vehicle/driver to take over remaining parcels.<br>• **Freelance Driver (or no reefer replacement within SLA):** Remaining parcels are **returned immediately to the warehouse** | If completed by office replacement: full settlement to office.<br>If returned by freelancer: `Pro-rata` settlement for delivered parcels only; remaining reserve released |
 | **8. Unreturned RTO Parcel / Custody Breach (Decision #26)** | Shift ends and warehouse records `POST /custody/:id/return` as `not_returned` or missing RTO parcels | **Approved Decision #26:**<br>1. Freeze all pending driver/office settlements (`holds_settlement = true`).<br>2. **Immediately suspend the driver after the first offense (`status = 'suspended'`)** pending platform investigation | Value of unreturned goods is deducted from held earnings; driver remains suspended until admin review |
 
+> **Update L:** RTO rows 1–3, 5–7 describe real behaviour (parcel `failed` → `returned` → received back by the warehouse). **Row 4**: no zone polygons or penalty exist — the return is the only consequence. **Row 8**: not automated — recording `not_returned` stores the note and an event only; there is no automatic suspension, settlement freeze or deduction (operations use the suspend, complaint and wallet-adjustment tools by hand). Rows 1–2 "earns the full delivery fee": per-parcel pricing pays for what was delivered; failed attempts are not paid per parcel.
+
 ---
 
 ## Section 4: Complete Catalog of All 32 End-to-End Platform Workflows
 
 ### Module A: Identity, Authentication, MFA & Role-Based Security (`Flows 1–4`)
+
+> **Update L — Flows 1 and 2 are replaced (J1, DECISIONS):** there is **one** sign-in for every role and the app, **username + password**: `POST /auth/login` (`/auth/staff/login` is an alias; an e-mail also works as the identifier). `POST /auth/register` (5 per hour per address) creates the account and the session in one call — no OTP, no registration token, no phone verification (the owner does not want it for now). The old `POST /auth/otp/send` / `/auth/otp/verify` routes **do not exist**. Lockout: 5 wrong passwords in 15 minutes lock the account **for that address only** (a stranger cannot lock the owner out from elsewhere; staff unlock or a password change clears every address), plus a per-address bucket of failed sign-ins (60 per 15 minutes). There is no self-service password reset (staff reset it; the sign-in page shows the support contact from Settings › Company). Sessions: 7-day web cookie, 30-day mobile bearer token. After sign-in the web shell is blocked until pending legal documents are accepted (flow 37).
 
 1. **Flow 1 — Unified Phone OTP Login & Registration Token Flow:**
    * `POST /auth/otp/send` (rate-limited to 3 per 10 mins per phone and 20 per IP; silently masks staff phone numbers to prevent enumeration) ➔ `POST /auth/otp/verify` (`HMAC-SHA256` hashed 6-digit code, max 5 attempts).
@@ -381,7 +412,7 @@ Whenever a parcel cannot be delivered, the driver logs a timestamped, GPS-tagged
 3. **Flow 3 — Staff Two-Factor Authentication (`TOTP MFA & Recovery Codes`) Flow:**
    * `POST /auth/mfa/setup` ➔ `POST /auth/mfa/enable` (generates 8 one-time recovery codes). When MFA is enabled, password login returns a 5-minute `mfaToken` that only grants a session after `POST /auth/staff/login/mfa`.
 4. **Flow 4 — Granular RBAC & Anti-Privilege-Escalation Flow:**
-   * `POST /admin/staff` & `PATCH /admin/staff/:id`: Supports 6 role presets (`support`, `operations`, `finance`, `hr_verification`, `account_manager`, `reports`) and 34 granular permissions. Enforces `assertGrantable`: no staff manager can grant a permission they do not hold themselves, and any permission change or suspension immediately revokes all active sessions (`revokeAllSessions`).
+   * `POST /admin/staff` & `PATCH /admin/staff/:id`: Supports 6 role presets (`support`, `operations`, `finance`, `hr_verification`, `account_manager`, `reports`) plus custom roles (J8), and 43 granular permissions **(Update L: `settlements.approve` and `payouts.execute` were retired; `topups.manage`, `privacy.manage`, `system.view` were added; `attendance.edit` stays)**. Enforces `assertGrantable`: no staff manager can grant a permission they do not hold themselves, and any permission change or suspension immediately revokes all active sessions (`revokeAllSessions`).
 
 ---
 
@@ -399,6 +430,8 @@ Whenever a parcel cannot be delivered, the driver logs a timestamped, GPS-tagged
 ---
 
 ### Module C: Courier Office Agreements, Driver Invitations & Fleet Linking (`Flows 9–12`)
+
+> **Update L — Flows 10 and 11:** an invitation to a phone number that has not registered yet stays `pending` and is **not** auto-bound to whoever registers with it. It binds when staff approve that driver's documents (the account becomes `verified`) or when the office confirms the registered account (`POST /office/invites/:id/confirm`; the office sees the name the driver registered with). Inviting a number that already has a driver account links it at once. Accepting is refused (`409 WALLET_NOT_EMPTY`) while the driver's wallet holds money or a withdrawal is pending; staff can *Move balance to office* first. The office sees its drivers' unremitted cash on `/office/cash`.
 
 9. **Flow 9 — Office Commercial Agreement Versioning & Acceptance Flow:**
    * Admin creates a new agreement version (`POST /admin/offices/:id/agreements`), superseding any pending draft. Office accepts via `POST /office/agreements/:id/accept`, superseding prior accepted versions and unlocking `readyOfficeIds`.
@@ -444,6 +477,8 @@ Whenever a parcel cannot be delivered, the driver logs a timestamped, GPS-tagged
 
 ### Module F: Double-Entry Ledger, Negative Wallet, Dual-Control Settlements & ZATCA (`Flows 23–28`)
 
+> **Update L — what is real in this module:** Flow 23 (ledger, idempotency keys, negative credit line) is real; instant top-ups by `POST /wallet/topup` exist **only in demo mode** — real funding is by card or bank transfer (flows 33 and 34). **Flows 24, 25 and 26 do not exist any more (E18):** there is no review / approval step, no separation of duties, no `correctSettlement`, no payout batch and no retry route (`runPayoutBatch`, `retryFailed`, `correctSettlement`, `approveSettlement` have no code); a finished job is paid at once, an open complaint defers the payment, `settleDueWork` in the tick pays what was deferred, corrections are wallet adjustments. **Flow 27 is real** (withdrawals keep their manual approval) and has two additions: Finance can export the selected withdrawals as a bank CSV and mark them paid in bulk, and a driver's withdrawal is limited to `available − overdue cash` (`409 CASH_OUTSTANDING`, flow 35). **Flow 28:** the invoice record with the VAT breakdown and the platform's seller block is real; **ZATCA Phase 2, the QR code and credit notes are not built** (owner item).
+
 23. **Flow 23 — Atomic Double-Entry Ledger & Negative Credit Limit Flow:**
     * [`post()`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/jr-logistics/web/src/server/wallet.ts#L51-L73): Every balance mutation writes an immutable `ledger_entries` row guarded by `UNIQUE(idempotency_key)`. Supports negative `available_cents` down to `-credit_limit_cents` for postpaid warehouses and instant top-ups via `POST /wallet/topup`.
 24. **Flow 24 — Two-Person Rule (`Separation of Duties`) Settlement Approval Flow (Scenario #71):**
@@ -464,6 +499,8 @@ Whenever a parcel cannot be delivered, the driver logs a timestamped, GPS-tagged
 
 ### Module G: External Integrator API, SSRF-Safe Webhooks & Cron Automation (`Flows 29–32`)
 
+> **Update L:** Flow 29 additions: `POST /quote`, `POST /jobs/:id/cancel`, parcel update / cancel, and the OpenAPI document `GET /api/v1/openapi.json` (`memory/SHIPMENTS_API.md` §L). Flow 30 additions: send a test event, replay any delivery. Flow 31: the tick also runs the L-series steps (`payments` re-checks card attempts, `cash_risk` notifications, `doc_expiring` 30/7/1-day notices, `privacy_retention`); the "office window" broadcast step no longer exists; two ticks never run at once (advisory lock shared by the internal scheduler and `POST /cron/tick`); the system-status page shows the last tick and its errors. **Flow 32's alert list is out of date:** the dead alerts `delivery_unconfirmed`, `qty_dispute` and `settlement_pending` were replaced; the radar now lists `driver_late`, `unfilled_soon`, `doc_expiring`, `cash_overdue`, `cash_over_limit`, `ticket_unanswered`, `route_stalled`, `withdrawal_waiting`, `dead_letters`.
+
 29. **Flow 29 — External API Key Management & Idempotent Job Creation Flow:**
     * Warehouses manage up to 5 active `jrk_...` API keys (`SHA-256` hashed, scoped to `jobs:read`, `jobs:write`, rate-limited to 120 req/min).
     * `POST /api/v1/jobs` claims the caller's `Idempotency-Key` in `api_idempotency` before creating and publishing the job, preventing duplicate orders or double escrow reserves on network retries.
@@ -483,7 +520,35 @@ Whenever a parcel cannot be delivered, the driver logs a timestamped, GPS-tagged
 
 ---
 
+### Module H: Update L flows (`Flows 33–39`) — built 2026-11-22
+
+Full step-by-step versions with state transitions and code references are in `FLOWS_DETAILED.md` Category 8. Decisions: `DECISIONS.md` L1–L16. Each provider is off until the super admin enables it (flow 33 and 34 only appear to a company while their provider is on and complete).
+
+33. **Flow 33 — Top-Up by Card (PayTabs hosted page):**
+    * `POST /wallet/topup/card {amountCents, idempotencyKey}` (business; amount within the console's min / max) creates a `payment_intents` row and returns the PayTabs payment-page URL. The company types its card on **PayTabs' page**; the platform never sees a card number.
+    * PayTabs calls the public IPN `POST /api/v1/payments/paytabs/callback` (signature over the raw body) and sends the browser to `/api/v1/payments/paytabs/return`, which redirects (303) to `/business/wallet?topup=<id>`. **Neither is believed:** the platform asks PayTabs itself (`/payment/query`), compares amount, currency and cart id with the intent and only then posts the ledger entry `topup` (key `paytabs:<intent id>`, `simulated:false`). Callback, return and the scheduler racing credit exactly once.
+    * Not approved / mismatching → `failed` / `needs_review` (Finance can re-check, `POST /admin/finance/topups/cards/:id/recheck`). The scheduler re-asks about attempts pending more than 10 minutes and expires abandoned ones after 30.
+34. **Flow 34 — Top-Up by Bank Transfer with Receipt:**
+    * The company sees JR's account (bank, holder, IBAN, notes — Settings › Payments) and a per-company reference, transfers the money, then `POST /wallet/topup/bank` (amount, transfer date, bank reference, receipt photo / PDF ≤ 8 MB; the same reference + amount warns of a duplicate; a transfer older than 60 days is refused).
+    * Finance (`topups.manage`) opens `/admin/finance/topups`, sees the receipt behind a permission-checked stream, **approves** (optionally with the amount actually received) or **rejects** with a reason. Approval posts the ledger `topup` once (`banktopup:<id>`) and notifies the company (`topup_approved` / `topup_rejected`). The company can cancel while it is still `requested`.
+35. **Flow 35 — Cash-Risk Limits on a Driver:**
+    * A driver's *outstanding cash* = cash on delivery he collected and the warehouse has not yet received. At 80 % of the limit (default SAR 3,000) he gets a warning; at the limit, or when any order's cash is older than 3 days, he is **blocked**: no new offers, `403 CASH_LIMIT` on accept / apply, and a withdrawal lien (`409 CASH_OUTSTANDING`). A job he already accepted keeps running.
+    * The warehouse records "Receive money from driver"; the block lifts at once. Notifications `cash_limit_warning` / `cash_blocked` / `cash_overdue` (and `office_driver_cash` to his office) once per driver, state and day. Operations see `cash_overdue` / `cash_over_limit` on the radar; Finance sees columns, filter and aging buckets; the office sees `/office/cash`.
+36. **Flow 36 — Delivery with SMS Switched Off:**
+    * While no SMS provider is active (switch off, or on without complete credentials; demo mode keeps its simulated provider) the platform texts nothing and **does not demand the recipient's delivery code**, whatever the warehouse's `requireDeliveryOtp` says. The driver confirms by scanning the parcel code (and the signature where the warehouse asks); the event is stored with `codeSkipped: "sms_off"`; the message log gets a `skipped` row.
+    * The switch can flip while a parcel is on the road: the next stop follows the new rule (a driver at the door who now needs a code taps *Resend code*). A gateway that is on but refusing does **not** bypass the code.
+37. **Flow 37 — Terms Re-Acceptance:**
+    * Staff with `settings.edit` publish a new version of a legal document in Settings › Legal (in all three languages, optional effective date, change note, **"require re-acceptance"**). `GET /auth/me` then carries `legal.pending` for every affected user; the web shell shows a blocking page with the changed texts until `POST /legal/accept` records the acceptance (kind, version, language, address). The app reads the same from `GET /catalog` and `GET /auth/me`. Registration records the consent for the chosen module and the privacy policy.
+38. **Flow 38 — Privacy: Export and Erasure:**
+    * Any signed-in person can download his data (`GET /privacy/export`, 5 per hour, audited). To be erased he sends `POST /privacy/delete-request`; the page first shows **blockers** (open orders or jobs, undelivered parcels, money in the wallet, pending withdrawals / top-ups, unpaid invoices, cash not handed over). Staff with `privacy.manage` approve (explicit tick) or reject with a reason in `/admin/privacy`; approval anonymises the account in one transaction and removes the stored documents; the person is notified. Ledger, invoices and audit remain without identifying him. Staff can also export a person's file and file a request on his behalf.
+39. **Flow 39 — Forced App Update:**
+    * Staff set `minAppVersion` / `appStoreUrl` per platform (Settings › General › Mobile app). Every mobile request carries `X-App-Version` and `X-App-Platform`; below the minimum the API answers `426 UPGRADE_REQUIRED` (with the store link) before anything else — never to the web or an integrator; `GET /catalog` and `GET /health` stay open so the app's update screen can load. Lifting the minimum works at once.
+
+---
+
 ## Section 5: Database Schema Delta Summary (`Schema Additions Required`)
+
+> **Update L — this section was never applied.** Only `wallet_accounts.credit_limit_cents` (item 2 in spirit) and `requests.allow_partial` (item 5, as a boolean) exist. Items 1, 3, 4 and 6 (`billing_cycle`, `grace_period_days`, `agreed_package_specs`, `approved_zones`, `zone_mismatch_penalty_cents`, `unreadiness_strikes_weekly`, `occupancy_reservation_fee_cents`, `dock_delay_strikes`, `tga_license_number`, `replacement_sla_mins`, `max_package_capacity`, `extra_units_accepted`, `static_route_approved_at`) have **no column and no code**; `preferred_office_id` exists but is retired and never set (C9). The tables added by the real rounds are listed in `web/src/db/schema*.ts` (Update L added `payment_intents`, `bank_transfers`, `legal_documents`, `privacy_requests`, `cash_risk_notices`, `document_expiry_notices`, `broadcasts`). Do **not** build from the list below without a new owner decision.
 
 To align [`web/src/db/schema.ts`](file:///Users/dogorshom/Desktop/Thawani/jr-logisitics/jr-logistics/web/src/db/schema.ts) with all approved custom decisions:
 

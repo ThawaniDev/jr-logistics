@@ -6,6 +6,8 @@
 > 3. **Part 3:** Core Order Lifecycle Flows (**Flows 1 to 26** — Creation, Matching, Loading, Delivery, Completed, Cancelled, and Returned) — **Every flow includes a simple Start / Choice / End diagram**
 > 4. **Part 4:** All Platform Management, Fleet, Support & Financial Flows (**Flows 27 to 45**) — **Every flow includes a simple Start / Choice / End diagram**
 
+> **Update L (2026-11-22) — corrections to this guide:** (1) **Sign-in is username + password for everyone** — there is no SMS code at login or registration and the mobile number is not verified (Part 1 "Verified by SMS code" and Flow 27 are out of date). (2) Delivery codes for recipients are asked **only while the SMS provider is on**; with SMS off the driver scans the parcel code instead. (3) There are **no fees** (call-out, waiting time, zone surcharge are not implemented — amounts pending the owner). (4) The warehouse no longer confirms or disputes the delivered quantity, and finance has no review / approval step: delivery is confirmed automatically and the driver or office is paid at once. (5) Funding a wallet: card (PayTabs) or bank transfer with a receipt, when the owner has switched them on; cash-on-delivery limits apply to drivers. (6) Route optimisation is off by default. See `PLATFORM_FULL_SPEC_AND_FLOWS_EN.md` (Update L notes and flows 33–39).
+
 ---
 
 ## Part 1: Information Needed to Add a Warehouse
@@ -555,6 +557,8 @@ flowchart TD
 ## Part 4: All Platform Management, Fleet, Support & Financial Flows (Flows 27 to 45)
 
 ### Flow 27: Mobile Phone SMS Login & New User Registration
+> **Update L: replaced.** Start → the user types **username + password** (or registers with a username, password and phone — no code is sent) → wrong password 5 times from one address locks that address for 15 minutes → signed in; if a new version of the terms needs accepting the user must accept it before using the platform. The diagram below shows the retired SMS-code login.
+
 ```mermaid
 flowchart TD
     Start(["Start: User Enters Mobile Number"]) --> SendOTP["System Sends 6-Digit SMS Code"]

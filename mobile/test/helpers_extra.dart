@@ -175,12 +175,12 @@ List<Override> extraOverrides({FakeExtraApi? api, FakeMapActions? actions, FakeA
 
 /// Plain pages for every route a Mobile-B screen can navigate to: `PAGE:<location>`.
 List<RouteBase> stubRoutes() => [
-      for (final p in ['/offers', '/wallet', '/jobs', '/cash', '/support', '/notifications', '/documents', '/profile/edit'])
+      for (final p in ['/offers', '/wallet', '/jobs', '/cash', '/support', '/notifications', '/documents', '/profile/edit', '/privacy', '/legal-accept', '/legal/driver', '/legal/privacy'])
         GoRoute(path: p, builder: (_, s) => Scaffold(body: Center(child: Text('PAGE:${s.uri}')))),
     ];
 
 /// Pumps [home] at "/" inside a GoRouter (so `context.push` / `go` work) with the Mobile-B providers faked. Extra routes: [routes].
-Future<GoRouter> pumpRoutedB(WidgetTester t, Widget home, {String lang = 'en', required FakeApi api, FakeExtraApi? extraApi, FakeMapActions? actions, FakeAttachmentPicker? picker, FakeLinks? links, LocationService? location, LocalNotifier? notifier, List<Override> overrides = const [], List<RouteBase> routes = const [], Map<String, Object> prefsValues = const {}, Size size = const Size(900, 1900), String initial = '/'}) async {
+Future<GoRouter> pumpRoutedB(WidgetTester t, Widget home, {FakeLegalApi? legal, FakePrivacyRepo? privacy, FakeSharer? sharer, String lang = 'en', required FakeApi api, FakeExtraApi? extraApi, FakeMapActions? actions, FakeAttachmentPicker? picker, FakeLinks? links, LocationService? location, LocalNotifier? notifier, List<Override> overrides = const [], List<RouteBase> routes = const [], Map<String, Object> prefsValues = const {}, Size size = const Size(900, 1900), String initial = '/'}) async {
   JR.use(testBrightness);
   SharedPreferences.setMockInitialValues({'lang': lang, installMarkerKey: '1', ...prefsValues});
   final prefs = await SharedPreferences.getInstance();
@@ -198,6 +198,7 @@ Future<GoRouter> pumpRoutedB(WidgetTester t, Widget home, {String lang = 'en', r
     overrides: [
       prefsProvider.overrideWithValue(prefs), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(MemoryTokenStore()),
       linkOpenerProvider.overrideWithValue(links ?? FakeLinks()), locationServiceProvider.overrideWithValue(location ?? FakeLocation()),
+      legalApiProvider.overrideWithValue(legal ?? FakeLegalApi()), privacyRepoProvider.overrideWithValue(privacy ?? FakePrivacyRepo()), fileSharerProvider.overrideWithValue(sharer ?? FakeSharer()),
       ...extraOverrides(api: extraApi, actions: actions, picker: picker, notifier: notifier), ...overrides,
     ],
     child: MaterialApp.router(

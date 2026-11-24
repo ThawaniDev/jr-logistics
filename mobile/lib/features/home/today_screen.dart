@@ -11,6 +11,7 @@ import '../../providers_extra.dart';
 import '../../services.dart';
 import '../../widgets/common.dart';
 import '../../widgets/job_card.dart';
+import '../cash/cash_risk_banner.dart';
 import 'notify_prompt.dart';
 import 'shell.dart';
 
@@ -35,7 +36,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     super.initState();
     _poll = Timer.periodic(const Duration(seconds: 30), (_) { if (mounted) _refreshSoon(); });
     // Back from the lock screen, a call or Settings: show the real state immediately instead of up to 30 s later.
-    _life = AppLifecycleListener(onResume: () { if (mounted) _refreshSoon(); });
+    _life = AppLifecycleListener(onResume: () { if (mounted) { _refreshSoon(); ref.read(authProvider.notifier).refreshLegal(); } }); // a new version of the terms may have been published meanwhile
   }
 
   @override
@@ -101,6 +102,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
         child: AsyncBody(value: ov, onRetry: () => ref.invalidate(overviewProvider), builder: (o) => ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [
           if (!o.verified) ...[Banner2(tone: Tone.warn, title: t.knows('verify.driver_${o.verification}_title') ? t('verify.driver_${o.verification}_title') : t('verify.driver_pending_title'), text: t('verify.driver_body'), action: OutlinedButton(onPressed: () => context.push('/documents'), child: Text(t('verify.go_documents')))), const SizedBox(height: 12)],
           if (o.suspended) ...[Banner2(tone: Tone.danger, title: t('driver.suspended'), text: t('driver.suspended_until', {'d': fmtDateTime(o.suspendedUntil, lang)})), const SizedBox(height: 12)],
+          // Cash over the limit / overdue: say so first, with the way out (the banner also tells when new offers are paused).
+          if (o.cashRisk?.atRisk == true) ...[CashRiskBanner(cash: o.cashRisk, lang: lang, compact: true), const SizedBox(height: 12)],
           _AvailabilityCard(online: o.available, busy: _toggling, blocked: !o.verified || o.suspended, onToggle: _toggle),
           // Online without location permission: operations cannot see the driver and check-ins carry no GPS. Say so, with the way out.
           if (o.available && ref.watch(locationPermissionProvider).value == false) ...[

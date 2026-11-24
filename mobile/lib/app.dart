@@ -5,6 +5,7 @@ import 'core/i18n.dart';
 import 'core/theme.dart';
 import 'core/theme_mode.dart';
 import 'features/home/notify_host.dart';
+import 'features/update/update_screen.dart';
 import 'providers.dart';
 import 'router.dart';
 import 'services_notify.dart';
@@ -36,7 +37,8 @@ class JrApp extends ConsumerWidget {
             maxScaleFactor: 1.4,
             // NotifyHost sits at a constant place in the tree (new-offer alerts for the whole session); it never changes the shape of what is below it.
             child: NotifyHost(child: strings.when(
-              data: (s) => StringsScope(strings: s, child: auth.isLoading ? const _Splash() : (auth.hasError && auth.value == null ? _BootError(error: auth.error ?? 'network', onRetry: () => ref.invalidate(authProvider)) : _withBanner(context, ref, child ?? const SizedBox()))),
+              // UpdateGate replaces everything (even a failed start) with the full-screen update page once the server or the catalog says the app is too old.
+              data: (s) => StringsScope(strings: s, child: UpdateGate(child: auth.isLoading ? const _Splash() : (auth.hasError && auth.value == null ? _BootError(error: auth.error ?? 'network', onRetry: () => ref.invalidate(authProvider)) : _withBanner(context, ref, child ?? const SizedBox())))),
               loading: () => const _Splash(),
               error: (e, _) => Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('$e', textAlign: TextAlign.center)))),
             )),

@@ -9,6 +9,7 @@ import '../../data/api_client.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../profile/language_sheet.dart';
+import '../support/support_contact_card.dart';
 import 'auth_rules.dart';
 import 'auth_session.dart';
 import 'auth_widgets.dart';
@@ -84,7 +85,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Text(t('m.au_login_title'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
                   Text(t('m.au_login_sub'), style: TextStyle(color: JR.muted, height: 1.4)),
-                  if (auth?.expired == true) ...[const SizedBox(height: 16), Banner2(text: t('auth.session_expired'), tone: Tone.warn)],
+                  if (auth?.expired == true) ...[const SizedBox(height: 16), auth?.afterDeletionRequest == true ? Banner2(key: const Key('session-ended-after-request'), text: t('lm.session_ended_after_request')) : Banner2(text: t('auth.session_expired'), tone: Tone.warn)],
                   if (changed) ...[const SizedBox(height: 16), Banner2(key: const Key('password-changed'), text: t('m.au_password_changed'), tone: Tone.success)],
                   const SizedBox(height: 24),
                   TextField(
@@ -99,6 +100,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   FilledButton(key: const Key('submit'), onPressed: _busy || !_canSubmit ? null : _submit, child: _busy ? SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: JR.accentInk)) : Text(t('m.au_sign_in'))),
                   const SizedBox(height: 14),
                   Text(t('m.au_forgot'), key: const Key('forgot-hint'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted, fontSize: 13, height: 1.4)),
+                  const SizedBox(height: 16),
+                  const SupportContactCard(), // the company's call / WhatsApp / e-mail, when it has published any — the way out for a driver who cannot sign in
                   const SizedBox(height: 28),
                   Text(t('m.au_no_account'), textAlign: TextAlign.center, style: TextStyle(color: JR.muted)),
                   const SizedBox(height: 8),

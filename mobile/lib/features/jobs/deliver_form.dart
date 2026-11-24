@@ -177,8 +177,13 @@ class _DeliverFormState extends ConsumerState<DeliverForm> {
       });
 
   Future<void> _resend() => _once(() async {
-        final ok = await runStopAction(context, ref, offerId, () async { await ref.read(apiProvider).resendCode(offerId, s.id); }, success: 'ms.code_resent', onError: (m) { if (mounted) setState(() => _error = m); });
-        if (ok && mounted) setState(() { _locked = false; _triesOverride = 5; _error = null; _resendAt = DateTime.now().add(_resendCooldown); });
+        // `{sent: false, smsOff: true}`: text messages were switched off since the form was opened — nothing was sent and none is needed (the job reloads without a code box).
+        var smsOff = false;
+        final ok = await runStopAction(context, ref, offerId, () async { final r = await ref.read(apiProvider).resendCode(offerId, s.id); smsOff = r['smsOff'] == true || r['sent'] == false; }, onError: (m) { if (mounted) setState(() => _error = m); });
+        if (!ok || !mounted) return;
+        if (smsOff) { toast(context, context.tr('lm.sms_off_resend'), quiet: true); setState(() => _error = null); return; }
+        toast(context, context.tr('ms.code_resent'));
+        setState(() { _locked = false; _triesOverride = 5; _error = null; _resendAt = DateTime.now().add(_resendCooldown); });
       });
 
   Future<void> _takePhoto() async {
@@ -235,7 +240,8 @@ class _DeliverFormState extends ConsumerState<DeliverForm> {
         ),
       ],
       const SizedBox(height: 12),
-      if (!s.needsOtp) Banner2(key: const Key('scan-proof-note'), icon: Icons.qr_code_scanner, text: t('fma.scan_proof_note'))
+      // No recipient code: either this warehouse does not use one, or text messages are switched off platform-wide (then the hint says why nothing was sent).
+      if (!s.needsOtp) Banner2(key: Key(s.smsOff ? 'sms-off-note' : 'scan-proof-note'), icon: Icons.qr_code_scanner, text: t(s.smsOff ? 'lm.sms_off_hint' : 'fma.scan_proof_note'))
       else if (!_receiptMode) ..._otpSection(t, resendBlocked)
       else ..._receiptSection(t),
       if (s.needsSignature) ...[

@@ -3,13 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/format.dart';
 import '../../core/i18n.dart';
-import '../../data/api_client.dart' show mapOf, strOf;
+import '../../data/api_client.dart' show ApiException, mapOf, strOf;
 import '../../core/theme.dart';
 import '../../data/models_extra.dart';
 import '../../providers.dart';
 import '../../providers_extra.dart';
 import '../../widgets/common.dart';
 import '../../widgets/job_card.dart';
+import '../cash/cash_errors.dart';
+import '../cash/cash_risk_banner.dart';
 
 class OffersScreen extends ConsumerWidget {
   const OffersScreen({super.key});
@@ -22,14 +24,18 @@ class OffersScreen extends ConsumerWidget {
     final info = ref.watch(offersInfoProvider).value ?? OffersInfo.none;
     // A driver of an office sees no earnings anywhere (the office is paid).
     final hideMoney = ref.watch(overviewProvider).value?.walletManagedByOffice == true;
+    // Cash over the limit / overdue: the server answers `{items: [], cashBlocked: true, cash}` — a paused state with the way out, not an empty list.
+    final oppInfo = ref.watch(opportunitiesInfoProvider).value ?? OffersInfo.none;
+    final risk = info.cash ?? oppInfo.cash ?? ref.watch(overviewProvider).value?.cashRisk;
+    final paused = info.cashBlocked || oppInfo.cashBlocked || ref.watch(overviewProvider).value?.cashRisk?.blocksOffers == true;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(title: Text(t('nav.opportunities')), bottom: TabBar(indicatorColor: JR.accent, labelColor: JR.accent, unselectedLabelColor: JR.muted, tabs: [Tab(text: t('opp.directed')), Tab(text: t('opp.open'))])),
         body: Column(children: [
-        if (info.hidden) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 0), child: _BusyBanner(active: info.activeJob)),
+        if (info.hidden && !paused) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 0), child: _BusyBanner(active: info.activeJob)),
         Expanded(child: TabBarView(children: [
-          RefreshIndicator(color: JR.accent, onRefresh: () async { ref.invalidate(offersProvider); ref.invalidate(offersInfoProvider); await ref.read(offersProvider.future); }, child: AsyncBody(value: ref.watch(offersProvider), onRetry: () => ref.invalidate(offersProvider), builder: (list) => list.isEmpty
+          RefreshIndicator(color: JR.accent, onRefresh: () async { ref.invalidate(offersProvider); ref.invalidate(offersInfoProvider); await ref.read(offersProvider.future); }, child: AsyncBody(value: ref.watch(offersProvider), onRetry: () => ref.invalidate(offersProvider), builder: (list) => paused ? _PausedList(key: const Key('offers-paused-empty'), cash: risk) : list.isEmpty
               ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: [ConstrainedBox(constraints: const BoxConstraints(minHeight: 320), child: EmptyView(title: t('driver.no_offers'), hint: t('driver.no_offers_hint'), icon: Icons.work_outline))])
               : ListView.separated(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), itemCount: list.length, separatorBuilder: (_, _) => const SizedBox(height: 12), itemBuilder: (_, i) {
                   final j = list[i];
@@ -40,7 +46,7 @@ class OffersScreen extends ConsumerWidget {
                   ]));
                 })),
           ),
-          RefreshIndicator(color: JR.accent, onRefresh: () async { ref.invalidate(opportunitiesProvider); ref.invalidate(offersInfoProvider); await ref.read(opportunitiesProvider.future); }, child: AsyncBody(value: ref.watch(opportunitiesProvider), onRetry: () => ref.invalidate(opportunitiesProvider), builder: (list) => list.isEmpty
+          RefreshIndicator(color: JR.accent, onRefresh: () async { ref.invalidate(opportunitiesProvider); ref.invalidate(offersInfoProvider); await ref.read(opportunitiesProvider.future); }, child: AsyncBody(value: ref.watch(opportunitiesProvider), onRetry: () => ref.invalidate(opportunitiesProvider), builder: (list) => paused ? _PausedList(key: const Key('opps-paused-empty'), cash: risk) : list.isEmpty
               ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: [ConstrainedBox(constraints: const BoxConstraints(minHeight: 320), child: EmptyView(title: t('driver.no_offers'), icon: Icons.work_outline))])
               : ListView.separated(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), itemCount: list.length, separatorBuilder: (_, _) => const SizedBox(height: 12), itemBuilder: (_, i) {
                   final o = list[i];
@@ -59,6 +65,31 @@ class OffersScreen extends ConsumerWidget {
         ])),
         ]),
       ),
+    );
+  }
+}
+
+/// What a tab shows while offers are paused: the banner in a scrolling list (it can be tall on a small phone with large text; it must never overflow).
+class _PausedList extends StatelessWidget {
+  const _PausedList({super.key, required this.cash});
+  final CashRisk? cash;
+  @override
+  Widget build(BuildContext context) => ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(16), children: [_PausedBanner(cash: cash)]);
+}
+
+/// "New offers are paused" (cash over the limit or overdue) + the way out: hand the cash to the warehouse.
+class _PausedBanner extends ConsumerWidget {
+  const _PausedBanner({required this.cash});
+  final CashRisk? cash;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tr;
+    final lang = ref.watch(localeProvider);
+    final overdue = cash?.reason == 'overdue' || cash?.state == CashState.overdue;
+    return Banner2(
+      key: const Key('offers-paused'), tone: Tone.danger, title: t('cr.paused_title'),
+      text: [t(overdue ? 'cr.paused_overdue' : 'cr.paused_limit'), if (cash != null && cash!.atRisk) cashRiskTexts(t, cash!, lang).text].join('\n\n'),
+      action: FilledButton.icon(key: const Key('offers-paused-cash'), style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)), onPressed: () => context.push('/cash'), icon: const Icon(Icons.payments_outlined), label: Text(t('cr.banner_open'), textAlign: TextAlign.center)),
     );
   }
 }
@@ -124,7 +155,13 @@ Future<void> _acceptWithTerms(BuildContext context, WidgetRef ref, Future<Map<St
     ]),
   ))));
   if (ok != true || !context.mounted) return;
-  final r = await guarded(context, action, success: 'driver.accepted_ok', maybeApplied: true);
+  final lang = ref.read(localeProvider);
+  final r = await guarded(context, action, success: 'driver.accepted_ok', maybeApplied: true, handle: (e) {
+    // 403 CASH_LIMIT: too much cash (or cash past its handover time) — say so, with the figures, and offer the cash page; the lists then show the paused state.
+    if (e is ApiException && e.code == 'CASH_LIMIT') { showCashLimitDialog(context, e, lang); return true; }
+    return false;
+  });
   refreshAll(ref);
+  ref.invalidate(offersInfoProvider); ref.invalidate(opportunitiesInfoProvider);
   if (r != null && context.mounted) { final id = offerId ?? r['id']; if (id != null) context.push('/job/$id'); }
 }

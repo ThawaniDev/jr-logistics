@@ -12,6 +12,9 @@ import 'package:jr_driver/core/i18n.dart';
 import 'package:jr_driver/core/theme.dart';
 import 'package:jr_driver/data/api_client.dart';
 import 'package:jr_driver/data/driver_api.dart';
+import 'package:jr_driver/data/legal_api.dart';
+import 'package:jr_driver/data/privacy_repo.dart';
+import 'package:jr_driver/providers_extra.dart';
 import 'package:jr_driver/data/models.dart';
 import 'package:jr_driver/data/token_store.dart';
 import 'package:jr_driver/features/jobs/deliver_form.dart';
@@ -65,7 +68,16 @@ class FakeApi extends DriverApi {
   Future<Job> job(String offerId) async { jobFetches++; if (jobFetchError != null) throw jobFetchError!; return jobResult!; }
   Object? jobFetchError;
   @override
-  Future<Json> catalog() async => {'terms': {'driver': ''}, 'policy': {'minWithdrawalCents': minWithdrawalCents, 'cancelPolicyEnabled': true, 'cancelWarnAt': 2, 'cancelSuspendAt': 4, 'cancelWindowDays': 7, 'cancelSuspendDays': 3}, 'cities': catalogCities, 'vehicleTypes': catalogVehicles, 'services': catalogServices, 'documents': {'driver': []}};
+  Future<Json> catalog() async {
+    if (catalogError != null) throw catalogError!;
+    return {
+      'terms': {'driver': ''}, 'policy': {'minWithdrawalCents': minWithdrawalCents, 'cancelPolicyEnabled': true, 'cancelWarnAt': 2, 'cancelSuspendAt': 4, 'cancelWindowDays': 7, 'cancelSuspendDays': 3, 'app': ?catalogApp},
+      'cities': catalogCities, 'vehicleTypes': catalogVehicles, 'services': catalogServices, 'documents': {'driver': []}, 'company': ?catalogCompany,
+    };
+  }
+  /// `policy.app` of the catalog (`{minVersion: {ios, android}, storeUrl: {ios, android}}`) and the `company` block (support channels); absent by default.
+  Json? catalogApp, catalogCompany;
+  Object? catalogError;
   int minWithdrawalCents = 0;
   List<Json> catalogCities = [], catalogServices = [];
   List<String> catalogVehicles = [];
@@ -208,7 +220,9 @@ class FakeApi extends DriverApi {
   @override
   Future<Json> deferStop(String offerId, String stopId, {String? note, String? mediaId}) async { calls.add('defer:$stopId${note != null ? ':note=$note' : ''}${mediaId != null ? ':media=$mediaId' : ''}'); await gate?.future; _maybeThrow(); return {}; }
   @override
-  Future<Json> resendCode(String offerId, String stopId) async { calls.add('resend:$stopId'); _maybeThrow(); return {}; }
+  Future<Json> resendCode(String offerId, String stopId) async { calls.add('resend:$stopId'); _maybeThrow(); return resendResult; }
+  /// What `POST …/resend-code` answers (`{sent: false, smsOff: true}` while text messages are off).
+  Json resendResult = {};
   @override
   Future<Json> uploadProof(String offerId, String stopId, String path, String filename, {void Function(double progress)? onProgress}) async { calls.add('proof:$stopId:$filename'); onProgress?.call(0.5); await gate?.future; _maybeThrow(); return {}; }
   @override
@@ -228,8 +242,14 @@ class FakeApi extends DriverApi {
   Future<void> sendMessage(String offerId, String body) async { calls.add('send:$body'); _maybeThrow(); chatMessages = [...chatMessages, {'id': 'm${chatMessages.length + 1}', 'senderId': 'u1', 'body': body, 'createdAt': '2026-11-20T10:00:00Z'}]; }
   @override
   Future<List<Map<String, dynamic>>> opportunities() async => [];
+  /// What `GET /driver/invites` answers: `{items, walletBlock}`.
+  Json invitesResult = {'items': []};
   @override
-  Future<Json> invites() async => {'items': []};
+  Future<Json> invites() async => invitesResult;
+  @override
+  Future<void> respondInvite(String id, bool accept) async { calls.add('invite:$id:$accept'); await gate?.future; _maybeThrow(); }
+  @override
+  Future<Json> apply(String requestId) async { calls.add('apply:$requestId'); _maybeThrow(); return {'id': 'o-$requestId'}; }
   /// Notification pages the fake server answers (index 0 = page 1); null = none.
   List<Json>? notificationPages;
   @override
@@ -238,6 +258,75 @@ class FakeApi extends DriverApi {
     final p = notificationPages;
     return p != null && page - 1 < p.length ? p[page - 1] : {'items': [], 'unread': 0};
   }
+}
+
+/// The legal endpoints answered from memory: one text per slug (markdown), a configurable error, and what `POST /legal/accept` answers.
+class FakeLegalApi extends LegalApi {
+  FakeLegalApi() : super(ApiClient(baseUrl: 'http://fake', tokens: MemoryTokenStore()));
+  final calls = <String>[];
+  Object? docError;
+  Object? acceptError;
+  bool builtin = false;
+  /// What is still pending after an accept (the answer's `pending` list).
+  List<Json> pendingAfter = const [];
+  final bodies = <String, String>{
+    'driver': '## Driver terms\n\nYou work as an independent driver.\n\n- Deliver every parcel you scan\n- Hand the **cash** to the warehouse\n\nSee the [privacy policy](/privacy) or [our site](https://example.com/terms).',
+    'privacy': '## What we collect\n\nYour name, phone and location while you are online.\n\n1. Purpose\n2. Retention',
+  };
+  @override
+  Future<LegalDoc> doc(String slug, String lang, {String? version}) async {
+    calls.add('doc:$slug:$lang${version == null ? '' : ':$version'}');
+    if (docError != null) throw docError!;
+    return LegalDoc({'kind': slug, 'title': slug == 'privacy' ? 'Privacy policy ($lang)' : 'Driver terms ($lang)', 'version': '2.0', 'effectiveAt': '2026-11-01T00:00:00.000Z', 'builtin': builtin, 'body': bodies[slug] ?? ''});
+  }
+  @override
+  Future<Json> accept(List<PendingLegal> items, String locale) async {
+    calls.add('accept:${items.map((i) => '${i.kind}@${i.version}').join(',')}:$locale');
+    if (acceptError != null) { final e = acceptError!; acceptError = null; throw e; }
+    return {'ok': true, 'pending': pendingAfter};
+  }
+}
+
+/// `GET /privacy/status` and friends from memory.
+class FakePrivacyRepo extends PrivacyRepository {
+  FakePrivacyRepo() : super(ApiClient(baseUrl: 'http://fake', tokens: MemoryTokenStore()));
+  final calls = <String>[];
+  Json statusJson = {
+    'role': 'driver', 'export': {'available': true, 'lastAt': null},
+    'deletion': {'supported': true, 'eligible': true, 'canRequest': true, 'blockers': [], 'request': null},
+    'retention': {'notificationDays': 90, 'recipientPiiMonths': 24, 'closedAccountYears': 5}, 'contact': {'privacyEmail': 'privacy@jr.test', 'phone': null},
+  };
+  Object? statusError, exportError, deleteError, cancelError;
+  Uint8List exportBytes = Uint8List.fromList(utf8.encode('{"profile":{"name":"Omar"}}'));
+  @override
+  Future<PrivacyStatus> status() async { calls.add('status'); if (statusError != null) throw statusError!; return PrivacyStatus(statusJson); }
+  @override
+  Future<Uint8List> exportData() async { calls.add('export'); await exportGate?.future; if (exportError != null) throw exportError!; return exportBytes; }
+  Completer<void>? exportGate;
+  @override
+  Future<DeletionRequest> requestDeletion(String? reason) async {
+    calls.add('delete:${reason?.trim() ?? ''}');
+    if (deleteError != null) { final e = deleteError!; deleteError = null; throw e; }
+    final req = {'id': 'pr1', 'status': 'requested', 'reason': reason, 'requestedAt': '2026-11-22T09:00:00.000Z'};
+    statusJson = {...statusJson, 'deletion': {...(statusJson['deletion'] as Map).cast<String, dynamic>(), 'canRequest': false, 'request': req}};
+    return DeletionRequest(req);
+  }
+  @override
+  Future<DeletionRequest> cancelDeletion() async {
+    calls.add('cancel');
+    if (cancelError != null) { final e = cancelError!; cancelError = null; throw e; }
+    statusJson = {...statusJson, 'deletion': {...(statusJson['deletion'] as Map).cast<String, dynamic>(), 'canRequest': true, 'request': {'id': 'pr1', 'status': 'cancelled'}}};
+    return DeletionRequest(const {'id': 'pr1', 'status': 'cancelled'});
+  }
+}
+
+/// The share sheet: remembers what would have been shared.
+class FakeSharer implements FileSharer {
+  final shared = <({String filename, String mime, int bytes, String? subject})>[];
+  Uint8List? lastBytes;
+  bool succeed = true;
+  @override
+  Future<bool> shareFile({required Uint8List bytes, required String filename, required String mime, String? subject, Rect? origin}) async { lastBytes = bytes; shared.add((filename: filename, mime: mime, bytes: bytes.length, subject: subject)); return succeed; }
 }
 
 class FakeLinks implements LinkOpener {
@@ -377,7 +466,7 @@ Brightness testBrightness = Brightness.dark;
 void useBrightness(Brightness b) { testBrightness = b; JR.use(b); }
 
 /// Pumps [child] inside a themed, localized shell with the real dictionaries.
-Future<void> pumpScreen(WidgetTester t, Widget child, {String lang = 'en', required FakeApi api, FakeLinks? links, LocationService? location, FakePhotos? photos, FakeBarcodeScanner? scanner, EvidencePhotos? evidence, List<Override> extra = const []}) async {
+Future<void> pumpScreen(WidgetTester t, Widget child, {FakeLegalApi? legal, FakePrivacyRepo? privacy, FakeSharer? sharer, String lang = 'en', required FakeApi api, FakeLinks? links, LocationService? location, FakePhotos? photos, FakeBarcodeScanner? scanner, EvidencePhotos? evidence, List<Override> extra = const []}) async {
   JR.use(testBrightness);
   SharedPreferences.setMockInitialValues({'lang': lang, installMarkerKey: '1'}); // not a first launch of the install (a fresh one drops the stored token)
   final prefs = await SharedPreferences.getInstance();
@@ -390,6 +479,7 @@ Future<void> pumpScreen(WidgetTester t, Widget child, {String lang = 'en', requi
       prefsProvider.overrideWithValue(prefs), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(MemoryTokenStore()),
       linkOpenerProvider.overrideWithValue(links ?? FakeLinks()), locationServiceProvider.overrideWithValue(location ?? FakeLocation()), photoPickerProvider.overrideWithValue(photos ?? FakePhotos()),
       barcodeScannerProvider.overrideWithValue(scanner ?? FakeBarcodeScanner()), evidencePhotosProvider.overrideWithValue(evidence ?? FakeEvidencePhotos()),
+      legalApiProvider.overrideWithValue(legal ?? FakeLegalApi()), privacyRepoProvider.overrideWithValue(privacy ?? FakePrivacyRepo()), fileSharerProvider.overrideWithValue(sharer ?? FakeSharer()),
       // the real signature encoder needs the engine's async image pipeline: tests get a tiny fixed PNG-like payload instead
       signatureExporterProvider.overrideWithValue((SignatureController c) async => c.hasSignature ? Uint8List.fromList(const [137, 80, 78, 71, 1, 2, 3]) : null),
       ...extra,
@@ -415,7 +505,7 @@ Future<void> pumpRouted(WidgetTester t, Widget child, {String lang = 'en', requi
   final router = GoRouter(routes: [GoRoute(path: '/', builder: (_, _) => child), GoRoute(path: '/job/:id', builder: (_, s) => Scaffold(body: Center(child: Text('JOB-PAGE-${s.pathParameters['id']}'))))]);
   await t.pumpWidget(ProviderScope(
     retry: (_, _) => null,
-    overrides: [prefsProvider.overrideWithValue(prefs), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(MemoryTokenStore()), linkOpenerProvider.overrideWithValue(links ?? FakeLinks()), locationServiceProvider.overrideWithValue(FakeLocation())],
+    overrides: [prefsProvider.overrideWithValue(prefs), apiProvider.overrideWithValue(api), tokenStoreProvider.overrideWithValue(MemoryTokenStore()), linkOpenerProvider.overrideWithValue(links ?? FakeLinks()), locationServiceProvider.overrideWithValue(FakeLocation()), legalApiProvider.overrideWithValue(FakeLegalApi())],
     child: MaterialApp.router(
       theme: buildTheme(testBrightness), locale: Locale(lang), routerConfig: router,
       builder: (c, w) => Directionality(textDirection: isRtl(lang) ? TextDirection.rtl : TextDirection.ltr, child: StringsScope(strings: strings(lang), child: w!)),
